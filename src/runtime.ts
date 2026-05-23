@@ -12,7 +12,7 @@ export type LocaleScope<
 	env: TGlobal;
 	sfc: TModule;
 };
-export type LocaleTemplateValue = string | number | boolean | null | undefined;
+export type LocaleTemplateValue = string | number | bigint | boolean | null | undefined | Date;
 export type LocaleTemplateValues = Record<string, LocaleTemplateValue>;
 export type LocaleTemplateFunction = (values?: LocaleTemplateValues | LocaleTemplateValue[] | number, plural?: number) => string;
 export type LocaleMessageFunction<TValues = unknown> = {
@@ -208,14 +208,16 @@ export function useLocale<
 }
 
 export function useLocalizer(moduleUrl: string): Readonly<ComputedRef<LocaleLocalizerScope>> {
+	const internationalization = useInternationalization();
 	const locale = useLocale(moduleUrl);
 
 	return computed(() => {
 		const rootDictionary = locale.value as RuntimeLocaleDictionary;
+		const state = getState(internationalization);
 
 		return {
-			env: createLocalizerDictionary(locale.value.env, ['env'], rootDictionary),
-			sfc: createLocalizerDictionary(locale.value.sfc, ['sfc'], rootDictionary),
+			env: createLocalizerDictionary(locale.value.env, ['env'], rootDictionary, state.locale),
+			sfc: createLocalizerDictionary(locale.value.sfc, ['sfc'], rootDictionary, state.locale),
 		};
 	});
 }
@@ -512,6 +514,7 @@ function createLocalizerDictionary(
 	dictionary: RuntimeLocaleDictionary,
 	path: string[],
 	rootDictionary: RuntimeLocaleDictionary = dictionary,
+	locale?: string,
 ): LocaleLocalizerDictionary {
 	const pathKey = path.join('.');
 	const dictionaryCache = getOrCreateLocalizerCache(dictionary, rootDictionary);
@@ -531,7 +534,7 @@ function createLocalizerDictionary(
 			const nextPath = [...path, property];
 
 			if (isDictionary(value)) {
-				return createLocalizerDictionary(value, nextPath, rootDictionary);
+				return createLocalizerDictionary(value, nextPath, rootDictionary, locale);
 			}
 
 			return (values?: LocaleTemplateValues | LocaleTemplateValue[] | number, plural?: number) => {
@@ -545,6 +548,7 @@ function createLocalizerDictionary(
 				const message = typeof value === 'string' ? value : `$locale.${nextPath.join('.')}`;
 
 				return formatLocaleMessage(message, {
+					locale,
 					values: normalizedValues,
 					plural: normalizedPlural,
 					resolveLinked: (key) => resolveLinkedMessage(rootDictionary, key, normalizedValues, normalizedPlural, undefined, path[0]),

@@ -1,4 +1,4 @@
-import { getLocaleMessageListIndexes, getLocaleMessageNamedKeys, hasLocaleMessagePlural } from './message.js';
+import { getLocaleMessageListIndexes, getLocaleMessageNamedKeys, hasLocaleMessagePlural, isIcuLocaleMessage } from './message.js';
 import type { LocaleDictionary, LocaleValue } from './types.js';
 
 export type LocaleBindingTypes = {
@@ -172,6 +172,7 @@ function toLocaleTemplateFunctionType(value: LocaleValue): string {
 	const keys = typeof value === 'string' ? getLocaleMessageNamedKeys(value) : [];
 	const indexes = typeof value === 'string' ? getLocaleMessageListIndexes(value) : [];
 	const hasPlural = typeof value === 'string' && hasLocaleMessagePlural(value);
+	const usesIcu = typeof value === 'string' && isIcuLocaleMessage(value);
 
 	if (keys.length === 0) {
 		if (indexes.length > 0) {
@@ -181,7 +182,7 @@ function toLocaleTemplateFunctionType(value: LocaleValue): string {
 		return hasPlural ? '(plural: number) => string' : '() => string';
 	}
 
-	return `(values: { ${keys.map((key) => `${toPropertyName(key)}: import("vue-internationalization/runtime").LocaleTemplateValue;`).join(' ')} }${hasPlural ? ', plural?: number' : ''}) => string`;
+	return `(values: { ${keys.map((key) => `${toPropertyName(key)}: import("vue-internationalization/runtime").LocaleTemplateValue;`).join(' ')} }${hasPlural && !usesIcu ? ', plural?: number' : ''}) => string`;
 }
 
 function toLocalizerAccessPath(path: string[]): string {

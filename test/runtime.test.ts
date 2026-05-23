@@ -237,6 +237,8 @@ describe('runtime locale fallback', () => {
 								named: 'Hello {user-name}',
 								list: '{0} world',
 								literal: '{\'hello\'} world',
+								icuPlural: '{count, plural, =0 {no ICU apples} one {one ICU apple} other {# ICU apples}}',
+								icuSelect: '{gender, select, female {She has {count, plural, one {one apple} other {# apples}}} other {They have {count, plural, one {one apple} other {# apples}}}}',
 								car: 'car | cars',
 								apple: 'no apples | one apple | {count} apples',
 								name: 'World',
@@ -265,6 +267,8 @@ describe('runtime locale fallback', () => {
 					named: (values: { 'user-name': string }) => string;
 					list: (values: string[]) => string;
 					literal: () => string;
+					icuPlural: (values: { count: number }) => string;
+					icuSelect: (values: { gender: string; count: number }) => string;
 					car: (plural: number) => string;
 					apple: (values: { count: number }, plural?: number) => string;
 					linked: () => string;
@@ -283,6 +287,9 @@ describe('runtime locale fallback', () => {
 		expect(localizer.value.sfc.named({ 'user-name': 'Jane' })).toBe('Hello Jane');
 		expect(localizer.value.sfc.list(['hello'])).toBe('hello world');
 		expect(localizer.value.sfc.literal()).toBe('hello world');
+		expect(localizer.value.sfc.icuPlural({ count: 0 })).toBe('no ICU apples');
+		expect(localizer.value.sfc.icuPlural({ count: 3 })).toBe('3 ICU apples');
+		expect(localizer.value.sfc.icuSelect({ gender: 'female', count: 2 })).toBe('She has 2 apples');
 		expect(localizer.value.sfc.car(1)).toBe('car');
 		expect(localizer.value.sfc.car(2)).toBe('cars');
 		expect(localizer.value.sfc.apple({ count: 0 }, 0)).toBe('no apples');

@@ -149,9 +149,26 @@ linked: "@.upper:target"
 - literal interpolation: `{'@'}` / `{"@"}`
 - pluralization: `no apples | one apple | {count} apples`
 - linked messages: `@:target` / `@.lower:target` / `@.upper:target` / `@.capitalize:target`
+- ICU MessageFormat: `{count, plural, one {one apple} other {# apples}}`
 
 pluralization は `$l.sfc.key(plural)` または `$l.sfc.key(values, plural)` で選択します。2 variants の場合は `1` が先頭、それ以外が後続です。3 variants 以上の場合は `0` / `1` / other の順に選択します。
 linked message は同じ scope の root から key path を解決します。未解決の linked message や循環参照は `@:key` の表示で停止します。
+
+ICU MessageFormat は `plural` / `select` / `selectordinal` を含む message で使えます。ICU message は FormatJS の parser/runtime で扱い、型生成も ICU AST から必要な values key を抽出します。
+
+```yaml
+apples: "{count, plural, =0 {No apples} one {One apple} other {# apples}}"
+invite: "{gender, select, female {She invited {count, plural, one {one guest} other {# guests}}} other {They invited {count, plural, one {one guest} other {# guests}}}}"
+```
+
+```vue
+<template>
+  <p>{{ $l.sfc.apples({ count }) }}</p>
+  <p>{{ $l.sfc.invite({ gender, count }) }}</p>
+</template>
+```
+
+`{name}` だけの message は既存の lightweight parser で扱います。`{count, plural, ...}` / `{kind, select, ...}` / `{position, selectordinal, ...}` のような ICU control form を含む場合だけ ICU MessageFormat として扱います。既存の linked message syntax と ICU syntax は同じ message 内では混ぜないでください。
 
 Programmatic dictionary では message function も leaf value として使えます。YAML/JSON の `<locale>` block は静的解析のため文字列辞書のままですが、Vite plugin options や runtime loader で渡す辞書では関数を localizer から呼び出せます。
 

@@ -106,6 +106,7 @@ describe('locale SFC parsing', () => {
 			'mixed: "{name}: {count}"',
 			'kebab: "{user-name}"',
 			'plural: "car | cars"',
+			'icu: "{count, plural, one {one car} other {# cars by {name}}}"',
 			'</locale>',
 		].join('\n');
 
@@ -115,6 +116,7 @@ describe('locale SFC parsing', () => {
 		expect(output).toContain('mixed: (values: { name: import("vue-internationalization/runtime").LocaleTemplateValue; count: import("vue-internationalization/runtime").LocaleTemplateValue; }) => string;');
 		expect(output).toContain('"user-name": import("vue-internationalization/runtime").LocaleTemplateValue;');
 		expect(output).toContain('plural: (plural: number) => string;');
+		expect(output).toContain('icu: (values: { count: import("vue-internationalization/runtime").LocaleTemplateValue; name: import("vue-internationalization/runtime").LocaleTemplateValue; }) => string;');
 	});
 
 	it('preserves message function types in injected localizer bindings', () => {

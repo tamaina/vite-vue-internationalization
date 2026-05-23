@@ -1,13 +1,16 @@
 import { parse } from 'acorn';
+import { parse as parseIcuMessage, TYPE } from '@formatjs/icu-messageformat-parser';
 import { walk } from 'estree-walker';
 import MagicString from 'magic-string';
-import { compileLocaleMessage } from './message.js';
+import { compileLocaleMessage, isIcuLocaleMessage } from './message.js';
 import { injectScriptSetup } from './scriptSetup.js';
 import type { Node as EstreeNode } from 'estree-walker';
+import type { MessageFormatElement } from '@formatjs/icu-messageformat-parser';
 import type { LocaleMessageToken } from './message.js';
 import type { LocaleDictionary } from './types.js';
 
 export type InlineLocalePayload = {
+	locale: string;
 	global: LocaleDictionary;
 	module: LocaleDictionary;
 };
@@ -465,6 +468,7 @@ function createInlinePayloadResolver(
 		}
 
 		return {
+			locale,
 			global,
 			module,
 		};
@@ -909,6 +913,10 @@ function createInlineTemplateExpression(
 	scope?: PublicLocaleScope,
 	seen: Set<string> = new Set(),
 ): string {
+	if (isIcuLocaleMessage(template)) {
+		return createInlineIcuMessageExpression(template, valuesExpression, payload?.locale);
+	}
+
 	const cases = compileLocaleMessage(template).cases;
 	const caseExpressions = cases.map((tokens) => createInlineTokenExpression(tokens, payload, scope, seen));
 
@@ -921,6 +929,82 @@ function createInlineTemplateExpression(
 	}
 
 	return `((__values) => ${caseExpressions[0] ?? '""'})(${valuesExpression})`;
+}
+
+function createInlineIcuMessageExpression(
+	template: string,
+	valuesExpression: string,
+	locale: string | undefined,
+): string {
+	const body = createInlineIcuElementsExpression(parseIcuMessage(template), '__values', JSON.stringify(locale));
+	return `((__values) => ${body})(${valuesExpression})`;
+}
+
+function createInlineIcuElementsExpression(
+	elements: MessageFormatElement[],
+	valuesExpression: string,
+	localeExpression: string,
+	pluralValueExpression?: string,
+): string {
+	const parts = elements.map((element) => createInlineIcuElementExpression(element, valuesExpression, localeExpression, pluralValueExpression));
+	return parts.length === 0 ? '""' : parts.join(' + ');
+}
+
+function createInlineIcuElementExpression(
+	element: MessageFormatElement,
+	valuesExpression: string,
+	localeExpression: string,
+	pluralValueExpression: string | undefined,
+): string {
+	switch (element.type) {
+		case TYPE.literal:
+			return JSON.stringify(element.value);
+		case TYPE.argument:
+		case TYPE.number:
+		case TYPE.date:
+		case TYPE.time:
+			return `(${valuesExpression}?.[${JSON.stringify(element.value)}] ?? ${JSON.stringify(`{${element.value}}`)})`;
+		case TYPE.pound:
+			return `((${pluralValueExpression ?? 'undefined'}) ?? "#")`;
+		case TYPE.select:
+			return createInlineIcuSelectExpression(element, valuesExpression, localeExpression, pluralValueExpression);
+		case TYPE.plural:
+			return createInlineIcuPluralExpression(element, valuesExpression, localeExpression);
+		case TYPE.tag:
+			return createInlineIcuElementsExpression(element.children, valuesExpression, localeExpression, pluralValueExpression);
+	}
+}
+
+function createInlineIcuSelectExpression(
+	element: Extract<MessageFormatElement, { type: TYPE.select }>,
+	valuesExpression: string,
+	localeExpression: string,
+	pluralValueExpression: string | undefined,
+): string {
+	const entries = Object.entries(element.options)
+		.map(([key, option]) =>
+			`${JSON.stringify(key)}:()=>${createInlineIcuElementsExpression(option.value, valuesExpression, localeExpression, pluralValueExpression)}`)
+		.join(',');
+
+	return `((__value)=>((({${entries}})[String(__value)] ?? ({${entries}}).other ?? (()=>${JSON.stringify(`{${element.value}}`)}))()))(${valuesExpression}?.[${JSON.stringify(element.value)}])`;
+}
+
+function createInlineIcuPluralExpression(
+	element: Extract<MessageFormatElement, { type: TYPE.plural }>,
+	valuesExpression: string,
+	localeExpression: string,
+): string {
+	const choiceExpression = `Number(__value) - ${element.offset}`;
+	const entries = Object.entries(element.options)
+		.map(([key, option]) =>
+			`${JSON.stringify(key)}:()=>${createInlineIcuElementsExpression(option.value, valuesExpression, localeExpression, choiceExpression)}`)
+		.join(',');
+	const exactEntries = Object.keys(element.options)
+		.filter((key) => key.startsWith('='))
+		.map((key) => `${JSON.stringify(key.slice(1))}:${JSON.stringify(key)}`)
+		.join(',');
+
+	return `((__value)=>{const __options={${entries}};const __exact=({${exactEntries}})[String(__value)];const __rule=__exact ?? new Intl.PluralRules(${localeExpression},{type:${JSON.stringify(element.pluralType)}}).select(${choiceExpression});return (__options[__rule] ?? __options.other ?? (()=>${JSON.stringify(`{${element.value}}`)}))();})(${valuesExpression}?.[${JSON.stringify(element.value)}])`;
 }
 
 function createInlineTokenExpression(

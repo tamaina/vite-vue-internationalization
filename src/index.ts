@@ -10,6 +10,7 @@ export {
 	getLocaleMessageListIndexes,
 	getLocaleMessageNamedKeys,
 	hasLocaleMessagePlural,
+	isIcuLocaleMessage,
 } from './message.js';
 export type {
 	LocaleMessageAst,

@@ -1,4 +1,8 @@
-export type LocaleMessageValue = string | number | boolean | null | undefined;
+import { parse as parseIcuMessage, TYPE } from '@formatjs/icu-messageformat-parser';
+import IntlMessageFormat from 'intl-messageformat';
+import type { MessageFormatElement } from '@formatjs/icu-messageformat-parser';
+
+export type LocaleMessageValue = string | number | bigint | boolean | null | undefined | Date;
 export type LocaleMessageNamedValues = Record<string, LocaleMessageValue>;
 export type LocaleMessageListValues = LocaleMessageValue[];
 export type LocaleMessageValues = LocaleMessageNamedValues | LocaleMessageListValues;
@@ -23,6 +27,13 @@ export type LocaleMessageContext = {
 
 const MESSAGE_CACHE_LIMIT = 500;
 const MESSAGE_CACHE = new Map<string, LocaleMessageAst>();
+const ICU_MESSAGE_CACHE = new Map<string, IntlMessageFormat>();
+const ICU_ARGUMENT_CACHE = new Map<string, string[]>();
+const ICU_MESSAGE_RE = /\{\s*[$A-Z_a-z][\w$-]*\s*,\s*(?:plural|select|selectordinal)\s*,/u;
+
+export function isIcuLocaleMessage(message: string): boolean {
+	return ICU_MESSAGE_RE.test(message);
+}
 
 export function compileLocaleMessage(message: string): LocaleMessageAst {
 	const cached = MESSAGE_CACHE.get(message);
@@ -48,6 +59,13 @@ export function compileLocaleMessage(message: string): LocaleMessageAst {
 }
 
 export function formatLocaleMessage(message: string, context: LocaleMessageContext = {}): string {
+	if (isIcuLocaleMessage(message)) {
+		const formatter = getIcuMessageFormatter(message, context.locale);
+		const values = context.values && !Array.isArray(context.values) ? context.values : undefined;
+		const formatted = formatter.format(values);
+		return Array.isArray(formatted) ? formatted.join('') : String(formatted);
+	}
+
 	const ast = compileLocaleMessage(message);
 	const tokens = ast.cases[selectPluralCase(ast.cases.length, context.plural)];
 
@@ -55,6 +73,10 @@ export function formatLocaleMessage(message: string, context: LocaleMessageConte
 }
 
 export function getLocaleMessageNamedKeys(message: string): string[] {
+	if (isIcuLocaleMessage(message)) {
+		return getIcuLocaleMessageArgumentKeys(message);
+	}
+
 	const keys: string[] = [];
 
 	for (const tokens of compileLocaleMessage(message).cases) {
@@ -83,6 +105,10 @@ export function getLocaleMessageListIndexes(message: string): number[] {
 }
 
 export function hasLocaleMessagePlural(message: string): boolean {
+	if (isIcuLocaleMessage(message)) {
+		return true;
+	}
+
 	return compileLocaleMessage(message).cases.length > 1;
 }
 
@@ -98,6 +124,79 @@ export function getLocaleMessageLinkedKeys(message: string): string[] {
 	}
 
 	return keys;
+}
+
+function getIcuMessageFormatter(message: string, locale: string | undefined): IntlMessageFormat {
+	const key = `${locale ?? ''}\n${message}`;
+	const cached = ICU_MESSAGE_CACHE.get(key);
+
+	if (cached) {
+		return cached;
+	}
+
+	const formatter = new IntlMessageFormat(message, locale);
+
+	if (ICU_MESSAGE_CACHE.size >= MESSAGE_CACHE_LIMIT) {
+		const oldestKey = ICU_MESSAGE_CACHE.keys().next().value;
+
+		if (oldestKey !== undefined) {
+			ICU_MESSAGE_CACHE.delete(oldestKey);
+		}
+	}
+
+	ICU_MESSAGE_CACHE.set(key, formatter);
+	return formatter;
+}
+
+function getIcuLocaleMessageArgumentKeys(message: string): string[] {
+	const cached = ICU_ARGUMENT_CACHE.get(message);
+
+	if (cached) {
+		return cached;
+	}
+
+	const keys: string[] = [];
+	collectIcuArgumentKeys(parseIcuMessage(message), keys);
+
+	if (ICU_ARGUMENT_CACHE.size >= MESSAGE_CACHE_LIMIT) {
+		const oldestKey = ICU_ARGUMENT_CACHE.keys().next().value;
+
+		if (oldestKey !== undefined) {
+			ICU_ARGUMENT_CACHE.delete(oldestKey);
+		}
+	}
+
+	ICU_ARGUMENT_CACHE.set(message, keys);
+	return keys;
+}
+
+function collectIcuArgumentKeys(elements: MessageFormatElement[], keys: string[]): void {
+	for (const element of elements) {
+		switch (element.type) {
+			case TYPE.argument:
+			case TYPE.number:
+			case TYPE.date:
+			case TYPE.time:
+				pushUnique(keys, element.value);
+				break;
+			case TYPE.select:
+			case TYPE.plural:
+				pushUnique(keys, element.value);
+				for (const option of Object.values(element.options)) {
+					collectIcuArgumentKeys(option.value, keys);
+				}
+				break;
+			case TYPE.tag:
+				collectIcuArgumentKeys(element.children, keys);
+				break;
+		}
+	}
+}
+
+function pushUnique(values: string[], value: string): void {
+	if (!values.includes(value)) {
+		values.push(value);
+	}
 }
 
 function formatToken(token: LocaleMessageToken, context: LocaleMessageContext): string {

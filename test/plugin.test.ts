@@ -418,6 +418,35 @@ describe('virtual module generation', () => {
 		expect(replaced).toContain('const recursive = ((__values) => ((__values) => "@:recursive")(__values))({ count });');
 	});
 
+	it('replaces ICU messageformat inline localizer calls', () => {
+		const marker = internals.injectInlineLocaleBinding('<script setup></script>', '/src/App.vue');
+		const binding = marker.match(/const \$l = (.*);/)?.[1];
+		const code = [
+			`const l = ${binding};`,
+			'const plural = l.sfc.icuPlural({ count });',
+			'const select = l.sfc.icuSelect({ gender, count });',
+		].join('');
+
+		const replaced = internals.replaceInlineLocalizerAccess(
+			code,
+			'en-US',
+			'en-US',
+			{
+				'/src/App.vue': {
+					'en-US': {
+						icuPlural: '{count, plural, =0 {no apples} one {one apple} other {# apples}}',
+						icuSelect: '{gender, select, female {She has {count, plural, one {one apple} other {# apples}}} other {They have {count, plural, one {one apple} other {# apples}}}}',
+					},
+				},
+			},
+			{},
+		);
+
+		expect(replaced).toContain('new Intl.PluralRules("en-US"');
+		expect(replaced).toContain('"female":()=>');
+		expect(replaced).not.toContain('one {one apple}');
+	});
+
 	it('rewrites template locale access to inline text markers', () => {
 		const code = internals.rewriteInlineLocaleTemplateAccess(
 			'<template><p>{{ $locale.sfc.title }}</p><p>{{ $locale.env.missing }}</p><p>{{ $l.sfc.nApples({ n: Math.max(n, 1) }) }}</p></template>',
