@@ -1,7 +1,7 @@
 <template>
   <section :class="$style.panel">
-    <h2>{{ $locale.module.heading }}</h2>
-    <p>{{ $locale.module.body }}</p>
+    <h2>{{ $locale.sfc.heading }}</h2>
+    <p>{{ $locale.sfc.body }}</p>
   </section>
 </template>
 

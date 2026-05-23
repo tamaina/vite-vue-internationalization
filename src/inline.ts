@@ -20,6 +20,7 @@ export type InlineChunkManifest = {
 
 type ModuleMessages = Partial<Record<string, Partial<Record<string, LocaleDictionary>>>>;
 type LocaleMessages = Partial<Record<string, LocaleDictionary>>;
+type PublicLocaleScope = 'env' | 'sfc';
 type MutableOutputChunk = {
 	type: 'chunk';
 	fileName: string;
@@ -36,11 +37,11 @@ const INLINE_LOCALIZERS_CALL_RE = /__VUE_INTERNATIONALIZATION_INLINE_LOCALIZERS_
 const INLINE_BINDING_RE =
 	/\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*__VUE_INTERNATIONALIZATION_INLINE_LOCALE__\("(__VUE_INTERNATIONALIZATION_INLINE__:[A-Za-z0-9+/=]+)"\)/g;
 const INLINE_TEXT_RE =
-	/(?:\b[A-Za-z_$][\w$]*\.)?__VUE_INTERNATIONALIZATION_INLINE_TEXT__\("(__VUE_INTERNATIONALIZATION_INLINE__:[A-Za-z0-9+/=]+)","((?:global|module)(?:\.[A-Za-z_$][\w$]*)+)"\)/g;
+	/(?:\b[A-Za-z_$][\w$]*\.)?__VUE_INTERNATIONALIZATION_INLINE_TEXT__\("(__VUE_INTERNATIONALIZATION_INLINE__:[A-Za-z0-9+/=]+)","((?:env|sfc)(?:\.[A-Za-z_$][\w$]*)+)"\)/g;
 const INLINE_LOCALIZER_RE =
-	/(?:\b[A-Za-z_$][\w$]*\.)?__VUE_INTERNATIONALIZATION_INLINE_LOCALIZER__\("(__VUE_INTERNATIONALIZATION_INLINE__:[A-Za-z0-9+/=]+)","((?:global|module)(?:\.[A-Za-z_$][\w$]*)+)",(\{[^)]*\})\)/g;
-const LOCALE_ACCESS_RE = /\$locale(?:\.value)?\.(global|module)((?:\.[A-Za-z_$][\w$]*)+)/g;
-const LOCALIZER_ACCESS_RE = /\$l(?:\.value)?\.(global|module)((?:\.[A-Za-z_$][\w$]*)+)\((\{[^)]*\})\)/g;
+	/(?:\b[A-Za-z_$][\w$]*\.)?__VUE_INTERNATIONALIZATION_INLINE_LOCALIZER__\("(__VUE_INTERNATIONALIZATION_INLINE__:[A-Za-z0-9+/=]+)","((?:env|sfc)(?:\.[A-Za-z_$][\w$]*)+)",(\{[^)]*\})\)/g;
+const LOCALE_ACCESS_RE = /\$locale(?:\.value)?\.(env|sfc)((?:\.[A-Za-z_$][\w$]*)+)/g;
+const LOCALIZER_ACCESS_RE = /\$l(?:\.value)?\.(env|sfc)((?:\.[A-Za-z_$][\w$]*)+)\((\{[^)]*\})\)/g;
 
 export function createInlineLocaleMarker(moduleId: string): string {
 	return `${INLINE_MARKER_PREFIX}${Buffer.from(moduleId, 'utf8').toString('base64')}`;
@@ -69,10 +70,10 @@ export function rewriteInlineLocaleTemplateAccess(code: string, moduleId: string
 
 	return code.replace(/<template\b[^>]*>[\s\S]*?<\/template>/g, (template) =>
 		template
-			.replace(LOCALIZER_ACCESS_RE, (_match, scope: 'global' | 'module', pathExpression: string, valuesExpression: string) =>
+			.replace(LOCALIZER_ACCESS_RE, (_match, scope: PublicLocaleScope, pathExpression: string, valuesExpression: string) =>
 				`__VUE_INTERNATIONALIZATION_INLINE_LOCALIZER__(${JSON.stringify(marker)},${JSON.stringify(`${scope}${pathExpression}`)},${valuesExpression})`,
 			)
-			.replace(LOCALE_ACCESS_RE, (_match, scope: 'global' | 'module', pathExpression: string) =>
+			.replace(LOCALE_ACCESS_RE, (_match, scope: PublicLocaleScope, pathExpression: string) =>
 				`__VUE_INTERNATIONALIZATION_INLINE_TEXT__(${JSON.stringify(marker)},${JSON.stringify(`${scope}${pathExpression}`)})`,
 			),
 	);
@@ -173,12 +174,12 @@ export function replaceInlineLocalizerAccess(
 ): string {
 	let next = code.replaceAll(INLINE_LOCALIZER_RE, (_match, marker: string, path: string, valuesExpression: string) => {
 		const moduleId = decodeInlineLocaleMarker(marker);
-		const [scope, ...keys] = path.split('.') as ['global' | 'module', ...string[]];
+		const [scope, ...keys] = path.split('.') as [PublicLocaleScope, ...string[]];
 		const payload: InlineLocalePayload = {
 			global: mergeWithPrimary(globalMessages[locale], globalMessages[primaryLocale]),
 			module: mergeWithPrimary(modules[moduleId]?.[locale], modules[moduleId]?.[primaryLocale]),
 		};
-		const value = getValueByPath(payload[scope], keys);
+		const value = getValueByPath(getPayloadScope(payload, scope), keys);
 		const template = typeof value === 'string' ? value : `$locale.${path}`;
 
 		return createInlineTemplateExpression(template, valuesExpression);
@@ -212,12 +213,12 @@ export function replaceInlineLocaleTextAccess(
 ): string {
 	return code.replaceAll(INLINE_TEXT_RE, (_match, marker: string, path: string) => {
 		const moduleId = decodeInlineLocaleMarker(marker);
-		const [scope, ...keys] = path.split('.') as ['global' | 'module', ...string[]];
+		const [scope, ...keys] = path.split('.') as [PublicLocaleScope, ...string[]];
 		const payload: InlineLocalePayload = {
 			global: mergeWithPrimary(globalMessages[locale], globalMessages[primaryLocale]),
 			module: mergeWithPrimary(modules[moduleId]?.[locale], modules[moduleId]?.[primaryLocale]),
 		};
-		const value = getValueByPath(payload[scope], keys);
+		const value = getValueByPath(getPayloadScope(payload, scope), keys);
 
 		return JSON.stringify(value ?? `$locale.${path}`);
 	});
@@ -265,12 +266,12 @@ function replaceInlineLocaleObjects(
 			module: mergeWithPrimary(modules[moduleId]?.[locale], modules[moduleId]?.[primaryLocale]),
 		};
 
-		return `{global:${createLocalizerObjectExpression(payload.global)},module:${createLocalizerObjectExpression(payload.module)}}`;
+		return `{env:${createLocalizerObjectExpression(payload.global)},sfc:${createLocalizerObjectExpression(payload.module)}}`;
 	}).replaceAll(INLINE_CALL_RE, (_match, marker: string) => {
 		const moduleId = decodeInlineLocaleMarker(marker);
-		const payload: InlineLocalePayload = {
-			global: createFallbackObject(mergeWithPrimary(globalMessages[locale], globalMessages[primaryLocale]), 'global'),
-			module: createFallbackObject(mergeWithPrimary(modules[moduleId]?.[locale], modules[moduleId]?.[primaryLocale]), 'module'),
+		const payload = {
+			env: createFallbackObject(mergeWithPrimary(globalMessages[locale], globalMessages[primaryLocale]), 'env'),
+			sfc: createFallbackObject(mergeWithPrimary(modules[moduleId]?.[locale], modules[moduleId]?.[primaryLocale]), 'sfc'),
 		};
 
 		return JSON.stringify(payload);
@@ -352,22 +353,22 @@ function replaceChunkFileReferences(code: string, localizableFiles: Set<string>,
 }
 
 function replacePayloadMemberAccess(code: string, variableName: string, payload: InlineLocalePayload): string {
-	const memberRe = new RegExp(`\\b${escapeRegExp(variableName)}(?:\\.value)?\\.(global|module)((?:\\.[A-Za-z_$][\\w$]*)+)`, 'gu');
+	const memberRe = new RegExp(`\\b${escapeRegExp(variableName)}(?:\\.value)?\\.(env|sfc)((?:\\.[A-Za-z_$][\\w$]*)+)`, 'gu');
 
-	return code.replace(memberRe, (match, scope: 'global' | 'module', pathExpression: string) => {
+	return code.replace(memberRe, (match, scope: PublicLocaleScope, pathExpression: string) => {
 		const path = pathExpression.slice(1).split('.');
-		const value = getValueByPath(payload[scope], path);
+		const value = getValueByPath(getPayloadScope(payload, scope), path);
 
 		return JSON.stringify(value ?? `$locale.${[scope, ...path].join('.')}`);
 	});
 }
 
 function replaceLocalizerCallAccess(code: string, variableName: string, payload: InlineLocalePayload): string {
-	const memberRe = new RegExp(`\\b${escapeRegExp(variableName)}(?:\\.value)?\\.(global|module)((?:\\.[A-Za-z_$][\\w$]*)+)\\((\\{[^)]*\\})\\)`, 'gu');
+	const memberRe = new RegExp(`\\b${escapeRegExp(variableName)}(?:\\.value)?\\.(env|sfc)((?:\\.[A-Za-z_$][\\w$]*)+)\\((\\{[^)]*\\})\\)`, 'gu');
 
-	return code.replace(memberRe, (match, scope: 'global' | 'module', pathExpression: string, valuesExpression: string) => {
+	return code.replace(memberRe, (match, scope: PublicLocaleScope, pathExpression: string, valuesExpression: string) => {
 		const path = pathExpression.slice(1).split('.');
-		const value = getValueByPath(payload[scope], path);
+		const value = getValueByPath(getPayloadScope(payload, scope), path);
 		const template = typeof value === 'string' ? value : `$locale.${[scope, ...path].join('.')}`;
 
 		return createInlineTemplateExpression(template, valuesExpression);
@@ -418,6 +419,10 @@ function createLocalizerObjectExpression(dictionary: LocaleDictionary): string {
 	});
 
 	return `{${entries.join(',')}}`;
+}
+
+function getPayloadScope(payload: InlineLocalePayload, scope: PublicLocaleScope): LocaleDictionary {
+	return scope === 'env' ? payload.global : payload.module;
 }
 
 function mergeWithPrimary(current: LocaleDictionary | undefined, primary: LocaleDictionary | undefined): LocaleDictionary {

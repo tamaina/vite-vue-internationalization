@@ -4,8 +4,8 @@ import { currentLocale, primaryLocale } from 'virtual:vue-internationalization';
 import StaticPanel from './components/StaticPanel.vue';
 
 const AsyncPanel = defineAsyncComponent(() => import('./components/AsyncPanel.vue'));
-const scriptMessage = $locale.value.module.scriptMessage;
-const scriptApples = $l.value.module.nApples({ n: 3 });
+const scriptMessage = $locale.value.sfc.scriptMessage;
+const scriptApples = $l.value.sfc.nApples({ n: 3 });
 
 function switchLocale(locale: string): void {
 	const url = new URL(window.location.href);
@@ -22,9 +22,9 @@ function switchLocale(locale: string): void {
 
 <template>
   <main :class="$style.page">
-    <h1>{{ $locale.module.title }}</h1>
-    <p>{{ $locale.global.fuga }}</p>
-    <p>{{ $l.module.nApples({ n: 3 }) }}</p>
+    <h1>{{ $locale.sfc.title }}</h1>
+    <p>{{ $locale.env.fuga }}</p>
+    <p>{{ $l.sfc.nApples({ n: 3 }) }}</p>
     <p>{{ scriptMessage }}</p>
     <p>{{ scriptApples }}</p>
     <StaticPanel />

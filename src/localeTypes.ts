@@ -23,7 +23,7 @@ export function createLocaleRefType(types: LocaleBindingTypes): string {
 }
 
 export function createLocalizerScopeType(types: LocaleBindingTypes): string {
-	return `{ global: ${toLocalizerTypeLiteral(types.global ?? {})}; module: ${toLocalizerTypeLiteral(types.module ?? {})}; }`;
+	return `{ env: ${toLocalizerTypeLiteral(types.global ?? {})}; sfc: ${toLocalizerTypeLiteral(types.module ?? {})}; }`;
 }
 
 export function createLocalizerRefType(types: LocaleBindingTypes): string {

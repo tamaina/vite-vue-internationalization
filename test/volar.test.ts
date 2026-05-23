@@ -33,7 +33,7 @@ describe('volar plugin', () => {
 		const plugin = createVueLanguagePlugin(ts, {}, vueCompilerOptions, String);
 		const fileName = resolve('examples/motivation-1/src/App.vue');
 		const source = [
-			'<template>{{ $l.module.count({ n: 1 }) }}</template>',
+			'<template>{{ $l.sfc.count({ n: 1 }) }}</template>',
 			'<locale locale="ja-JP" lang="yaml">',
 			'count: "{n} 個"',
 			'</locale>',
@@ -49,7 +49,7 @@ describe('volar plugin', () => {
 			?.snapshot.getText(0, Number.MAX_SAFE_INTEGER);
 
 		expect(scriptCode).toContain('declare const $l: Readonly<import("vue").ComputedRef');
-		expect(scriptCode).toContain('__VLS_ctx.$l.module.count');
+		expect(scriptCode).toContain('__VLS_ctx.$l.sfc.count');
 	});
 
 	it('injects file-local setup bindings into Vue virtual code', () => {
@@ -70,10 +70,10 @@ describe('volar plugin', () => {
 		const plugin = createVueLanguagePlugin(ts, {}, vueCompilerOptions, String);
 		const fileName = resolve('examples/motivation-1/src/App.vue');
 		const source = [
-			'<template>{{ $locale.module.hoge }} {{ $locale.global.fuga }} {{ $l.module.count({ n: 1 }) }}</template>',
+			'<template>{{ $locale.sfc.hoge }} {{ $locale.env.fuga }} {{ $l.sfc.count({ n: 1 }) }}</template>',
 			'<script setup lang="ts">',
-			'const title = $locale.value.module.hoge;',
-			'const count = $l.value.module.count({ n: 1 });',
+			'const title = $locale.value.sfc.hoge;',
+			'const count = $l.value.sfc.count({ n: 1 });',
 			'</script>',
 			'<locale locale="ja-JP" lang="yaml">',
 			'hoge: ほげ',
@@ -96,13 +96,13 @@ describe('volar plugin', () => {
 		expect(scriptCode).not.toContain('interface ComponentCustomProperties');
 		expect(scriptCode).toContain('declare const $locale: Readonly<import("vue").ComputedRef<import("vue-internationalization/runtime").LocaleScope<');
 		expect(scriptCode).toContain('{ hoge: string; count: string; }>>>');
-		expect(scriptCode).toContain('declare const $l: Readonly<import("vue").ComputedRef<{ global:');
-		expect(scriptCode).toContain('module: { hoge: import("vue-internationalization/runtime").LocaleTemplateFunction; count: import("vue-internationalization/runtime").LocaleTemplateFunction; }; }>>');
+		expect(scriptCode).toContain('declare const $l: Readonly<import("vue").ComputedRef<{ env:');
+		expect(scriptCode).toContain('sfc: { hoge: import("vue-internationalization/runtime").LocaleTemplateFunction; count: import("vue-internationalization/runtime").LocaleTemplateFunction; }; }>>');
 		expect(scriptCode).toContain('ComponentPublicInstance & { $locale: import("vue-internationalization/runtime").LocaleScope<');
-		expect(scriptCode).toContain('$l: { global:');
-		expect(scriptCode).toContain('__VLS_ctx.$locale.module.hoge');
-		expect(scriptCode).toContain('__VLS_ctx.$l.module.count');
-		expect(scriptSetupRaw?.trim()).toBe('const title = $locale.value.module.hoge;\nconst count = $l.value.module.count({ n: 1 });');
+		expect(scriptCode).toContain('$l: { env:');
+		expect(scriptCode).toContain('__VLS_ctx.$locale.sfc.hoge');
+		expect(scriptCode).toContain('__VLS_ctx.$l.sfc.count');
+		expect(scriptSetupRaw?.trim()).toBe('const title = $locale.value.sfc.hoge;\nconst count = $l.value.sfc.count({ n: 1 });');
 	});
 });
 

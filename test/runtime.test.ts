@@ -39,16 +39,16 @@ describe('runtime locale fallback', () => {
 
 		const locale = useLocale('/src/App.vue') as unknown as {
 			value: {
-				global: Record<string, unknown>;
-				module: Record<string, Record<string, unknown> | string>;
+				env: Record<string, unknown>;
+				sfc: Record<string, Record<string, unknown> | string>;
 			};
 		};
-		const moduleMessages = locale.value.module;
+		const moduleMessages = locale.value.sfc;
 
 		expect(moduleMessages.title).toBe('foo');
-		expect(locale.value.global.fuga).toBe('ふが');
+		expect(locale.value.env.fuga).toBe('ふが');
 		expect((moduleMessages.nested as Record<string, unknown>).value).toBe('primary');
-		expect(locale.value.module.missing).toBe('$locale.module.missing');
+		expect(locale.value.sfc.missing).toBe('$locale.sfc.missing');
 	});
 
 	it('formats localizer templates with fallback locale values', async () => {
@@ -82,15 +82,15 @@ describe('runtime locale fallback', () => {
 
 		const localizer = useLocalizer('/src/App.vue') as unknown as {
 			value: {
-				module: {
+				sfc: {
 					nApples: (values: { n: number }) => string;
 					nOranges: (values: { n: number }) => string;
 				};
 			};
 		};
 
-		expect(localizer.value.module.nApples({ n: 3 })).toBe('3 apples');
-		expect(localizer.value.module.nOranges({ n: 4 })).toBe('4 個のみかん');
+		expect(localizer.value.sfc.nApples({ n: 3 })).toBe('3 apples');
+		expect(localizer.value.sfc.nOranges({ n: 4 })).toBe('4 個のみかん');
 	});
 
 	it('keeps unresolved template parameters visible', () => {

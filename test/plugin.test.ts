@@ -168,12 +168,12 @@ describe('virtual module generation', () => {
 		const binding = marker.match(/const \$locale = (.*);/)?.[1];
 		const code = [
 			`const l = ${binding};`,
-			'const title = l.module.title;',
-			'const refTitle = l.value.module.title;',
-			'const globalMessage = l.global.fuga;',
-			'const refGlobalMessage = l.value.global.fuga;',
-			'const primaryFallback = l.module.missingPrimary;',
-			'const missing = l.module.missing;',
+			'const title = l.sfc.title;',
+			'const refTitle = l.value.sfc.title;',
+			'const globalMessage = l.env.fuga;',
+			'const refGlobalMessage = l.value.env.fuga;',
+			'const primaryFallback = l.sfc.missingPrimary;',
+			'const missing = l.sfc.missing;',
 		].join('');
 
 		const replaced = internals.replaceInlineLocaleMemberAccess(
@@ -202,7 +202,7 @@ describe('virtual module generation', () => {
 		expect(replaced).toContain('const globalMessage = "bar";');
 		expect(replaced).toContain('const refGlobalMessage = "bar";');
 		expect(replaced).toContain('const primaryFallback = "primary";');
-		expect(replaced).toContain('const missing = "$locale.module.missing";');
+		expect(replaced).toContain('const missing = "$locale.sfc.missing";');
 	});
 
 	it('replaces script localizer calls from inline localizer bindings', () => {
@@ -210,9 +210,9 @@ describe('virtual module generation', () => {
 		const binding = marker.match(/const \$l = (.*);/)?.[1];
 		const code = [
 			`const l = ${binding};`,
-			'const apples = l.module.nApples({ n });',
-			'const refApples = l.value.module.nApples({ n: count });',
-			'const missing = l.module.missing({ n });',
+			'const apples = l.sfc.nApples({ n });',
+			'const refApples = l.value.sfc.nApples({ n: count });',
+			'const missing = l.sfc.missing({ n });',
 		].join('');
 
 		const replaced = internals.replaceInlineLocalizerAccess(
@@ -234,25 +234,25 @@ describe('virtual module generation', () => {
 
 		expect(replaced).toContain('const apples = ((__values) => (__values.n == null ? "{n}" : __values.n) + " apples")({ n });');
 		expect(replaced).toContain('const refApples = ((__values) => (__values.n == null ? "{n}" : __values.n) + " apples")({ n: count });');
-		expect(replaced).toContain('const missing = "$locale.module.missing";');
+		expect(replaced).toContain('const missing = "$locale.sfc.missing";');
 	});
 
 	it('rewrites template locale access to inline text markers', () => {
 		const code = internals.rewriteInlineLocaleTemplateAccess(
-			'<template><p>{{ $locale.module.title }}</p><p>{{ $locale.global.missing }}</p><p>{{ $l.module.nApples({ n }) }}</p></template>',
+			'<template><p>{{ $locale.sfc.title }}</p><p>{{ $locale.env.missing }}</p><p>{{ $l.sfc.nApples({ n }) }}</p></template>',
 			'/src/App.vue',
 		);
 
 		expect(code).toContain('__VUE_INTERNATIONALIZATION_INLINE_TEXT__');
 		expect(code).toContain('__VUE_INTERNATIONALIZATION_INLINE_LOCALIZER__');
-		expect(code).toContain('"module.title"');
-		expect(code).toContain('"global.missing"');
-		expect(code).toContain('"module.nApples"');
+		expect(code).toContain('"sfc.title"');
+		expect(code).toContain('"env.missing"');
+		expect(code).toContain('"sfc.nApples"');
 	});
 
 	it('replaces template inline text markers with primary and key-path fallback', () => {
 		const marker = internals.rewriteInlineLocaleTemplateAccess(
-			'<template>{{ $locale.module.title }} {{ $locale.module.missing }}</template>',
+			'<template>{{ $locale.sfc.title }} {{ $locale.sfc.missing }}</template>',
 			'/src/App.vue',
 		);
 		const replaced = internals.replaceInlineLocaleTextAccess(
@@ -270,7 +270,7 @@ describe('virtual module generation', () => {
 		);
 
 		expect(replaced).toContain('"ほげ"');
-		expect(replaced).toContain('"$locale.module.missing"');
+		expect(replaced).toContain('"$locale.sfc.missing"');
 	});
 
 	it('keeps object replacement as a fallback for template scope', () => {

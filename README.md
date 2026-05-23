@@ -14,8 +14,8 @@
 </script>
 
 <template>
-  <div :class="$style.hoge">{{ $locale.module.hoge }}</div>
-  <span>{{ $locale.global.fuga }}</span>
+  <div :class="$style.hoge">{{ $locale.sfc.hoge }}</div>
+  <span>{{ $locale.env.fuga }}</span>
 </template>
 
 <style lang="scss" module>
@@ -104,8 +104,8 @@ app.mount('#app');
 
 ```vue
 <template>
-  <p>{{ $locale.module.title }}</p>
-  <p>{{ $l.module.nApples({ n: 3 }) }}</p>
+  <p>{{ $locale.sfc.title }}</p>
+  <p>{{ $l.sfc.nApples({ n: 3 }) }}</p>
 </template>
 
 <locale locale="ja-JP" lang="yaml">

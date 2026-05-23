@@ -7,15 +7,15 @@ export type LocaleScope<
 	TGlobal extends RuntimeLocaleDictionary = RuntimeLocaleDictionary,
 	TModule extends RuntimeLocaleDictionary = RuntimeLocaleDictionary,
 > = {
-	global: TGlobal;
-	module: TModule;
+	env: TGlobal;
+	sfc: TModule;
 };
 export type LocaleTemplateValue = string | number | boolean | null | undefined;
 export type LocaleTemplateValues = Record<string, LocaleTemplateValue>;
 export type LocaleTemplateFunction = (values?: LocaleTemplateValues) => string;
 export type LocaleLocalizerScope = {
-	global: LocaleLocalizerDictionary;
-	module: LocaleLocalizerDictionary;
+	env: LocaleLocalizerDictionary;
+	sfc: LocaleLocalizerDictionary;
 };
 export interface LocaleLocalizerDictionary {
 	[key: string]: LocaleTemplateFunction | LocaleLocalizerDictionary;
@@ -137,8 +137,8 @@ export function useLocalizer(moduleUrl: string): Readonly<ComputedRef<LocaleLoca
 	const locale = useLocale(moduleUrl);
 
 	return computed(() => ({
-		global: createLocalizerDictionary(locale.value.global, ['global']),
-		module: createLocalizerDictionary(locale.value.module, ['module']),
+		env: createLocalizerDictionary(locale.value.env, ['env']),
+		sfc: createLocalizerDictionary(locale.value.sfc, ['sfc']),
 	}));
 }
 
@@ -166,8 +166,8 @@ function resolveLocale(internationalization: InternationalizationInstance, modul
 	const moduleId = normalizeRuntimeModuleUrl(moduleUrl);
 
 	return {
-		global: createFallbackDictionary(current?.global, fallback?.global, 'global'),
-		module: createFallbackDictionary(current?.modules?.[moduleId], fallback?.modules?.[moduleId], 'module'),
+		env: createFallbackDictionary(current?.global, fallback?.global, 'env'),
+		sfc: createFallbackDictionary(current?.modules?.[moduleId], fallback?.modules?.[moduleId], 'sfc'),
 	};
 }
 

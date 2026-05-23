@@ -16,7 +16,7 @@ describe('locale SFC parsing', () => {
 			'<script setup lang="ts">',
 			'const x = 1;',
 			'</script>',
-			'<template>{{ $locale.module.hoge }}</template>',
+			'<template>{{ $locale.sfc.hoge }}</template>',
 			'<locale locale="ja-JP" lang="yaml">',
 			'hoge: ほげ',
 			'</locale>',
@@ -25,7 +25,7 @@ describe('locale SFC parsing', () => {
 		const output = transformVueSfc(input, '/repo/src/App.vue');
 
 		expect(output).toContain('const $locale = __useLocale<{}, { hoge: string; }>(import.meta.url);');
-		expect(output).toContain('const $l = __useLocalizer(import.meta.url) as Readonly<import("vue").ComputedRef<{ global: import("vue-internationalization/runtime").LocaleLocalizerDictionary; module: { hoge: import("vue-internationalization/runtime").LocaleTemplateFunction; }; }>>;');
+		expect(output).toContain('const $l = __useLocalizer(import.meta.url) as Readonly<import("vue").ComputedRef<{ env: import("vue-internationalization/runtime").LocaleLocalizerDictionary; sfc: { hoge: import("vue-internationalization/runtime").LocaleTemplateFunction; }; }>>;');
 		expect(output).not.toContain('<locale');
 		expect(output).toContain('const x = 1;');
 	});
@@ -35,7 +35,7 @@ describe('locale SFC parsing', () => {
 			'<script setup lang="ts">',
 			'const x = 1;',
 			'</script>',
-			'<template>{{ $locale.module.hoge }}</template>',
+			'<template>{{ $locale.sfc.hoge }}</template>',
 			'<locale locale="ja-JP" lang="yaml">',
 			'hoge: ほげ',
 			'nested:',
@@ -54,7 +54,7 @@ describe('locale SFC parsing', () => {
 		});
 
 		expect(output).toContain('const $locale = __useLocale<{ fuga: string; }, { hoge: string; nested: { count: number; }; }>');
-		expect(output).toContain('const $l = __useLocalizer(import.meta.url) as Readonly<import("vue").ComputedRef<{ global: { fuga: import("vue-internationalization/runtime").LocaleTemplateFunction; }; module: { hoge: import("vue-internationalization/runtime").LocaleTemplateFunction; nested: { count: import("vue-internationalization/runtime").LocaleTemplateFunction; }; }; }>>;');
+		expect(output).toContain('const $l = __useLocalizer(import.meta.url) as Readonly<import("vue").ComputedRef<{ env: { fuga: import("vue-internationalization/runtime").LocaleTemplateFunction; }; sfc: { hoge: import("vue-internationalization/runtime").LocaleTemplateFunction; nested: { count: import("vue-internationalization/runtime").LocaleTemplateFunction; }; }; }>>;');
 	});
 
 	it('does not inject TypeScript type parameters into JavaScript setup blocks', () => {

@@ -233,7 +233,7 @@ function createLocaleRefType(types) {
 }
 
 function createLocalizerScopeType(types) {
-	return `{ global: ${toLocalizerTypeLiteral(types.global ?? {})}; module: ${toLocalizerTypeLiteral(types.module ?? {})}; }`;
+	return `{ env: ${toLocalizerTypeLiteral(types.global ?? {})}; sfc: ${toLocalizerTypeLiteral(types.module ?? {})}; }`;
 }
 
 function createLocalizerRefType(types) {
