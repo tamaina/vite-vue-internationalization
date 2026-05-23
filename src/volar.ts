@@ -526,17 +526,8 @@ function getGlobalDictionaryResult(
 	}
 
 	const configDir = findConfigDir(fileName);
-	const key = `files:${configDir}:${primaryLocale}:${stableStringify(value)}`;
-	const cached = cache.globalDictionaries.get(key);
-
-	if (cached) {
-		return cached;
-	}
-
 	const result = loadLocaleEnvDictionaryWithDiagnostics(configDir, primaryLocale, value);
-	const globalResult = createGlobalDictionaryResult(result.dictionary, result.diagnostics, fileName);
-	cache.globalDictionaries.set(key, globalResult);
-	return globalResult;
+	return createGlobalDictionaryResult(result.dictionary, result.diagnostics, fileName);
 }
 
 function createGlobalDictionaryResult(

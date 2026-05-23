@@ -324,6 +324,67 @@ describe('volar plugin', () => {
 			message.includes('contains unsafe locale key'),
 		)).toBe(true);
 	});
+
+	it('refreshes configured global locale diagnostics after the file is fixed', () => {
+		const root = mkdtempSync(resolve(tmpdir(), 'vue-internationalization-volar-'));
+		mkdirSync(resolve(root, 'locales'), { recursive: true });
+		writeFileSync(resolve(root, 'tsconfig.json'), '{}');
+		const localeFile = resolve(root, 'locales/ja-JP.yaml');
+		writeFileSync(localeFile, '- broken\n');
+		const vueCompilerOptions = getDefaultCompilerOptions();
+		vueCompilerOptions.plugins = [
+			withConfig(vueInternationalizationVolar, {
+				__moduleConfig: {
+					name: 'vue-internationalization/volar',
+					primaryLocale: 'ja-JP',
+					global: {
+						'ja-JP': './locales/ja-JP.yaml',
+					},
+				},
+			}),
+		];
+		const plugin = createVueLanguagePlugin(ts, {}, vueCompilerOptions, String);
+		const fileName = resolve(root, 'src/App.vue');
+		const source = [
+			'<template>{{ $locale.env.title }}</template>',
+			'<script setup lang="ts">',
+			'const title = $locale.value.env.title;',
+			'</script>',
+			'<locale locale="ja-JP" lang="yaml">',
+			'sfcTitle: ok',
+			'</locale>',
+		].join('\n');
+		const firstRootCode = plugin.createVirtualCode?.(fileName, 'vue', ts.ScriptSnapshot.fromString(source), {} as never);
+
+		if (!firstRootCode) {
+			throw new Error('Expected Vue virtual code to be created.');
+		}
+
+		const firstScriptCode = [...forEachEmbeddedCode(firstRootCode)]
+			.find((code) => code.id === 'script_ts')
+			?.snapshot.getText(0, Number.MAX_SAFE_INTEGER);
+		const firstDiagnostics = getSemanticDiagnosticMessages(firstScriptCode);
+
+		writeFileSync(localeFile, 'title: fixed\n');
+		const secondRootCode = plugin.createVirtualCode?.(fileName, 'vue', ts.ScriptSnapshot.fromString(source), {} as never);
+
+		if (!secondRootCode) {
+			throw new Error('Expected Vue virtual code to be created.');
+		}
+
+		const secondScriptCode = [...forEachEmbeddedCode(secondRootCode)]
+			.find((code) => code.id === 'script_ts')
+			?.snapshot.getText(0, Number.MAX_SAFE_INTEGER);
+		const secondDiagnostics = getSemanticDiagnosticMessages(secondScriptCode);
+
+		expect(firstDiagnostics.some((message) =>
+			message.includes('must contain an object at the top level'),
+		)).toBe(true);
+		expect(secondScriptCode).toContain('{ title: "fixed"; }');
+		expect(secondDiagnostics.some((message) =>
+			message.includes('must contain an object at the top level'),
+		)).toBe(false);
+	});
 });
 
 function withConfig(
