@@ -7,9 +7,7 @@ export default defineConfig({
 		manifest: true,
 	},
 	plugins: [
-		vueInternationalization({
-			messageSyntax: 'vue',
-		}),
+		vueInternationalization(),
 		vue(),
 	],
 });

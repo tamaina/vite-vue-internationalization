@@ -97,7 +97,7 @@ importers:
         specifier: workspace:*
         version: link:../..
 
-  examples/motivation-1:
+  examples/vue:
     dependencies:
       '@vitejs/plugin-vue':
         specifier: ^6.0.2
