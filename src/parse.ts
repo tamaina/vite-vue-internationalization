@@ -1,6 +1,7 @@
 import { parse as parseSfc } from '@vue/compiler-sfc';
 import YAML from 'yaml';
 import { createLocalizerRefType, createUseLocaleTypeParameters, type LocaleBindingTypes } from './localeTypes.js';
+import { getScriptSetupOpenTag, injectScriptSetup } from './scriptSetup.js';
 import type { LocaleDictionary, ParsedVueLocale, SfcLocaleBlock } from './types.js';
 
 export function parseVueLocales(code: string, filename: string): ParsedVueLocale {
@@ -39,11 +40,11 @@ export function parseLocaleDictionary(content: string, lang: string, sourceLabel
 
 	try {
 		if (normalized === 'json') {
-			return asDictionary(JSON.parse(content), sourceLabel);
+			return validateLocaleDictionary(JSON.parse(content), sourceLabel);
 		}
 
 		if (normalized === 'yaml' || normalized === 'yml') {
-			return asDictionary(YAML.parse(content) ?? {}, sourceLabel);
+			return validateLocaleDictionary(YAML.parse(content) ?? {}, sourceLabel);
 		}
 	} catch (error) {
 		const message = error instanceof Error ? error.message : String(error);
@@ -51,6 +52,11 @@ export function parseLocaleDictionary(content: string, lang: string, sourceLabel
 	}
 
 	throw new Error(`Unsupported locale lang "${lang}" in ${sourceLabel}. Use yaml, yml, or json.`);
+}
+
+export function validateLocaleDictionary(value: unknown, sourceLabel: string): LocaleDictionary {
+	assertSafeDictionary(value, sourceLabel, []);
+	return value as LocaleDictionary;
 }
 
 export function stripLocaleBlocks(code: string, filename: string): string {
@@ -73,9 +79,9 @@ export function stripLocaleBlocks(code: string, filename: string): string {
 }
 
 export function injectLocaleBinding(code: string, types: LocaleBindingTypes = {}): string {
-	const setupOpen = code.match(/<script\b(?=[^>]*\bsetup\b)[^>]*>/);
-	const typeParameters = !setupOpen || isTypeScriptScript(setupOpen[0]) ? createUseLocaleTypeParameters(types) : '';
-	const localizerType = !setupOpen || isTypeScriptScript(setupOpen[0]) ? ` as ${createLocalizerRefType(types)}` : '';
+	const setupOpenTag = getScriptSetupOpenTag(code);
+	const typeParameters = !setupOpenTag || isTypeScriptScript(setupOpenTag) ? createUseLocaleTypeParameters(types) : '';
+	const localizerType = !setupOpenTag || isTypeScriptScript(setupOpenTag) ? ` as ${createLocalizerRefType(types)}` : '';
 	const injection = [
 		'',
 		'import { useLocale as __useLocale, useLocalizer as __useLocalizer } from "virtual:vue-internationalization";',
@@ -84,12 +90,7 @@ export function injectLocaleBinding(code: string, types: LocaleBindingTypes = {}
 		'',
 	].join('\n');
 
-	if (setupOpen?.index != null) {
-		const insertAt = setupOpen.index + setupOpen[0].length;
-		return `${code.slice(0, insertAt)}${injection}${code.slice(insertAt)}`;
-	}
-
-	return `${code}\n<script setup lang="ts">${injection}</script>\n`;
+	return injectScriptSetup(code, injection);
 }
 
 export function transformVueSfc(code: string, filename: string, types: LocaleBindingTypes = {}): string | undefined {
@@ -110,12 +111,46 @@ export function normalizeModuleId(id: string): string {
 	return withoutQuery.replace(/\\/g, '/');
 }
 
-function asDictionary(value: unknown, sourceLabel: string): LocaleDictionary {
+function assertSafeDictionary(value: unknown, sourceLabel: string, path: string[]): void {
 	if (value == null || typeof value !== 'object' || Array.isArray(value)) {
 		throw new Error(`${sourceLabel} must contain an object at the top level.`);
 	}
 
-	return value as LocaleDictionary;
+	for (const [key, child] of Object.entries(value)) {
+		const currentPath = [...path, key];
+
+		if (isUnsafeDictionaryKey(key)) {
+			throw new Error(`${sourceLabel} contains unsafe locale key "${currentPath.join('.')}".`);
+		}
+
+		if (Array.isArray(child)) {
+			assertSafeLocaleArray(child, sourceLabel, currentPath);
+			continue;
+		}
+
+		if (child != null && typeof child === 'object') {
+			assertSafeDictionary(child, sourceLabel, currentPath);
+		}
+	}
+}
+
+function assertSafeLocaleArray(value: unknown[], sourceLabel: string, path: string[]): void {
+	value.forEach((item, index) => {
+		const currentPath = [...path, String(index)];
+
+		if (Array.isArray(item)) {
+			assertSafeLocaleArray(item, sourceLabel, currentPath);
+			return;
+		}
+
+		if (item != null && typeof item === 'object') {
+			assertSafeDictionary(item, sourceLabel, currentPath);
+		}
+	});
+}
+
+function isUnsafeDictionaryKey(key: string): boolean {
+	return key === '__proto__' || key === 'prototype' || key === 'constructor';
 }
 
 function findCustomBlockRange(code: string, contentStart: number, contentEnd: number, filename: string) {

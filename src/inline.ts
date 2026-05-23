@@ -1,8 +1,5 @@
+import { injectScriptSetup } from './scriptSetup.js';
 import type { LocaleDictionary } from './types.js';
-
-export type InlineBuildOptions = {
-	enabled: boolean;
-};
 
 export type InlineLocalePayload = {
 	global: LocaleDictionary;
@@ -18,9 +15,15 @@ export type InlineChunkManifest = {
 	}>;
 };
 
+export type InlineLocaleLoaderAsset = {
+	fileName: string;
+	source: string;
+};
+
 type ModuleMessages = Partial<Record<string, Partial<Record<string, LocaleDictionary>>>>;
 type LocaleMessages = Partial<Record<string, LocaleDictionary>>;
 type PublicLocaleScope = 'env' | 'sfc';
+type InlinePayloadResolver = (moduleId: string) => InlineLocalePayload;
 type MutableOutputChunk = {
 	type: 'chunk';
 	fileName: string;
@@ -30,6 +33,14 @@ type MutableOutputChunk = {
 	[key: string]: unknown;
 };
 type MutableOutputBundle = Record<string, unknown>;
+type MutableOutputAsset = {
+	type: 'asset';
+	fileName: string;
+	source: string | Uint8Array;
+	names?: string[];
+	originalFileNames?: string[];
+	[key: string]: unknown;
+};
 
 const INLINE_MARKER_PREFIX = '__VUE_INTERNATIONALIZATION_INLINE__:';
 const INLINE_CALL_RE = /__VUE_INTERNATIONALIZATION_INLINE_LOCALE__\("(__VUE_INTERNATIONALIZATION_INLINE__:[A-Za-z0-9+/=]+)"\)/g;
@@ -55,14 +66,7 @@ export function injectInlineLocaleBinding(code: string, moduleId: string): strin
 		'',
 	].join('\n');
 
-	const setupOpen = code.match(/<script\b(?=[^>]*\bsetup\b)[^>]*>/);
-
-	if (setupOpen?.index != null) {
-		const insertAt = setupOpen.index + setupOpen[0].length;
-		return `${code.slice(0, insertAt)}${injection}${code.slice(insertAt)}`;
-	}
-
-	return `${code}\n<script setup lang="ts">${injection}</script>\n`;
+	return injectScriptSetup(code, injection);
 }
 
 export function rewriteInlineLocaleTemplateAccess(code: string, moduleId: string): string {
@@ -96,10 +100,12 @@ export function inlineLocaleChunks(
 			chunk,
 			originalCode: chunk.code,
 			originalFileName: chunk.fileName,
+			originalImports: [...chunk.imports],
+			originalDynamicImports: [...chunk.dynamicImports],
 		}));
 	const localizableFiles = new Set(localizableChunks.map(({ originalFileName }) => originalFileName));
 
-	for (const { chunk, originalCode, originalFileName } of localizableChunks) {
+	for (const { chunk, originalCode, originalFileName, originalImports, originalDynamicImports } of localizableChunks) {
 		const primaryFileName = addLocaleToFileName(originalFileName, primaryLocale);
 		const localeFiles: Record<string, string> = {
 			[primaryLocale]: primaryFileName,
@@ -112,13 +118,13 @@ export function inlineLocaleChunks(
 			};
 
 			localizedChunk.fileName = addLocaleToFileName(originalFileName, locale);
-			localizedChunk.imports = chunk.imports.map((fileName) => addLocaleToImportedFileName(localizableFiles, fileName, locale));
-			localizedChunk.dynamicImports = chunk.dynamicImports.map((fileName) =>
+			localizedChunk.imports = originalImports.map((fileName) => addLocaleToImportedFileName(localizableFiles, fileName, locale));
+			localizedChunk.dynamicImports = originalDynamicImports.map((fileName) =>
 				addLocaleToImportedFileName(localizableFiles, fileName, locale),
 			);
 			localizedChunk.code = replaceChunkFileReferences(
 				replaceInlineLocaleMarkers(originalCode, locale, primaryLocale, modules, globalMessages),
-				localizableFiles,
+				getLocalizableChunkReferences(originalImports, originalDynamicImports, localizableFiles),
 				locale,
 			);
 
@@ -144,24 +150,17 @@ export function replaceInlineLocaleMarkers(
 	modules: ModuleMessages,
 	globalMessages: LocaleMessages,
 ): string {
-	return replaceInlineLocaleObjects(
-		replaceInlineLocaleTextAccess(
-			replaceInlineLocalizerAccess(
-				replaceInlineLocaleMemberAccess(code, locale, primaryLocale, modules, globalMessages),
-				locale,
-				primaryLocale,
-				modules,
-				globalMessages,
+	const resolvePayload = createInlinePayloadResolver(locale, primaryLocale, modules, globalMessages);
+
+	return replaceInlineLocaleObjectsWithResolver(
+		replaceInlineLocaleTextAccessWithResolver(
+			replaceInlineLocalizerAccessWithResolver(
+				replaceInlineLocaleMemberAccessWithResolver(code, resolvePayload),
+				resolvePayload,
 			),
-			locale,
-			primaryLocale,
-			modules,
-			globalMessages,
+			resolvePayload,
 		),
-		locale,
-		primaryLocale,
-		modules,
-		globalMessages,
+		resolvePayload,
 	);
 }
 
@@ -172,13 +171,17 @@ export function replaceInlineLocalizerAccess(
 	modules: ModuleMessages,
 	globalMessages: LocaleMessages,
 ): string {
+	return replaceInlineLocalizerAccessWithResolver(
+		code,
+		createInlinePayloadResolver(locale, primaryLocale, modules, globalMessages),
+	);
+}
+
+function replaceInlineLocalizerAccessWithResolver(code: string, resolvePayload: InlinePayloadResolver): string {
 	let next = code.replaceAll(INLINE_LOCALIZER_RE, (_match, marker: string, path: string, valuesExpression: string) => {
 		const moduleId = decodeInlineLocaleMarker(marker);
 		const [scope, ...keys] = path.split('.') as [PublicLocaleScope, ...string[]];
-		const payload: InlineLocalePayload = {
-			global: mergeWithPrimary(globalMessages[locale], globalMessages[primaryLocale]),
-			module: mergeWithPrimary(modules[moduleId]?.[locale], modules[moduleId]?.[primaryLocale]),
-		};
+		const payload = resolvePayload(moduleId);
 		const value = getValueByPath(getPayloadScope(payload, scope), keys);
 		const template = typeof value === 'string' ? value : `$locale.${path}`;
 
@@ -193,10 +196,7 @@ export function replaceInlineLocalizerAccess(
 		}
 
 		const moduleId = decodeInlineLocaleMarker(marker);
-		const payload: InlineLocalePayload = {
-			global: mergeWithPrimary(globalMessages[locale], globalMessages[primaryLocale]),
-			module: mergeWithPrimary(modules[moduleId]?.[locale], modules[moduleId]?.[primaryLocale]),
-		};
+		const payload = resolvePayload(moduleId);
 
 		next = replaceLocalizerCallAccess(next, variableName, payload);
 	}
@@ -211,13 +211,17 @@ export function replaceInlineLocaleTextAccess(
 	modules: ModuleMessages,
 	globalMessages: LocaleMessages,
 ): string {
+	return replaceInlineLocaleTextAccessWithResolver(
+		code,
+		createInlinePayloadResolver(locale, primaryLocale, modules, globalMessages),
+	);
+}
+
+function replaceInlineLocaleTextAccessWithResolver(code: string, resolvePayload: InlinePayloadResolver): string {
 	return code.replaceAll(INLINE_TEXT_RE, (_match, marker: string, path: string) => {
 		const moduleId = decodeInlineLocaleMarker(marker);
 		const [scope, ...keys] = path.split('.') as [PublicLocaleScope, ...string[]];
-		const payload: InlineLocalePayload = {
-			global: mergeWithPrimary(globalMessages[locale], globalMessages[primaryLocale]),
-			module: mergeWithPrimary(modules[moduleId]?.[locale], modules[moduleId]?.[primaryLocale]),
-		};
+		const payload = resolvePayload(moduleId);
 		const value = getValueByPath(getPayloadScope(payload, scope), keys);
 
 		return JSON.stringify(value ?? `$locale.${path}`);
@@ -231,6 +235,13 @@ export function replaceInlineLocaleMemberAccess(
 	modules: ModuleMessages,
 	globalMessages: LocaleMessages,
 ): string {
+	return replaceInlineLocaleMemberAccessWithResolver(
+		code,
+		createInlinePayloadResolver(locale, primaryLocale, modules, globalMessages),
+	);
+}
+
+function replaceInlineLocaleMemberAccessWithResolver(code: string, resolvePayload: InlinePayloadResolver): string {
 	let next = code;
 
 	for (const match of code.matchAll(INLINE_BINDING_RE)) {
@@ -241,10 +252,7 @@ export function replaceInlineLocaleMemberAccess(
 		}
 
 		const moduleId = decodeInlineLocaleMarker(marker);
-		const payload: InlineLocalePayload = {
-			global: mergeWithPrimary(globalMessages[locale], globalMessages[primaryLocale]),
-			module: mergeWithPrimary(modules[moduleId]?.[locale], modules[moduleId]?.[primaryLocale]),
-		};
+		const payload = resolvePayload(moduleId);
 
 		next = replacePayloadMemberAccess(next, variableName, payload);
 	}
@@ -252,29 +260,21 @@ export function replaceInlineLocaleMemberAccess(
 	return next;
 }
 
-function replaceInlineLocaleObjects(
-	code: string,
-	locale: string,
-	primaryLocale: string,
-	modules: ModuleMessages,
-	globalMessages: LocaleMessages,
-): string {
+function replaceInlineLocaleObjectsWithResolver(code: string, resolvePayload: InlinePayloadResolver): string {
 	return code.replaceAll(INLINE_LOCALIZERS_CALL_RE, (_match, marker: string) => {
 		const moduleId = decodeInlineLocaleMarker(marker);
-		const payload: InlineLocalePayload = {
-			global: mergeWithPrimary(globalMessages[locale], globalMessages[primaryLocale]),
-			module: mergeWithPrimary(modules[moduleId]?.[locale], modules[moduleId]?.[primaryLocale]),
-		};
+		const payload = resolvePayload(moduleId);
 
 		return createInlineRefAliasExpression(`{env:${createLocalizerObjectExpression(payload.global)},sfc:${createLocalizerObjectExpression(payload.module)}}`);
 	}).replaceAll(INLINE_CALL_RE, (_match, marker: string) => {
 		const moduleId = decodeInlineLocaleMarker(marker);
-		const payload = {
-			env: createFallbackObject(mergeWithPrimary(globalMessages[locale], globalMessages[primaryLocale]), 'env'),
-			sfc: createFallbackObject(mergeWithPrimary(modules[moduleId]?.[locale], modules[moduleId]?.[primaryLocale]), 'sfc'),
+		const payload = resolvePayload(moduleId);
+		const fallbackPayload = {
+			env: createFallbackObject(payload.global, 'env'),
+			sfc: createFallbackObject(payload.module, 'sfc'),
 		};
 
-		return createInlineRefAliasExpression(JSON.stringify(payload));
+		return createInlineRefAliasExpression(JSON.stringify(fallbackPayload));
 	});
 }
 
@@ -284,8 +284,25 @@ export function inlineLocaleHtml(bundle: MutableOutputBundle, manifest: InlineCh
 			continue;
 		}
 
+		for (const loader of getInlineLocaleHtmlLoaders(asset.source, manifest)) {
+			bundle[loader.fileName] = {
+				type: 'asset',
+				fileName: loader.fileName,
+				names: [],
+				originalFileNames: [],
+				source: loader.source,
+			};
+		}
+
 		asset.source = replaceInlineLocaleHtml(asset.source, manifest);
 	}
+}
+
+export function getInlineLocaleHtmlLoaders(html: string, manifest: InlineChunkManifest): InlineLocaleLoaderAsset[] {
+	return findHtmlLocaleEntries(html, manifest).map((entry) => ({
+		fileName: createLocaleLoaderFileName(entry.originalFileName),
+		source: createLocaleLoaderSource(entry.locales, manifest.primaryLocale),
+	}));
 }
 
 export function replaceInlineLocaleHtml(html: string, manifest: InlineChunkManifest): string {
@@ -341,15 +358,52 @@ function addLocaleToImportedFileName(localizableFiles: Set<string>, fileName: st
 	return fileName;
 }
 
+function getLocalizableChunkReferences(
+	imports: string[],
+	dynamicImports: string[],
+	localizableFiles: Set<string>,
+): Set<string> {
+	return new Set(
+		[...imports, ...dynamicImports]
+			.filter((fileName) => localizableFiles.has(fileName)),
+	);
+}
+
 function replaceChunkFileReferences(code: string, localizableFiles: Set<string>, locale: string): string {
 	let next = code;
 
 	for (const fileName of localizableFiles) {
-		next = next.replaceAll(fileName, addLocaleToFileName(fileName, locale));
-		next = next.replaceAll(baseName(fileName), baseName(addLocaleToFileName(fileName, locale)));
+		const localizedFileName = addLocaleToFileName(fileName, locale);
+
+		next = next.replaceAll(fileName, localizedFileName);
+		next = next.replaceAll(baseName(fileName), baseName(localizedFileName));
 	}
 
 	return next;
+}
+
+function createInlinePayloadResolver(
+	locale: string,
+	primaryLocale: string,
+	modules: ModuleMessages,
+	globalMessages: LocaleMessages,
+): InlinePayloadResolver {
+	const global = mergeWithPrimary(globalMessages[locale], globalMessages[primaryLocale]);
+	const modulesById = new Map<string, LocaleDictionary>();
+
+	return (moduleId) => {
+		let module = modulesById.get(moduleId);
+
+		if (!module) {
+			module = mergeWithPrimary(modules[moduleId]?.[locale], modules[moduleId]?.[primaryLocale]);
+			modulesById.set(moduleId, module);
+		}
+
+		return {
+			global,
+			module,
+		};
+	};
 }
 
 function replacePayloadMemberAccess(code: string, variableName: string, payload: InlineLocalePayload): string {
@@ -500,7 +554,7 @@ function isMutableOutputChunk(value: unknown): value is MutableOutputChunk {
 	);
 }
 
-function isMutableOutputAsset(value: unknown): value is { type: 'asset'; fileName: string; source: string | Uint8Array } {
+function isMutableOutputAsset(value: unknown): value is MutableOutputAsset {
 	if (value == null || typeof value !== 'object') {
 		return false;
 	}
@@ -511,24 +565,58 @@ function isMutableOutputAsset(value: unknown): value is { type: 'asset'; fileNam
 }
 
 function replaceEntryScript(html: string, localeFiles: Record<string, string>, primaryLocale: string): string {
+	return html.replace(createEntryScriptRegExp(localeFiles, primaryLocale), (_match, beforeSrc: string, afterSrc: string) => {
+		const primaryFile = localeFiles[primaryLocale];
+		const loaderFileName = createLocaleLoaderFileName(originalFileNameFromLocaleFile(primaryFile, primaryLocale));
+
+		return `<script${createLoaderScriptAttributes(beforeSrc, afterSrc, loaderFileName)}></script>`;
+	});
+}
+
+function findHtmlLocaleEntries(html: string, manifest: InlineChunkManifest): InlineChunkManifest['entries'] {
+	return manifest.entries.filter((entry) => createEntryScriptRegExp(entry.locales, manifest.primaryLocale).test(html));
+}
+
+function createEntryScriptRegExp(localeFiles: Record<string, string>, primaryLocale: string): RegExp {
 	const primaryFile = localeFiles[primaryLocale];
 	const candidates = new Set([
 		originalFileNameFromLocaleFile(primaryFile, primaryLocale),
 		...Object.values(localeFiles),
 	]);
-	const scriptRe = new RegExp(
+
+	return new RegExp(
 		`<script\\b([^>]*?)\\bsrc=["']/(?:${[...candidates].map(escapeRegExp).join('|')})["']([^>]*)></script>`,
 		'u',
 	);
-	const replacement = [
-		'<script type="module">',
+}
+
+function createLocaleLoaderFileName(originalFileName: string): string {
+	return originalFileName.replace(/(\.m?js)$/u, '.i18n-loader$1');
+}
+
+function createLocaleLoaderSource(localeFiles: Record<string, string>, primaryLocale: string): string {
+	return [
 		`const __vueInternationalizationLocale = new URL(window.location.href).searchParams.get("locale") || ${JSON.stringify(primaryLocale)};`,
 		`const __vueInternationalizationEntries = ${JSON.stringify(toAbsoluteLocaleFiles(localeFiles))};`,
 		`import(__vueInternationalizationEntries[__vueInternationalizationLocale] || __vueInternationalizationEntries[${JSON.stringify(primaryLocale)}]);`,
-		'</script>',
-	].join('');
+		'',
+	].join('\n');
+}
 
-	return html.replace(scriptRe, replacement);
+function createLoaderScriptAttributes(beforeSrc: string, afterSrc: string, loaderFileName: string): string {
+	const attributes = removeScriptAttribute(`${beforeSrc}${afterSrc}`, 'src');
+	const withoutIntegrity = removeScriptAttribute(attributes, 'integrity');
+	const typeAttribute = hasScriptAttribute(withoutIntegrity, 'type') ? '' : ' type="module"';
+
+	return `${withoutIntegrity}${typeAttribute} src="/${loaderFileName}"`;
+}
+
+function removeScriptAttribute(attributes: string, name: string): string {
+	return attributes.replace(new RegExp(`\\s+${escapeRegExp(name)}\\s*=\\s*(?:"[^"]*"|'[^']*'|[^\\s>]+)`, 'giu'), '');
+}
+
+function hasScriptAttribute(attributes: string, name: string): boolean {
+	return new RegExp(`(?:^|\\s)${escapeRegExp(name)}(?:\\s*=|\\s|$)`, 'iu').test(attributes);
 }
 
 function toAbsoluteLocaleFiles(localeFiles: Record<string, string>): Record<string, string> {
