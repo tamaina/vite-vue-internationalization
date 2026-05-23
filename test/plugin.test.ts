@@ -156,6 +156,10 @@ describe('virtual module generation', () => {
 		expect(code).toContain('() => import("virtual:vue-internationalization/locale/en-US")');
 		expect(code).toContain('primaryLocale = "ja-JP"');
 		expect(code).toContain('export const currentLocale = resolveInitialLocale();');
+		expect(code).toContain('useDateTimeFormat');
+		expect(code).toContain('useNumberFormat');
+		expect(code).toContain('dateTimeFormats: options.dateTimeFormats');
+		expect(code).toContain('numberFormats: options.numberFormats');
 	});
 
 	it('generates inline build runtime without dynamic locale imports', () => {

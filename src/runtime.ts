@@ -15,6 +15,24 @@ export type LocaleScope<
 export type LocaleTemplateValue = string | number | boolean | null | undefined;
 export type LocaleTemplateValues = Record<string, LocaleTemplateValue>;
 export type LocaleTemplateFunction = (values?: LocaleTemplateValues | LocaleTemplateValue[] | number, plural?: number) => string;
+export type LocaleDateTimeValue = Date | number | string;
+export type LocaleNumberValue = number | bigint;
+export type LocaleDateTimeFormatOptions = Intl.DateTimeFormatOptions;
+export type LocaleNumberFormatOptions = Intl.NumberFormatOptions;
+export type LocaleDateTimeFormatSource = Partial<Record<string, Record<string, LocaleDateTimeFormatOptions>>>;
+export type LocaleNumberFormatSource = Partial<Record<string, Record<string, LocaleNumberFormatOptions>>>;
+export type LocaleDateTimeFormatName = string;
+export type LocaleNumberFormatName = string;
+export type LocaleDateTimeFormatter = (
+	value: LocaleDateTimeValue,
+	format?: LocaleDateTimeFormatName | LocaleDateTimeFormatOptions,
+	options?: LocaleDateTimeFormatOptions,
+) => string;
+export type LocaleNumberFormatter = (
+	value: LocaleNumberValue,
+	format?: LocaleNumberFormatName | LocaleNumberFormatOptions,
+	options?: LocaleNumberFormatOptions,
+) => string;
 export type LocaleLocalizerScope = {
 	env: LocaleLocalizerDictionary;
 	sfc: LocaleLocalizerDictionary;
@@ -35,6 +53,8 @@ export type InternationalizationRuntimeOptions = {
 	initialLocale?: string;
 	fallbackLocale?: string;
 	loaders: Partial<Record<string, LocaleLoader>>;
+	dateTimeFormats?: LocaleDateTimeFormatSource;
+	numberFormats?: LocaleNumberFormatSource;
 };
 
 export type InternationalizationInstance = {
@@ -50,6 +70,8 @@ type InternationalizationState = {
 	primaryLocale: string;
 	fallbackLocale: string;
 	bundles: Partial<Record<string, LocaleBundle>>;
+	dateTimeFormats: LocaleDateTimeFormatSource;
+	numberFormats: LocaleNumberFormatSource;
 };
 
 const INTERNATIONALIZATION_KEY: InjectionKey<InternationalizationInstance> = Symbol('vue-internationalization');
@@ -65,6 +87,8 @@ export function createInternationalization(options: InternationalizationRuntimeO
 		primaryLocale: options.primaryLocale,
 		fallbackLocale: options.fallbackLocale ?? options.primaryLocale,
 		bundles: {},
+		dateTimeFormats: options.dateTimeFormats ?? {},
+		numberFormats: options.numberFormats ?? {},
 	});
 
 	const instance: InternationalizationInstance = {
@@ -145,8 +169,76 @@ export function useLocalizer(moduleUrl: string): Readonly<ComputedRef<LocaleLoca
 	});
 }
 
+export function useDateTimeFormat(): Readonly<ComputedRef<LocaleDateTimeFormatter>> {
+	const internationalization = useInternationalization();
+
+	return computed(() => {
+		const state = getState(internationalization);
+		return (value, format, options) => formatDateTimeValue(state, value, format, options);
+	});
+}
+
+export function useNumberFormat(): Readonly<ComputedRef<LocaleNumberFormatter>> {
+	const internationalization = useInternationalization();
+
+	return computed(() => {
+		const state = getState(internationalization);
+		return (value, format, options) => formatNumberValue(state, value, format, options);
+	});
+}
+
 export function formatLocaleTemplate(template: string, values: LocaleTemplateValues = {}): string {
 	return formatLocaleMessage(template, { values });
+}
+
+function formatDateTimeValue(
+	state: InternationalizationState,
+	value: LocaleDateTimeValue,
+	format: LocaleDateTimeFormatName | LocaleDateTimeFormatOptions | undefined,
+	options: LocaleDateTimeFormatOptions | undefined,
+): string {
+	const { name, inlineOptions } = normalizeFormatArguments(format, options);
+	const preset = name ? getNamedFormat(state.dateTimeFormats, state, name) : undefined;
+	const date = typeof value === 'string' ? new Date(value) : value;
+
+	return new Intl.DateTimeFormat(state.locale, {
+		...preset,
+		...inlineOptions,
+	}).format(date);
+}
+
+function formatNumberValue(
+	state: InternationalizationState,
+	value: LocaleNumberValue,
+	format: LocaleNumberFormatName | LocaleNumberFormatOptions | undefined,
+	options: LocaleNumberFormatOptions | undefined,
+): string {
+	const { name, inlineOptions } = normalizeFormatArguments(format, options);
+	const preset = name ? getNamedFormat(state.numberFormats, state, name) : undefined;
+
+	return new Intl.NumberFormat(state.locale, {
+		...preset,
+		...inlineOptions,
+	}).format(value);
+}
+
+function normalizeFormatArguments<TOptions extends object>(
+	format: string | TOptions | undefined,
+	options: TOptions | undefined,
+): { name: string | undefined; inlineOptions: TOptions | undefined } {
+	return typeof format === 'string'
+		? { name: format, inlineOptions: options }
+		: { name: undefined, inlineOptions: format };
+}
+
+function getNamedFormat<TOptions>(
+	source: Partial<Record<string, Record<string, TOptions>>>,
+	state: InternationalizationState,
+	name: string,
+): TOptions | undefined {
+	return source[state.locale]?.[name]
+		?? source[state.primaryLocale]?.[name]
+		?? source[state.fallbackLocale]?.[name];
 }
 
 function resolveLocale(internationalization: InternationalizationInstance, moduleUrl: string) {

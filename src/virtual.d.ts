@@ -1,5 +1,5 @@
 declare module 'virtual:vue-internationalization' {
-	import type { InternationalizationInstance, LocaleLocalizerScope, LocaleScope, RuntimeLocaleDictionary } from 'vue-internationalization/runtime';
+	import type { InternationalizationInstance, LocaleDateTimeFormatSource, LocaleDateTimeFormatter, LocaleLocalizerScope, LocaleNumberFormatSource, LocaleNumberFormatter, LocaleScope, RuntimeLocaleDictionary } from 'vue-internationalization/runtime';
 	import type { ComputedRef } from 'vue';
 
 	export const primaryLocale: string;
@@ -9,6 +9,8 @@ declare module 'virtual:vue-internationalization' {
 	export function createInternationalization(options?: {
 		initialLocale?: string;
 		fallbackLocale?: string;
+		dateTimeFormats?: LocaleDateTimeFormatSource;
+		numberFormats?: LocaleNumberFormatSource;
 	}): InternationalizationInstance;
 	export function setActiveInternationalization(instance: InternationalizationInstance): void;
 	export function useInternationalization(): InternationalizationInstance;
@@ -17,4 +19,6 @@ declare module 'virtual:vue-internationalization' {
 		TModule extends RuntimeLocaleDictionary = RuntimeLocaleDictionary,
 	>(moduleUrl: string): Readonly<ComputedRef<LocaleScope<TGlobal, TModule>>>;
 	export function useLocalizer(moduleUrl: string): Readonly<ComputedRef<LocaleLocalizerScope>>;
+	export function useDateTimeFormat(): Readonly<ComputedRef<LocaleDateTimeFormatter>>;
+	export function useNumberFormat(): Readonly<ComputedRef<LocaleNumberFormatter>>;
 }

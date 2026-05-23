@@ -425,7 +425,7 @@ function generateRuntimeModule(primaryLocale: string, locales: string[]): string
 		.join(',\n  ');
 
 	return [
-		'import { createInternationalization as __createInternationalization, setActiveInternationalization, useInternationalization, useLocale, useLocalizer } from "vue-internationalization/runtime";',
+		'import { createInternationalization as __createInternationalization, setActiveInternationalization, useDateTimeFormat, useInternationalization, useLocale, useLocalizer, useNumberFormat } from "vue-internationalization/runtime";',
 		`export const primaryLocale = ${JSON.stringify(primaryLocale)};`,
 		`export const locales = ${JSON.stringify(locales)};`,
 		`export const localeLoaders = {\n  ${loaderEntries}\n};`,
@@ -437,13 +437,15 @@ function generateRuntimeModule(primaryLocale: string, locales: string[]): string
 		'  return primaryLocale;',
 		'}',
 		'export const currentLocale = resolveInitialLocale();',
-		'export { setActiveInternationalization, useInternationalization, useLocale, useLocalizer };',
+		'export { setActiveInternationalization, useDateTimeFormat, useInternationalization, useLocale, useLocalizer, useNumberFormat };',
 		'export function createInternationalization(options = {}) {',
 		'  return __createInternationalization({',
 		'    primaryLocale,',
 		'    initialLocale: options.initialLocale ?? currentLocale,',
 		'    loaders: localeLoaders,',
-		'    fallbackLocale: options.fallbackLocale ?? primaryLocale',
+		'    fallbackLocale: options.fallbackLocale ?? primaryLocale,',
+		'    dateTimeFormats: options.dateTimeFormats,',
+		'    numberFormats: options.numberFormats',
 		'  });',
 		'}',
 	].join('\n');
@@ -455,11 +457,11 @@ function generateInlineRuntimeModule(primaryLocale: string, locales: string[]): 
 		.join(',\n  ');
 
 	return [
-		'import { createInternationalization as __createInternationalization, setActiveInternationalization, useInternationalization, useLocale, useLocalizer } from "vue-internationalization/runtime";',
+		'import { createInternationalization as __createInternationalization, setActiveInternationalization, useDateTimeFormat, useInternationalization, useLocale, useLocalizer, useNumberFormat } from "vue-internationalization/runtime";',
 		`export const primaryLocale = ${JSON.stringify(primaryLocale)};`,
 		`export const locales = ${JSON.stringify(locales)};`,
 		`export const localeLoaders = {\n  ${loaderEntries}\n};`,
-		'export { setActiveInternationalization, useInternationalization, useLocale, useLocalizer };',
+		'export { setActiveInternationalization, useDateTimeFormat, useInternationalization, useLocale, useLocalizer, useNumberFormat };',
 		'export function resolveInitialLocale() {',
 		'  if (typeof window === "undefined") return primaryLocale;',
 		'  const locale = new URL(window.location.href).searchParams.get("locale");',
@@ -471,7 +473,9 @@ function generateInlineRuntimeModule(primaryLocale: string, locales: string[]): 
 		'    primaryLocale,',
 		'    initialLocale: options.initialLocale ?? currentLocale,',
 		'    loaders: localeLoaders,',
-		'    fallbackLocale: options.fallbackLocale ?? primaryLocale',
+		'    fallbackLocale: options.fallbackLocale ?? primaryLocale,',
+		'    dateTimeFormats: options.dateTimeFormats,',
+		'    numberFormats: options.numberFormats',
 		'  });',
 		'}',
 	].join('\n');

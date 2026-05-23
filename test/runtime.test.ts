@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createInternationalization, formatLocaleTemplate, setActiveInternationalization, useLocale, useLocalizer } from '../src/runtime.js';
+import { createInternationalization, formatLocaleTemplate, setActiveInternationalization, useDateTimeFormat, useLocale, useLocalizer, useNumberFormat } from '../src/runtime.js';
 
 describe('runtime locale fallback', () => {
 	it('falls back to the primary locale and then the full locale expression', async () => {
@@ -95,6 +95,58 @@ describe('runtime locale fallback', () => {
 
 	it('keeps unresolved template parameters visible', () => {
 		expect(formatLocaleTemplate('Hello {name}', {})).toBe('Hello {name}');
+	});
+
+	it('formats dates and numbers with locale-aware named presets', async () => {
+		const internationalization = createInternationalization({
+			primaryLocale: 'en-US',
+			initialLocale: 'ja-JP',
+			loaders: {
+				'ja-JP': () => Promise.resolve({}),
+			},
+			dateTimeFormats: {
+				'en-US': {
+					short: {
+						year: 'numeric',
+						month: '2-digit',
+						day: '2-digit',
+						timeZone: 'UTC',
+					},
+				},
+				'ja-JP': {
+					short: {
+						year: 'numeric',
+						month: '2-digit',
+						day: '2-digit',
+						timeZone: 'UTC',
+					},
+				},
+			},
+			numberFormats: {
+				'en-US': {
+					currency: {
+						style: 'currency',
+						currency: 'USD',
+					},
+				},
+				'ja-JP': {
+					currency: {
+						style: 'currency',
+						currency: 'JPY',
+					},
+				},
+			},
+		});
+
+		await internationalization.ready;
+		setActiveInternationalization(internationalization);
+
+		const dateTime = useDateTimeFormat();
+		const number = useNumberFormat();
+
+		expect(dateTime.value(new Date(Date.UTC(2026, 0, 2)), 'short')).toContain('2026');
+		expect(number.value(1234, 'currency')).toContain('￥1,234');
+		expect(number.value(0.123, { style: 'percent', maximumFractionDigits: 1 })).toBe('12.3%');
 	});
 
 	it('formats vue-i18n compatible message syntax', async () => {

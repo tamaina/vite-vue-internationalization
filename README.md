@@ -153,6 +153,32 @@ linked: "@.upper:target"
 pluralization は `$l.sfc.key(plural)` または `$l.sfc.key(values, plural)` で選択します。2 variants の場合は `1` が先頭、それ以外が後続です。3 variants 以上の場合は `0` / `1` / other の順に選択します。
 linked message は同じ scope の root から key path を解決します。未解決の linked message や循環参照は `@:key` の表示で停止します。
 
+DateTime / Number formatting は `Intl.DateTimeFormat` / `Intl.NumberFormat` の薄い wrapper として提供します。format preset は翻訳辞書ではなく runtime options に置きます。
+
+```ts
+import { createInternationalization, useDateTimeFormat, useNumberFormat } from 'virtual:vue-internationalization';
+
+const internationalization = createInternationalization({
+	dateTimeFormats: {
+		'ja-JP': {
+			short: { dateStyle: 'short', timeZone: 'Asia/Tokyo' },
+		},
+	},
+	numberFormats: {
+		'ja-JP': {
+			currency: { style: 'currency', currency: 'JPY' },
+		},
+	},
+});
+
+const d = useDateTimeFormat();
+const n = useNumberFormat();
+
+d.value(new Date(), 'short');
+n.value(1200, 'currency');
+n.value(0.25, { style: 'percent' });
+```
+
 現時点では `<i18n-t>` 相当の component interpolation は未実装です。文字列 localizer と inline build 置換が対象です。
 
 `virtual:vue-internationalization` の型を使う場合は、アプリ側の `env.d.ts` に追加します。
