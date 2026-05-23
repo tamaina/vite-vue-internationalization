@@ -57,18 +57,32 @@ import { vueInternationalization } from 'vue-internationalization';
 
 export default defineConfig({
   plugins: [
-    vueInternationalization({
-      primaryLocale: 'ja-JP',
-      buildStrategy: 'inline-chunks',
-      global: {
-        'ja-JP': './src/locales/ja-JP.yaml',
-        'en-US': './src/locales/en-US.yaml'
-      }
-    }),
+    vueInternationalization(),
     vue()
   ]
 });
 ```
+
+```json
+// tsconfig.json
+{
+  "vueCompilerOptions": {
+    "plugins": [
+      {
+        "name": "vue-internationalization/volar",
+        "primaryLocale": "ja-JP",
+        "buildStrategy": "inline-chunks",
+        "global": {
+          "ja-JP": "./src/locales/ja-JP.yaml",
+          "en-US": "./src/locales/en-US.yaml"
+        }
+      }
+    ]
+  }
+}
+```
+
+`vueInternationalization()` に options を渡さない場合、Vite plugin は `tsconfig.json` の `vueCompilerOptions.plugins` から `vue-internationalization/volar` 設定を読みます。VS Code / Vue Language Tools も同じ設定を使うため、`primaryLocale` や `global` を二重管理する必要はありません。
 
 ```ts
 // main.ts
@@ -77,11 +91,27 @@ import { createInternationalization } from 'virtual:vue-internationalization';
 import App from './App.vue';
 
 const app = createApp(App);
-const internationalization = createInternationalization({ initialLocale: 'ja-JP' });
+const internationalization = createInternationalization();
 
 app.use(internationalization);
 await internationalization.ready;
 app.mount('#app');
+```
+
+初期 locale は `?locale=en-US` のような URL query から決まります。locale を切り替える場合は Vue runtime state を差し替えず、URL を変更して対応する locale entry で起動し直します。
+
+`{name}` 形式の引数つきメッセージは `$l` から関数として参照できます。`$locale` は翻訳値をそのまま返し、`$l` は同じ `global` / `module` scope の localizer 関数を返します。
+
+```vue
+<template>
+  <p>{{ $locale.module.title }}</p>
+  <p>{{ $l.module.nApples({ n: 3 }) }}</p>
+</template>
+
+<locale locale="ja-JP" lang="yaml">
+title: りんご
+nApples: "{n} 個のりんご"
+</locale>
 ```
 
 `virtual:vue-internationalization` の型を使う場合は、アプリ側の `env.d.ts` に追加します。
@@ -100,7 +130,7 @@ pnpm --dir examples/motivation-1 dev
 
 production build では `ja-JP` / `en-US` が別 chunk として出力されます。
 `buildStrategy: 'inline-chunks'` の場合、primary locale は通常の chunk に埋め込まれ、その他の locale は `*.en-US.js` のような別ファイルとして出力されます。
-このモードは build 出力を書き換えるための土台で、生成された locale chunk をどの HTML/loader から選択するかはアプリ側または次の plugin 機能で扱います。
+このモードでは HTML loader が `locale` query を見て locale chunk を選択します。
 
 ```sh
 pnpm --dir examples/motivation-1 build

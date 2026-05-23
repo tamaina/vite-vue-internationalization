@@ -1,21 +1,26 @@
-import './ambient.js';
-
 export { vueInternationalization } from './plugin.js';
 export type {
-  LocaleDictionary,
-  LocaleMessages,
-  VueInternationalizationOptions
+	LocaleDictionary,
+	LocaleMessages,
+	VueInternationalizationOptions,
 } from './plugin.js';
 export {
-  createInternationalization,
-  setActiveInternationalization,
-  useInternationalization,
-  useLocale
+	createInternationalization,
+	formatLocaleTemplate,
+	setActiveInternationalization,
+	useInternationalization,
+	useLocale,
+	useLocalizer,
 } from './runtime.js';
 export type {
-  InternationalizationInstance,
-  InternationalizationRuntimeOptions,
-  LocaleBundle,
-  LocaleLoader,
-  RuntimeLocaleDictionary
+	InternationalizationInstance,
+	InternationalizationRuntimeOptions,
+	LocaleBundle,
+	LocaleLocalizerDictionary,
+	LocaleLocalizerScope,
+	LocaleLoader,
+	RuntimeLocaleDictionary,
+	LocaleTemplateFunction,
+	LocaleTemplateValue,
+	LocaleTemplateValues,
 } from './runtime.js';

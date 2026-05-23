@@ -1,0 +1,15 @@
+{
+  "vueCompilerOptions": {
+    "plugins": [
+      {
+        "name": "vue-internationalization/volar",
+        "primaryLocale": "ja-JP",
+        "buildStrategy": "inline-chunks",
+        "global": {
+          "ja-JP": "./src/locales/ja-JP.yaml",
+          "en-US": "./src/locales/en-US.yaml"
+        }
+      }
+    ]
+  }
+}
