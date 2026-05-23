@@ -1,7 +1,5 @@
-<script setup lang="ts">
-import { computed, defineAsyncComponent, ref } from 'vue';
-import { currentLocale, defineInternationalization, primaryLocale } from 'virtual:vue-internationalization';
-import StaticPanel from './components/StaticPanel.vue';
+<script lang="ts">
+import { defineInternationalization } from 'virtual:vue-internationalization';
 
 defineInternationalization({
 	'ja-JP': {
@@ -17,6 +15,12 @@ defineInternationalization({
 		},
 	},
 });
+</script>
+
+<script setup lang="ts">
+import { computed, defineAsyncComponent, ref } from 'vue';
+import { currentLocale, primaryLocale } from 'virtual:vue-internationalization';
+import StaticPanel from './components/StaticPanel.vue';
 
 const AsyncPanel = defineAsyncComponent(() => import('./components/AsyncPanel.vue'));
 const n = ref(3);
