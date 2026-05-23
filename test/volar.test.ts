@@ -118,6 +118,54 @@ describe('volar plugin', () => {
 		expect(scriptCode).not.toContain('Primary locale text:');
 		expect(scriptCode).not.toContain('@example');
 	});
+
+	it('merges multiple locale blocks for editor types with later blocks taking precedence', () => {
+		const vueCompilerOptions = getDefaultCompilerOptions();
+		vueCompilerOptions.plugins = [
+			withConfig(vueInternationalizationVolar, {
+				__moduleConfig: {
+					name: 'vue-internationalization/volar',
+					primaryLocale: 'ja-JP',
+				},
+			}),
+		];
+		const plugin = createVueLanguagePlugin(ts, {}, vueCompilerOptions, String);
+		const fileName = resolve('examples/motivation-1/src/Merged.vue');
+		const source = [
+			'<template>{{ $locale.sfc.title }} {{ $locale.sfc.nested.first }} {{ $locale.sfc.nested.second }}</template>',
+			'<script setup lang="ts">',
+			'const title = $locale.value.sfc.title;',
+			'</script>',
+			'<locale locale="ja-JP" lang="yaml">',
+			'title: 古いタイトル',
+			'nested:',
+			'  first: 1',
+			'  overwrite: old',
+			'</locale>',
+			'<locale locale="en-US" lang="yaml">',
+			'title: Title',
+			'</locale>',
+			'<locale locale="ja-JP" lang="yaml">',
+			'title: 新しいタイトル',
+			'nested:',
+			'  second: 2',
+			'  overwrite: new',
+			'</locale>',
+		].join('\n');
+		const root = plugin.createVirtualCode?.(fileName, 'vue', ts.ScriptSnapshot.fromString(source), {} as never);
+
+		if (!root) {
+			throw new Error('Expected Vue virtual code to be created.');
+		}
+
+		const scriptCode = [...forEachEmbeddedCode(root)]
+			.find((code) => code.id === 'script_ts')
+			?.snapshot.getText(0, Number.MAX_SAFE_INTEGER);
+
+		expect(scriptCode).toContain('{ title: "新しいタイトル"; nested: { first: 1; overwrite: "new"; second: 2; }; }');
+		expect(scriptCode).toContain('__VLS_ctx.$locale.sfc.nested.first');
+		expect(scriptCode).toContain('__VLS_ctx.$locale.sfc.nested.second');
+	});
 });
 
 function withConfig(

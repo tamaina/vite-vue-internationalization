@@ -57,6 +57,37 @@ describe('locale SFC parsing', () => {
 		expect(output).toContain('const $l = __useLocalizer(import.meta.url) as Readonly<import("vue").ComputedRef<{ env: { fuga: () => string; }; sfc: { hoge: () => string; nested: { count: () => string; }; }; }>>;');
 	});
 
+	it('merges multiple blocks for the primary locale with later blocks taking precedence', () => {
+		const input = [
+			'<script setup lang="ts">',
+			'const x = 1;',
+			'</script>',
+			'<locale locale="ja-JP" lang="yaml">',
+			'title: 古いタイトル',
+			'nested:',
+			'  first: 1',
+			'  overwrite: old',
+			'</locale>',
+			'<locale locale="en-US" lang="yaml">',
+			'title: Title',
+			'</locale>',
+			'<locale locale="ja-JP" lang="yaml">',
+			'title: 新しいタイトル',
+			'nested:',
+			'  second: 2',
+			'  overwrite: new',
+			'</locale>',
+		].join('\n');
+
+		const output = transformVueSfc(input, '/repo/src/App.vue', {
+			primaryLocale: 'ja-JP',
+		});
+
+		expect(output).toContain('const $locale = __useLocale<{}, { title: string; nested: { first: number; overwrite: string; second: number; }; }>');
+		expect(output).not.toContain('古いタイトル');
+		expect(output).not.toContain('新しいタイトル');
+	});
+
 	it('injects localizer argument types from template placeholders', () => {
 		const input = [
 			'<script setup lang="ts">',
@@ -65,6 +96,8 @@ describe('locale SFC parsing', () => {
 			'<locale locale="ja-JP" lang="yaml">',
 			'count: "{n} 個"',
 			'mixed: "{name}: {count}"',
+			'kebab: "{user-name}"',
+			'plural: "car | cars"',
 			'</locale>',
 		].join('\n');
 
@@ -72,6 +105,8 @@ describe('locale SFC parsing', () => {
 
 		expect(output).toContain('count: (values: { n: import("vue-internationalization/runtime").LocaleTemplateValue; }) => string;');
 		expect(output).toContain('mixed: (values: { name: import("vue-internationalization/runtime").LocaleTemplateValue; count: import("vue-internationalization/runtime").LocaleTemplateValue; }) => string;');
+		expect(output).toContain('"user-name": import("vue-internationalization/runtime").LocaleTemplateValue;');
+		expect(output).toContain('plural: (plural: number) => string;');
 	});
 
 	it('does not inject TypeScript type parameters into JavaScript setup blocks', () => {

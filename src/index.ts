@@ -5,6 +5,22 @@ export type {
 	VueInternationalizationOptions,
 } from './plugin.js';
 export {
+	compileLocaleMessage,
+	formatLocaleMessage,
+	getLocaleMessageListIndexes,
+	getLocaleMessageNamedKeys,
+	hasLocaleMessagePlural,
+} from './message.js';
+export type {
+	LocaleMessageAst,
+	LocaleMessageContext,
+	LocaleMessageListValues,
+	LocaleMessageNamedValues,
+	LocaleMessageToken,
+	LocaleMessageValue,
+	LocaleMessageValues,
+} from './message.js';
+export {
 	createInternationalization,
 	formatLocaleTemplate,
 	setActiveInternationalization,

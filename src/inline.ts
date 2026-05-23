@@ -1,6 +1,7 @@
 import { parse } from 'acorn';
 import { walk } from 'estree-walker';
 import MagicString from 'magic-string';
+import { compileLocaleMessage } from './message.js';
 import { injectScriptSetup } from './scriptSetup.js';
 import type { Node as EstreeNode } from 'estree-walker';
 import type { LocaleDictionary } from './types.js';
@@ -93,9 +94,9 @@ const INLINE_LOCALIZERS_CALL = '__VUE_INTERNATIONALIZATION_INLINE_LOCALIZERS__';
 const INLINE_TEXT_CALL = '__VUE_INTERNATIONALIZATION_INLINE_TEXT__';
 const INLINE_LOCALIZER_CALL = '__VUE_INTERNATIONALIZATION_INLINE_LOCALIZER__';
 const INLINE_TEXT_RE =
-	/(?:\b[A-Za-z_$][\w$]*\.)?__VUE_INTERNATIONALIZATION_INLINE_TEXT__\("(__VUE_INTERNATIONALIZATION_INLINE__:[A-Za-z0-9+/=]+)","((?:env|sfc)(?:\.[A-Za-z_$][\w$]*)+)"\)/g;
+	/(?:\b[A-Za-z_$][\w$]*\.)?__VUE_INTERNATIONALIZATION_INLINE_TEXT__\((?:"|&quot;)(__VUE_INTERNATIONALIZATION_INLINE__:[A-Za-z0-9+/=]+)(?:"|&quot;),(?:"|&quot;)((?:env|sfc)(?:\.[A-Za-z_$][\w$]*)+)(?:"|&quot;)\)/g;
 const INLINE_LOCALIZER_RE =
-	/(?:\b[A-Za-z_$][\w$]*\.)?__VUE_INTERNATIONALIZATION_INLINE_LOCALIZER__\("(__VUE_INTERNATIONALIZATION_INLINE__:[A-Za-z0-9+/=]+)","((?:env|sfc)(?:\.[A-Za-z_$][\w$]*)+)",(\{[^)]*\})\)/g;
+	/(?:\b[A-Za-z_$][\w$]*\.)?__VUE_INTERNATIONALIZATION_INLINE_LOCALIZER__\((?:"|&quot;)(__VUE_INTERNATIONALIZATION_INLINE__:[A-Za-z0-9+/=]+)(?:"|&quot;),(?:"|&quot;)((?:env|sfc)(?:\.[A-Za-z_$][\w$]*)+)(?:"|&quot;),(\{[^)]*\})\)/g;
 const LOCALE_ACCESS_RE = /\$locale(?:\.value)?\.(env|sfc)((?:\.[A-Za-z_$][\w$]*)+)/g;
 const LOCALIZER_ACCESS_PREFIX_RE = /\$l(?:\.value)?\.(env|sfc)((?:\.[A-Za-z_$][\w$]*)+)\(/g;
 
@@ -120,7 +121,7 @@ export function rewriteInlineLocaleTemplateAccess(code: string, moduleId: string
 	return code.replace(/<template\b[^>]*>[\s\S]*?<\/template>/g, (template) =>
 		rewriteTemplateLocalizerAccess(template, marker)
 			.replace(LOCALE_ACCESS_RE, (_match, scope: PublicLocaleScope, pathExpression: string) =>
-				`__VUE_INTERNATIONALIZATION_INLINE_TEXT__(${JSON.stringify(marker)},${JSON.stringify(`${scope}${pathExpression}`)})`,
+				`__VUE_INTERNATIONALIZATION_INLINE_TEXT__(${createTemplateStringArgument(marker)},${createTemplateStringArgument(`${scope}${pathExpression}`)})`,
 			),
 	);
 }
@@ -146,11 +147,15 @@ function rewriteTemplateLocalizerAccess(template: string, marker: string): strin
 		}
 
 		next += template.slice(cursor, start);
-		next += `__VUE_INTERNATIONALIZATION_INLINE_LOCALIZER__(${JSON.stringify(marker)},${JSON.stringify(`${scope}${pathExpression}`)},${template.slice(valuesStart, callEnd)})`;
+		next += `__VUE_INTERNATIONALIZATION_INLINE_LOCALIZER__(${createTemplateStringArgument(marker)},${createTemplateStringArgument(`${scope}${pathExpression}`)},${template.slice(valuesStart, callEnd)})`;
 		cursor = callEnd + 1;
 	}
 
 	return cursor === 0 ? template : next + template.slice(cursor);
+}
+
+function createTemplateStringArgument(value: string): string {
+	return JSON.stringify(value).replaceAll('"', '&quot;');
 }
 
 function findBalancedExpressionEnd(source: string, start: number, open: string, close: string): number | undefined {
@@ -890,36 +895,44 @@ function isVariableDeclarator(node: AstNode): node is AstVariableDeclarator {
 }
 
 function createInlineTemplateExpression(template: string, valuesExpression: string): string {
-	const parts: string[] = [];
-	let cursor = 0;
-	let hasToken = false;
+	const cases = compileLocaleMessage(template).cases;
+	const caseExpressions = cases.map((tokens) => createInlineTokenExpression(tokens));
 
-	for (const match of template.matchAll(/\{([A-Za-z_$][\w$]*)\}/g)) {
-		const index = match.index;
-		const key = match[1];
-
-		if (!key) {
-			continue;
-		}
-
-		if (index > cursor) {
-			parts.push(JSON.stringify(template.slice(cursor, index)));
-		}
-
-		parts.push(`(__values.${key} == null ? ${JSON.stringify(`{${key}}`)} : __values.${key})`);
-		hasToken = true;
-		cursor = index + match[0].length;
+	if (cases.length > 1) {
+		return `((__values) => { const __plural = typeof __values === "number" ? __values : Number(__values?.count ?? __values?.n ?? 1); const __index = ${createInlinePluralIndexExpression('Math.abs(Math.trunc(__plural))', cases.length)}; return [${caseExpressions.join(',')}][__index]; })(${valuesExpression})`;
 	}
 
-	if (cursor < template.length) {
-		parts.push(JSON.stringify(template.slice(cursor)));
-	}
-
-	if (!hasToken) {
+	if (caseExpressions.length === 1 && cases[0]?.length === 1 && cases[0][0]?.type === 'text') {
 		return JSON.stringify(template);
 	}
 
-	return `((__values) => ${parts.join(' + ')})(${valuesExpression})`;
+	return `((__values) => ${caseExpressions[0] ?? '""'})(${valuesExpression})`;
+}
+
+function createInlineTokenExpression(tokens: ReturnType<typeof compileLocaleMessage>['cases'][number]): string {
+	const parts = tokens.map((token) => {
+		switch (token.type) {
+			case 'text':
+			case 'literal':
+				return JSON.stringify(token.value);
+			case 'named':
+				return `((typeof __values === "number" ? (${token.key === 'count' || token.key === 'n' ? '__values' : 'undefined'}) : __values?.[${JSON.stringify(token.key)}]) ?? ${JSON.stringify(`{${token.key}}`)})`;
+			case 'list':
+				return `(Array.isArray(__values) && __values[${token.index}] != null ? __values[${token.index}] : ${JSON.stringify(`{${token.index}}`)})`;
+			case 'linked':
+				return JSON.stringify(`@:${token.key}`);
+		}
+	});
+
+	return parts.length === 0 ? '""' : parts.join(' + ');
+}
+
+function createInlinePluralIndexExpression(choiceExpression: string, choicesLength: number): string {
+	const indexExpression = choicesLength === 2
+		? `${choiceExpression} === 1 ? 0 : 1`
+		: `${choiceExpression} === 0 ? 0 : ${choiceExpression} === 1 ? 1 : 2`;
+
+	return `Math.min(${indexExpression}, ${choicesLength - 1})`;
 }
 
 function createLocalizerObjectExpression(dictionary: LocaleDictionary): string {

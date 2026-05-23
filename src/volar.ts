@@ -10,7 +10,7 @@ import {
 	createLocalizerDocumentationScopeType,
 } from './localeTypes.js';
 import { loadLocaleEnvDictionary, type LocaleEnvSources } from './localeEnv.js';
-import { parseLocaleDictionary, validateLocaleDictionary } from './parse.js';
+import { mergeLocaleDictionaries, parseLocaleDictionary, validateLocaleDictionary } from './parse.js';
 import type { VueLanguagePlugin } from '@vue/language-core';
 import type { Code } from '@vue/language-core';
 import type { LocaleDictionary } from './types.js';
@@ -367,12 +367,16 @@ function getLocaleDictionary(
 		return {};
 	}
 
-	const block = localeBlocks.find((item) => item.attrs.locale === primaryLocale) ?? localeBlocks[0];
+	const primaryBlock = localeBlocks.find((item) => item.attrs.locale === primaryLocale);
+	const locale = String(primaryBlock?.attrs.locale ?? localeBlocks[0].attrs.locale);
+	const blocks = localeBlocks.filter((item) => item.attrs.locale === locale);
 	const key = [
 		String(primaryLocale ?? ''),
-		String(block.attrs.locale),
-		block.lang ?? 'yaml',
-		block.content,
+		locale,
+		...blocks.map((block) => [
+			block.lang ?? 'yaml',
+			block.content,
+		].join('\n')),
 	].join('\n');
 	const cached = cache.moduleDictionaries.get(key);
 
@@ -380,7 +384,9 @@ function getLocaleDictionary(
 		return cached;
 	}
 
-	const dictionary = parseLocaleDictionary(block.content, block.lang ?? 'yaml', `<locale locale="${String(block.attrs.locale)}">`);
+	const dictionary = mergeLocaleDictionaries(
+		...blocks.map((block) => parseLocaleDictionary(block.content, block.lang ?? 'yaml', `<locale locale="${locale}">`)),
+	);
 	cache.moduleDictionaries.set(key, dictionary);
 	return dictionary;
 }

@@ -1,3 +1,4 @@
+import { getLocaleMessageListIndexes, getLocaleMessageNamedKeys, hasLocaleMessagePlural } from './message.js';
 import type { LocaleDictionary, LocaleValue } from './types.js';
 
 export type LocaleBindingTypes = {
@@ -143,22 +144,24 @@ function toDocumentation(value: string, path: string[]): string {
 }
 
 function toLocalizerExampleArguments(value: string): string {
-	const keys = getLocaleTemplateKeys(value);
+	const keys = getLocaleMessageNamedKeys(value);
 	return keys.length === 0 ? '' : `{ ${keys.join(', ')} }`;
 }
 
 function toLocaleTemplateFunctionType(value: LocaleValue): string {
-	const keys = typeof value === 'string' ? getLocaleTemplateKeys(value) : [];
+	const keys = typeof value === 'string' ? getLocaleMessageNamedKeys(value) : [];
+	const indexes = typeof value === 'string' ? getLocaleMessageListIndexes(value) : [];
+	const hasPlural = typeof value === 'string' && hasLocaleMessagePlural(value);
 
 	if (keys.length === 0) {
-		return '() => string';
+		if (indexes.length > 0) {
+			return `(values: import("vue-internationalization/runtime").LocaleTemplateValue[]${hasPlural ? ', plural?: number' : ''}) => string`;
+		}
+
+		return hasPlural ? '(plural: number) => string' : '() => string';
 	}
 
-	return `(values: { ${keys.map((key) => `${toPropertyName(key)}: import("vue-internationalization/runtime").LocaleTemplateValue;`).join(' ')} }) => string`;
-}
-
-function getLocaleTemplateKeys(value: string): string[] {
-	return [...new Set([...value.matchAll(/\{([A-Za-z_$][\w$]*)\}/g)].map((match) => match[1]))];
+	return `(values: { ${keys.map((key) => `${toPropertyName(key)}: import("vue-internationalization/runtime").LocaleTemplateValue;`).join(' ')} }${hasPlural ? ', plural?: number' : ''}) => string`;
 }
 
 function toLocalizerAccessPath(path: string[]): string {

@@ -2,6 +2,7 @@ import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
+import { compileTemplate } from '@vue/compiler-sfc';
 import { scanVueFiles } from '../src/files.js';
 import { internals } from '../src/plugin.js';
 
@@ -169,6 +170,7 @@ describe('virtual module generation', () => {
 	it('generates locale-specific payload modules', () => {
 		const code = internals.generateLocaleModule(
 			'en-US',
+			'ja-JP',
 			{
 				'/repo/src/App.vue': {
 					'en-US': {
@@ -176,6 +178,7 @@ describe('virtual module generation', () => {
 					},
 					'ja-JP': {
 						hoge: 'ほげ',
+						missingTranslation: '英語の翻訳がない',
 					},
 				},
 			},
@@ -183,11 +186,16 @@ describe('virtual module generation', () => {
 				'en-US': {
 					fuga: 'bar',
 				},
+				'ja-JP': {
+					fallbackOnly: 'fallback',
+				},
 			},
 		);
 
 		expect(code).toContain('"hoge":"foo"');
+		expect(code).toContain('"missingTranslation":"英語の翻訳がない"');
 		expect(code).toContain('"fuga":"bar"');
+		expect(code).toContain('"fallbackOnly":"fallback"');
 		expect(code).not.toContain('ほげ');
 	});
 
@@ -327,9 +335,9 @@ describe('virtual module generation', () => {
 			{},
 		);
 
-		expect(replaced).toContain('const apples = ((__values) => (__values.n == null ? "{n}" : __values.n) + " apples")({ n });');
-		expect(replaced).toContain('const refApples = ((__values) => (__values.n == null ? "{n}" : __values.n) + " apples")({ n: count });');
-		expect(replaced).toContain('const computedApples = ((__values) => (__values.n == null ? "{n}" : __values.n) + " apples")({ n: Math.max(count, 1) });');
+		expect(replaced).toContain('const apples = ((__values) => ((typeof __values === "number" ? (__values) : __values?.["n"]) ?? "{n}") + " apples")({ n });');
+		expect(replaced).toContain('const refApples = ((__values) => ((typeof __values === "number" ? (__values) : __values?.["n"]) ?? "{n}") + " apples")({ n: count });');
+		expect(replaced).toContain('const computedApples = ((__values) => ((typeof __values === "number" ? (__values) : __values?.["n"]) ?? "{n}") + " apples")({ n: Math.max(count, 1) });');
 		expect(replaced).toContain('const missing = "$locale.sfc.missing";');
 	});
 
@@ -341,10 +349,63 @@ describe('virtual module generation', () => {
 
 		expect(code).toContain('__VUE_INTERNATIONALIZATION_INLINE_TEXT__');
 		expect(code).toContain('__VUE_INTERNATIONALIZATION_INLINE_LOCALIZER__');
-		expect(code).toContain('"sfc.title"');
-		expect(code).toContain('"env.missing"');
-		expect(code).toContain('"sfc.nApples"');
+		expect(code).toContain('&quot;sfc.title&quot;');
+		expect(code).toContain('&quot;env.missing&quot;');
+		expect(code).toContain('&quot;sfc.nApples&quot;');
 		expect(code).toContain('Math.max(n, 1)');
+	});
+
+	it('rewrites template attribute locale access without breaking quoted attributes', () => {
+		const code = internals.rewriteInlineLocaleTemplateAccess(
+			'<template><button :title="$locale.sfc.title" :aria-label="$l.sfc.nApples({ n: Math.max(n, 1) })">x</button></template>',
+			'/src/App.vue',
+		);
+		const compiled = compileTemplate({ source: code, filename: '/src/App.vue', id: 'test' });
+
+		expect(compiled.errors).toEqual([]);
+		expect(compiled.code).toContain('_ctx.__VUE_INTERNATIONALIZATION_INLINE_TEXT__("__VUE_INTERNATIONALIZATION_INLINE__:L3NyYy9BcHAudnVl","sfc.title")');
+		expect(compiled.code).toContain('_ctx.__VUE_INTERNATIONALIZATION_INLINE_LOCALIZER__("__VUE_INTERNATIONALIZATION_INLINE__:L3NyYy9BcHAudnVl","sfc.nApples",{ n: Math.max(_ctx.n, 1) })');
+	});
+
+	it('replaces compiled template attribute locale markers', () => {
+		const code = internals.rewriteInlineLocaleTemplateAccess(
+			'<template><button :title="$locale.sfc.title" :aria-label="$l.sfc.nApples({ n: Math.max(n, 1) })">x</button></template>',
+			'/src/App.vue',
+		);
+		const compiled = compileTemplate({ source: code, filename: '/src/App.vue', id: 'test' });
+		const replacedText = internals.replaceInlineLocaleTextAccess(
+			compiled.code,
+			'ja-JP',
+			'ja-JP',
+			{
+				'/src/App.vue': {
+					'ja-JP': {
+						title: 'タイトル',
+						nApples: '{n} 個のりんご',
+					},
+				},
+			},
+			{},
+		);
+		const replaced = internals.replaceInlineLocalizerAccess(
+			replacedText,
+			'ja-JP',
+			'ja-JP',
+			{
+				'/src/App.vue': {
+					'ja-JP': {
+						title: 'タイトル',
+						nApples: '{n} 個のりんご',
+					},
+				},
+			},
+			{},
+		);
+
+		expect(replaced).toContain('title: "タイトル"');
+		expect(replaced).toContain('" 個のりんご"');
+		expect(replaced).not.toContain('__VUE_INTERNATIONALIZATION_INLINE_TEXT__');
+		expect(replaced).not.toContain('__VUE_INTERNATIONALIZATION_INLINE_LOCALIZER__');
 	});
 
 	it('throws on invalid JavaScript during full inline chunk replacement', () => {
