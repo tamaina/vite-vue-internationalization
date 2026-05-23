@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { createInternationalization, formatLocaleTemplate, setActiveInternationalization, useDateTimeFormat, useLocale, useLocalizer, useNumberFormat } from '../src/runtime.js';
+import { h } from 'vue';
+import { Internationalization, createInternationalization, formatLocaleTemplate, setActiveInternationalization, useDateTimeFormat, useLocale, useLocalizer, useNumberFormat } from '../src/runtime.js';
 
 describe('runtime locale fallback', () => {
 	it('falls back to the primary locale and then the full locale expression', async () => {
@@ -147,6 +148,40 @@ describe('runtime locale fallback', () => {
 		expect(dateTime.value(new Date(Date.UTC(2026, 0, 2)), 'short')).toContain('2026');
 		expect(number.value(1234, 'currency')).toContain('￥1,234');
 		expect(number.value(0.123, { style: 'percent', maximumFractionDigits: 1 })).toBe('12.3%');
+	});
+
+	it('renders internationalization component messages with slots', () => {
+		const render = (Internationalization as unknown as {
+			setup: (
+				props: Record<string, unknown>,
+				context: { slots: Record<string, (props: { text: string }) => unknown[]> },
+			) => () => { children: unknown[] };
+		}).setup({
+			locale: {
+				env: {
+					appName: 'Example',
+				},
+				sfc: {
+					terms: 'Read {link} for {app}. @.upper:env.appName',
+				},
+			},
+			scope: 'sfc',
+			path: 'terms',
+			values: {
+				app: 'Vue',
+			},
+		}, {
+			slots: {
+				link: ({ text }) => [h('a', { href: '/terms' }, text)],
+			},
+		});
+		const vnode = render();
+		const children = vnode.children as Array<string | { type: string; children: string }>;
+
+		expect(children[0]).toBe('Read ');
+		expect((children[1] as { type: string; children: string }).type).toBe('a');
+		expect((children[1] as { type: string; children: string }).children).toBe('{link}');
+		expect(children.slice(2).join('')).toBe(' for Vue. EXAMPLE');
 	});
 
 	it('formats vue-i18n compatible message syntax', async () => {

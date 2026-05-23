@@ -1,7 +1,7 @@
-import { computed, hasInjectionContext, inject, reactive } from 'vue';
-import { formatLocaleMessage } from './message.js';
-import type { App, ComputedRef, InjectionKey } from 'vue';
-import type { LocaleMessageValues } from './message.js';
+import { Fragment, computed, defineComponent, hasInjectionContext, h, inject, reactive } from 'vue';
+import { compileLocaleMessage, formatLocaleMessage } from './message.js';
+import type { App, ComputedRef, InjectionKey, PropType, VNodeChild } from 'vue';
+import type { LocaleMessageToken, LocaleMessageValues } from './message.js';
 import type { LocaleDictionary } from './types.js';
 
 export type RuntimeLocaleDictionary = LocaleDictionary;
@@ -15,6 +15,7 @@ export type LocaleScope<
 export type LocaleTemplateValue = string | number | boolean | null | undefined;
 export type LocaleTemplateValues = Record<string, LocaleTemplateValue>;
 export type LocaleTemplateFunction = (values?: LocaleTemplateValues | LocaleTemplateValue[] | number, plural?: number) => string;
+export type InternationalizationScopeName = keyof LocaleScope;
 export type LocaleDateTimeValue = Date | number | string;
 export type LocaleNumberValue = number | bigint;
 export type LocaleDateTimeFormatOptions = Intl.DateTimeFormatOptions;
@@ -80,6 +81,47 @@ const DICTIONARY_PROXY_CACHE = new WeakMap<RuntimeLocaleDictionary, WeakMap<Runt
 const LOCALIZER_PROXY_CACHE = new WeakMap<RuntimeLocaleDictionary, WeakMap<RuntimeLocaleDictionary, Map<string, LocaleLocalizerDictionary>>>();
 const STATES = new WeakMap<InternationalizationInstance, InternationalizationState>();
 let activeInternationalization: InternationalizationInstance | undefined;
+
+export const Internationalization = defineComponent({
+	name: 'Internationalization',
+	props: {
+		message: {
+			type: String,
+			default: undefined,
+		},
+		locale: {
+			type: Object as PropType<LocaleScope>,
+			default: undefined,
+		},
+		scope: {
+			type: String as PropType<InternationalizationScopeName>,
+			default: 'sfc',
+		},
+		path: {
+			type: String,
+			default: undefined,
+		},
+		values: {
+			type: [Object, Array, Number] as PropType<LocaleMessageValues | number>,
+			default: undefined,
+		},
+		plural: {
+			type: Number,
+			default: undefined,
+		},
+	},
+	setup(props, { slots }) {
+		return () => h(Fragment, null, renderInternationalizationMessage({
+			message: props.message,
+			locale: props.locale,
+			scope: props.scope,
+			path: props.path,
+			values: props.values,
+			plural: props.plural,
+			slots,
+		}));
+	},
+});
 
 export function createInternationalization(options: InternationalizationRuntimeOptions): InternationalizationInstance {
 	const state = reactive<InternationalizationState>({
@@ -189,6 +231,169 @@ export function useNumberFormat(): Readonly<ComputedRef<LocaleNumberFormatter>> 
 
 export function formatLocaleTemplate(template: string, values: LocaleTemplateValues = {}): string {
 	return formatLocaleMessage(template, { values });
+}
+
+function renderInternationalizationMessage(options: {
+	message: string | undefined;
+	locale: LocaleScope | undefined;
+	scope: InternationalizationScopeName;
+	path: string | undefined;
+	values: LocaleMessageValues | number | undefined;
+	plural: number | undefined;
+	slots: Record<string, ((props: { text: string }) => VNodeChild) | undefined>;
+}): VNodeChild[] {
+	const message = options.message ?? getInternationalizationMessage(options.locale, options.scope, options.path);
+	const normalizedValues = typeof options.values === 'number'
+		? { count: options.values, n: options.values }
+		: options.values;
+	const normalizedPlural = typeof options.values === 'number' ? options.values : options.plural;
+	const ast = compileLocaleMessage(message);
+	const tokens = ast.cases[selectPluralCase(ast.cases.length, normalizedPlural)] ?? [];
+
+	return tokens.flatMap((token) =>
+		renderInternationalizationToken(token, {
+			locale: options.locale,
+			scope: options.scope,
+			values: normalizedValues,
+			plural: normalizedPlural,
+			slots: options.slots,
+		}));
+}
+
+function renderInternationalizationToken(
+	token: LocaleMessageToken,
+	context: {
+		locale: LocaleScope | undefined;
+		scope: InternationalizationScopeName;
+		values: LocaleMessageValues | undefined;
+		plural: number | undefined;
+		slots: Record<string, ((props: { text: string }) => VNodeChild) | undefined>;
+	},
+): VNodeChild[] {
+	switch (token.type) {
+		case 'text':
+			return [token.value];
+		case 'named': {
+			const text = formatInternationalizationNamedValue(token.key, context.values);
+			const slot = context.slots[token.key];
+			return slot ? asVNodeChildren(slot({ text })) : [text];
+		}
+		case 'list':
+			return [formatInternationalizationListValue(token.index, context.values)];
+		case 'literal':
+			return [token.value];
+		case 'linked':
+			return [formatInternationalizationLinkedValue(token, context)];
+	}
+}
+
+function getInternationalizationMessage(
+	locale: LocaleScope | undefined,
+	scope: InternationalizationScopeName,
+	path: string | undefined,
+): string {
+	if (!locale || !path) {
+		return path ? `$locale.${scope}.${path}` : '';
+	}
+
+	const value = getValueByPath(locale[scope], path.split('.'));
+	return typeof value === 'string' ? value : `$locale.${scope}.${path}`;
+}
+
+function formatInternationalizationNamedValue(key: string, values: LocaleMessageValues | undefined): string {
+	if (!values || Array.isArray(values)) {
+		return `{${key}}`;
+	}
+
+	const value = values[key];
+	return value == null ? `{${key}}` : String(value);
+}
+
+function formatInternationalizationListValue(index: number, values: LocaleMessageValues | undefined): string {
+	if (!Array.isArray(values)) {
+		return `{${index}}`;
+	}
+
+	const value = values[index];
+	return value == null ? `{${index}}` : String(value);
+}
+
+function formatInternationalizationLinkedValue(
+	token: Extract<LocaleMessageToken, { type: 'linked' }>,
+	context: {
+		locale: LocaleScope | undefined;
+		scope: InternationalizationScopeName;
+		values: LocaleMessageValues | undefined;
+		plural: number | undefined;
+	},
+): string {
+	const value = resolveInternationalizationLinkedMessage(context.locale, token.key, context.scope, context.values, context.plural)
+		?? `@:${token.key}`;
+
+	if (!token.modifier) {
+		return value;
+	}
+
+	switch (token.modifier) {
+		case 'upper':
+			return value.toLocaleUpperCase();
+		case 'lower':
+			return value.toLocaleLowerCase();
+		case 'capitalize':
+			return value.charAt(0).toLocaleUpperCase() + value.slice(1);
+		default:
+			return value;
+	}
+}
+
+function resolveInternationalizationLinkedMessage(
+	locale: LocaleScope | undefined,
+	key: string,
+	scope: InternationalizationScopeName,
+	values: LocaleMessageValues | undefined,
+	plural: number | undefined,
+	seen: Set<string> = new Set(),
+): string | undefined {
+	if (!locale) {
+		return undefined;
+	}
+
+	const path = resolveLinkedPath(key, scope);
+	const resolvedKey = path.join('.');
+
+	if (seen.has(resolvedKey)) {
+		return undefined;
+	}
+
+	const value = getValueByPath(locale, path);
+
+	if (typeof value !== 'string') {
+		return undefined;
+	}
+
+	seen.add(resolvedKey);
+	return formatLocaleMessage(value, {
+		values,
+		plural,
+		resolveLinked: (linkedKey) => resolveInternationalizationLinkedMessage(locale, linkedKey, path[0] as InternationalizationScopeName, values, plural, seen) ?? `@:${linkedKey}`,
+	});
+}
+
+function selectPluralCase(length: number, plural: number | undefined): number {
+	if (length <= 1) {
+		return 0;
+	}
+
+	const choice = Math.abs(Math.trunc(plural ?? 1));
+	const index = length === 2
+		? choice === 1 ? 0 : 1
+		: choice === 0 ? 0 : choice === 1 ? 1 : 2;
+
+	return Math.min(index, length - 1);
+}
+
+function asVNodeChildren(value: VNodeChild): VNodeChild[] {
+	return Array.isArray(value) ? value : [value];
 }
 
 function formatDateTimeValue(

@@ -21,6 +21,7 @@ export type {
 	LocaleMessageValues,
 } from './message.js';
 export {
+	Internationalization,
 	createInternationalization,
 	formatLocaleTemplate,
 	setActiveInternationalization,
@@ -33,6 +34,7 @@ export {
 export type {
 	InternationalizationInstance,
 	InternationalizationRuntimeOptions,
+	InternationalizationScopeName,
 	LocaleBundle,
 	LocaleDateTimeFormatName,
 	LocaleDateTimeFormatOptions,

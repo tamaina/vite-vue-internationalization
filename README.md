@@ -153,6 +153,33 @@ linked: "@.upper:target"
 pluralization は `$l.sfc.key(plural)` または `$l.sfc.key(values, plural)` で選択します。2 variants の場合は `1` が先頭、それ以外が後続です。3 variants 以上の場合は `0` / `1` / other の順に選択します。
 linked message は同じ scope の root から key path を解決します。未解決の linked message や循環参照は `@:key` の表示で停止します。
 
+Component interpolation は `Internationalization` component で扱います。`message` を直接渡すか、`locale` / `scope` / `path` で `$locale` の値を参照します。message 内の `{name}` は、同名 slot があれば slot に置換し、slot がなければ `values` で文字列補間します。
+
+```vue
+<script setup lang="ts">
+import { Internationalization } from 'virtual:vue-internationalization';
+</script>
+
+<template>
+  <Internationalization
+    :locale="$locale"
+    scope="sfc"
+    path="terms"
+    :values="{ service: 'Example', link: '利用規約' }"
+  >
+    <template #link="{ text }">
+      <a href="/terms">{{ text }}</a>
+    </template>
+  </Internationalization>
+</template>
+
+<locale locale="ja-JP" lang="yaml">
+terms: "{service} の {link} を確認してください"
+</locale>
+```
+
+現時点の component interpolation は named slot placeholder の差し替えが対象です。上の例では `{link}` が slot に置換され、slot props の `text` には `values.link` の文字列が入ります。`{/link}` のような閉じ tag 風 syntax はまだ構造化されず、通常の text として扱われます。
+
 DateTime / Number formatting は `Intl.DateTimeFormat` / `Intl.NumberFormat` の薄い wrapper として提供します。format preset は翻訳辞書ではなく runtime options に置きます。
 
 ```ts

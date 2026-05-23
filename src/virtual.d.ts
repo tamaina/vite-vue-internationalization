@@ -5,6 +5,7 @@ declare module 'virtual:vue-internationalization' {
 	export const primaryLocale: string;
 	export const locales: string[];
 	export const currentLocale: string;
+	export const Internationalization: typeof import('vue-internationalization/runtime').Internationalization;
 	export function resolveInitialLocale(): string;
 	export function createInternationalization(options?: {
 		initialLocale?: string;
