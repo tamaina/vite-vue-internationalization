@@ -92,7 +92,8 @@ export default defineConfig({
 }
 ```
 
-`vueInternationalization()` に options を渡さない場合、Vite plugin は `tsconfig.json` の `vueCompilerOptions.plugins` から `vue-internationalization/volar` 設定を読みます。VS Code / Vue Language Tools も同じ設定を使うため、`primaryLocale` や `global` を二重管理する必要はありません。
+`vueInternationalization()` に options を渡さない場合、Vite plugin は Vite root 直下の `tsconfig.json` にある `vueCompilerOptions.plugins` から `vue-internationalization/volar` 設定を読みます。VS Code / Vue Language Tools も同じ設定を使うため、`primaryLocale` や `global` を二重管理する必要はありません。
+現在の Vite plugin は `tsconfig.app.json` など別名の config を自動探索しません。設定を別名の tsconfig に置く場合は、root の `tsconfig.json` 側にも `vueCompilerOptions.plugins` を置くか、当面は `vueInternationalization({ primaryLocale, global, messageSyntax })` に明示してください。
 `global` の各 locale には object、ファイルパス、glob、またはパス配列を指定できます。複数ファイルに同じ key path がある場合は warning を出し、後から読み込まれたファイルの値で上書きします。
 `scan.include` / `scan.exclude` は Vite plugin が起動時に収集する Vue ファイルを絞り込むための glob です。大きいリポジトリでは `src/**/*.vue` のように対象を限定してください。
 `messageSyntax` は project 全体で `'vue'` または `'icu'` を選びます。辞書ごとの混在はサポートしません。default は `'vue'` です。
