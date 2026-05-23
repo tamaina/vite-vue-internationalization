@@ -103,6 +103,24 @@ describe('virtual module generation', () => {
 		}
 	});
 
+	it('rejects env dictionary paths outside the project root', () => {
+		const root = mkdtempSync(join(tmpdir(), 'vue-internationalization-'));
+
+		expect(() => internals.loadLocaleEnvDictionary(root, 'ja-JP', '../outside.yaml')).toThrow('must resolve inside');
+	});
+
+	it('rejects unsafe locale dictionary keys', () => {
+		const root = mkdtempSync(join(tmpdir(), 'vue-internationalization-'));
+		mkdirSync(join(root, 'src/locales'), { recursive: true });
+		writeFileSync(join(root, 'src/locales/ja-JP.yaml'), [
+			'safe: ok',
+			'constructor:',
+			'  polluted: true',
+		].join('\n'));
+
+		expect(() => internals.loadLocaleEnvDictionary(root, 'ja-JP', './src/locales/ja-JP.yaml')).toThrow('unsafe locale key "constructor"');
+	});
+
 	it('generates dynamic locale loaders for chunk splitting', () => {
 		const code = internals.generateRuntimeModule('ja-JP', ['en-US', 'ja-JP']);
 
@@ -415,12 +433,16 @@ describe('virtual module generation', () => {
 		expect(bundle['assets/App.en-US.js'].code).toContain('./AsyncPanel.en-US.js');
 	});
 
-	it('rewrites html entry script to select a localized chunk from the locale query', () => {
-		const bundle = {
+	it('rewrites html entry script to an external locale loader', () => {
+		const bundle: Record<string, {
+			type: string;
+			fileName: string;
+			source: string;
+		}> = {
 			'index.html': {
 				type: 'asset',
 				fileName: 'index.html',
-				source: '<div id="app"></div><script type="module" crossorigin src="/assets/App-abc.js"></script>',
+				source: '<div id="app"></div><script type="module" nonce="abc" crossorigin integrity="sha256-old" src="/assets/App-abc.js"></script>',
 			},
 		};
 
@@ -438,12 +460,16 @@ describe('virtual module generation', () => {
 			],
 		});
 
-		expect(bundle['index.html'].source).toContain('searchParams.get("locale")');
-		expect(bundle['index.html'].source).toContain('"/assets/App-abc.en-US.js"');
+		expect(bundle['index.html'].source).toContain('src="/assets/App-abc.i18n-loader.js"');
+		expect(bundle['index.html'].source).toContain('nonce="abc"');
+		expect(bundle['index.html'].source).toContain('crossorigin');
+		expect(bundle['index.html'].source).not.toContain('integrity=');
+		expect(bundle['assets/App-abc.i18n-loader.js'].source).toContain('searchParams.get("locale")');
+		expect(bundle['assets/App-abc.i18n-loader.js'].source).toContain('"/assets/App-abc.en-US.js"');
 		expect(bundle['index.html'].source).not.toContain('src="/assets/App-abc.js"');
 	});
 
-	it('rewrites an html string with the inline chunk selector', () => {
+	it('rewrites an html string with the external locale loader', () => {
 		const html = internals.replaceInlineLocaleHtml(
 			'<script type="module" crossorigin src="/assets/App-abc.js"></script>',
 			{
@@ -461,7 +487,9 @@ describe('virtual module generation', () => {
 			},
 		);
 
-		expect(html).toContain('import(__vueInternationalizationEntries[__vueInternationalizationLocale]');
+		expect(html).toContain('src="/assets/App-abc.i18n-loader.js"');
+		expect(html).toContain('crossorigin');
+		expect(html).not.toContain('__vueInternationalizationLocale');
 	});
 
 	it('augments vite manifest with localized chunks', () => {
