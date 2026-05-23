@@ -57,18 +57,32 @@ import { vueInternationalization } from 'vue-internationalization';
 
 export default defineConfig({
   plugins: [
-    vueInternationalization({
-      primaryLocale: 'ja-JP',
-      buildStrategy: 'inline-chunks',
-      global: {
-        'ja-JP': './src/locales/ja-JP.yaml',
-        'en-US': './src/locales/en-US.yaml'
-      }
-    }),
+    vueInternationalization(),
     vue()
   ]
 });
 ```
+
+```json
+// tsconfig.json
+{
+  "vueCompilerOptions": {
+    "plugins": [
+      {
+        "name": "vue-internationalization/volar",
+        "primaryLocale": "ja-JP",
+        "buildStrategy": "inline-chunks",
+        "global": {
+          "ja-JP": "./src/locales/ja-JP.yaml",
+          "en-US": "./src/locales/en-US.yaml"
+        }
+      }
+    ]
+  }
+}
+```
+
+`vueInternationalization()` に options を渡さない場合、Vite plugin は `tsconfig.json` の `vueCompilerOptions.plugins` から `vue-internationalization/volar` 設定を読みます。VS Code / Vue Language Tools も同じ設定を使うため、`primaryLocale` や `global` を二重管理する必要はありません。
 
 ```ts
 // main.ts

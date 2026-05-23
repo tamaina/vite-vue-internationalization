@@ -3,7 +3,7 @@ import { defineAsyncComponent } from 'vue';
 import StaticPanel from './components/StaticPanel.vue';
 
 const AsyncPanel = defineAsyncComponent(() => import('./components/AsyncPanel.vue'));
-const scriptMessage = $locale.module.scriptMessage;
+const scriptMessage = $locale.value.module.scriptMessage;
 </script>
 
 <template>
