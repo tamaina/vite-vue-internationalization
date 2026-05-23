@@ -1,6 +1,7 @@
 import { existsSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { resolve } from 'node:path';
+import { allCodeFeatures } from '@vue/language-core';
 import {
 	createLocaleConstRefType,
 	createLocaleConstScopeType,
@@ -10,7 +11,12 @@ import {
 	createLocalizerDocumentationScopeType,
 } from './localeTypes.js';
 import { loadLocaleEnvDictionary, type LocaleEnvSources } from './localeEnv.js';
-import { mergeLocaleDictionaries, parseLocaleDictionary, validateLocaleDictionary } from './parse.js';
+import {
+	mergeLocaleDictionaries,
+	parseLocaleDictionaryForDiagnostics,
+	validateLocaleDictionary,
+	type LocaleDictionaryDiagnostic,
+} from './parse.js';
 import type { VueLanguagePlugin } from '@vue/language-core';
 import type { Code } from '@vue/language-core';
 import type { LocaleDictionary } from './types.js';
@@ -42,6 +48,7 @@ const plugin: VueLanguagePlugin<VueInternationalizationVolarPluginConfig> = ({ c
 			const setupExposure = '$locale: typeof $locale;\n$l: typeof $l;\n';
 
 			embeddedFile.content.unshift(declaration);
+			pushLocaleDiagnostics(embeddedFile.content, getLocaleDiagnostics(cache, ir.customBlocks));
 			insertAfter(
 				embeddedFile.content,
 				'type __VLS_SetupExposed = import(\'vue\').ShallowUnwrapRef<{\n',
@@ -74,13 +81,27 @@ type GeneratedTypes = {
 type VolarCache = {
 	globalDictionaries: Map<string, LocaleDictionary | undefined>;
 	moduleDictionaries: Map<string, LocaleDictionary>;
+	moduleDiagnostics: Map<string, LocaleBlockDiagnostic[]>;
 	generatedTypes: Map<string, GeneratedTypes>;
+};
+
+type LocaleCustomBlock = {
+	name: string;
+	type: string;
+	attrs: Record<string, string | true>;
+	lang?: string;
+	content: string;
+};
+
+type LocaleBlockDiagnostic = LocaleDictionaryDiagnostic & {
+	source: string;
 };
 
 function createVolarCache(): VolarCache {
 	return {
 		globalDictionaries: new Map(),
 		moduleDictionaries: new Map(),
+		moduleDiagnostics: new Map(),
 		generatedTypes: new Map(),
 	};
 }
@@ -358,7 +379,7 @@ function getGeneratedTypes(
 
 function getLocaleDictionary(
 	cache: VolarCache,
-	customBlocks: readonly { type: string; attrs: Record<string, string | true>; lang?: string; content: string }[],
+	customBlocks: readonly LocaleCustomBlock[],
 	primaryLocale: string | undefined,
 ): LocaleDictionary {
 	const localeBlocks = customBlocks.filter((block) => block.type === 'locale' && typeof block.attrs.locale === 'string');
@@ -385,10 +406,77 @@ function getLocaleDictionary(
 	}
 
 	const dictionary = mergeLocaleDictionaries(
-		...blocks.map((block) => parseLocaleDictionary(block.content, block.lang ?? 'yaml', `<locale locale="${locale}">`)),
+		...blocks.map((block) =>
+			parseLocaleDictionaryForDiagnostics(
+				block.content,
+				block.lang ?? 'yaml',
+				`<locale locale="${locale}">`,
+			).dictionary),
 	);
 	cache.moduleDictionaries.set(key, dictionary);
 	return dictionary;
+}
+
+function getLocaleDiagnostics(cache: VolarCache, customBlocks: readonly LocaleCustomBlock[]): LocaleBlockDiagnostic[] {
+	const localeBlocks = customBlocks.filter((block) => block.type === 'locale' && typeof block.attrs.locale === 'string');
+	const key = localeBlocks
+		.map((block) => [
+			block.name,
+			String(block.attrs.locale),
+			block.lang ?? 'yaml',
+			block.content,
+		].join('\n'))
+		.join('\n---\n');
+	const cached = cache.moduleDiagnostics.get(key);
+
+	if (cached) {
+		return cached;
+	}
+
+	const diagnostics = localeBlocks.flatMap((block) => {
+		const result = parseLocaleDictionaryForDiagnostics(
+			block.content,
+			block.lang ?? 'yaml',
+			`<locale locale="${String(block.attrs.locale)}">`,
+		);
+
+		return result.diagnostics.map((diagnostic) => ({
+			...diagnostic,
+			source: block.name,
+		}));
+	});
+
+	cache.moduleDiagnostics.set(key, diagnostics);
+	return diagnostics;
+}
+
+function pushLocaleDiagnostics(content: Code[], diagnostics: LocaleBlockDiagnostic[]): void {
+	if (diagnostics.length > 0) {
+		content.unshift('declare function __VUE_INTERNATIONALIZATION_LOCALE_DIAGNOSTIC__(message: never): void;\n');
+	}
+
+	diagnostics.forEach((diagnostic, index) => {
+		const name = `__VUE_INTERNATIONALIZATION_LOCALE_DIAGNOSTIC_${index}`;
+
+		content.unshift(
+			'__VUE_INTERNATIONALIZATION_LOCALE_DIAGNOSTIC__(',
+			[
+				JSON.stringify(diagnostic.message),
+				diagnostic.source,
+				diagnostic.start,
+				allCodeFeatures,
+			],
+			');\n',
+			'// ',
+			[
+				name,
+				diagnostic.source,
+				diagnostic.start,
+				allCodeFeatures,
+			],
+			'\n',
+		);
+	});
 }
 
 function getGlobalDictionary(

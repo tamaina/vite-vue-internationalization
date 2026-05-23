@@ -3,6 +3,18 @@ import YAML from 'yaml';
 import { createLocalizerRefType, createUseLocaleTypeParameters, type LocaleBindingTypes } from './localeTypes.js';
 import { getScriptSetupOpenTag, injectScriptSetup } from './scriptSetup.js';
 import type { LocaleDictionary, ParsedVueLocale, SfcLocaleBlock } from './types.js';
+import type { YAMLError } from 'yaml';
+
+export type LocaleDictionaryDiagnostic = {
+	message: string;
+	start: number;
+	end: number;
+};
+
+export type LocaleDictionaryParseResult = {
+	dictionary: LocaleDictionary;
+	diagnostics: LocaleDictionaryDiagnostic[];
+};
 
 export function parseVueLocales(code: string, filename: string): ParsedVueLocale {
 	const result = parseSfc(code, { filename, pad: false });
@@ -54,9 +66,76 @@ export function parseLocaleDictionary(content: string, lang: string, sourceLabel
 	throw new Error(`Unsupported locale lang "${lang}" in ${sourceLabel}. Use yaml, yml, or json.`);
 }
 
+export function parseLocaleDictionaryForDiagnostics(
+	content: string,
+	lang: string,
+	sourceLabel: string,
+): LocaleDictionaryParseResult {
+	const normalized = lang.toLowerCase();
+
+	if (normalized === 'json') {
+		try {
+			return validateLocaleDictionaryForDiagnostics(JSON.parse(content), sourceLabel);
+		} catch (error) {
+			return createDiagnosticResult(`Failed to parse ${sourceLabel}: ${getErrorMessage(error)}`, 0, Math.max(1, content.length));
+		}
+	}
+
+	if (normalized === 'yaml' || normalized === 'yml') {
+		const document = YAML.parseDocument(content);
+		if (document.errors.length > 0) {
+			const error = document.errors[0] as YAMLError;
+			return createDiagnosticResult(`Failed to parse ${sourceLabel}: ${error.message}`, ...getYamlErrorRange(error, content));
+		}
+
+		try {
+			return validateLocaleDictionaryForDiagnostics(document.toJSON() ?? {}, sourceLabel);
+		} catch (error) {
+			return createDiagnosticResult(`Failed to parse ${sourceLabel}: ${getErrorMessage(error)}`, 0, Math.max(1, content.length));
+		}
+	}
+
+	return createDiagnosticResult(
+		`Unsupported locale lang "${lang}" in ${sourceLabel}. Use yaml, yml, or json.`,
+		0,
+		Math.max(1, content.length),
+	);
+}
+
 export function validateLocaleDictionary(value: unknown, sourceLabel: string): LocaleDictionary {
 	assertSafeDictionary(value, sourceLabel, []);
 	return value as LocaleDictionary;
+}
+
+function validateLocaleDictionaryForDiagnostics(value: unknown, sourceLabel: string): LocaleDictionaryParseResult {
+	validateLocaleDictionary(value, sourceLabel);
+
+	return {
+		dictionary: value as LocaleDictionary,
+		diagnostics: [],
+	};
+}
+
+function createDiagnosticResult(message: string, start: number, end: number): LocaleDictionaryParseResult {
+	return {
+		dictionary: {},
+		diagnostics: [{
+			message,
+			start,
+			end,
+		}],
+	};
+}
+
+function getYamlErrorRange(error: YAMLError, content: string): [number, number] {
+	const start = Math.max(0, Math.min(error.pos[0], content.length));
+	const end = Math.max(start + 1, Math.min(error.pos[1], content.length));
+
+	return [start, end];
+}
+
+function getErrorMessage(error: unknown): string {
+	return error instanceof Error ? error.message : String(error);
 }
 
 export function mergeLocaleDictionaries(...dictionaries: LocaleDictionary[]): LocaleDictionary {

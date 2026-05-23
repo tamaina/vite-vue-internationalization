@@ -166,6 +166,66 @@ describe('volar plugin', () => {
 		expect(scriptCode).toContain('__VLS_ctx.$locale.sfc.nested.first');
 		expect(scriptCode).toContain('__VLS_ctx.$locale.sfc.nested.second');
 	});
+
+	it('reports SFC locale parse and validation diagnostics without breaking valid editor types', () => {
+		const vueCompilerOptions = getDefaultCompilerOptions();
+		vueCompilerOptions.plugins = [
+			withConfig(vueInternationalizationVolar, {
+				__moduleConfig: {
+					name: 'vue-internationalization/volar',
+					primaryLocale: 'ja-JP',
+				},
+			}),
+		];
+		const plugin = createVueLanguagePlugin(ts, {}, vueCompilerOptions, String);
+		const fileName = resolve('examples/motivation-1/src/InvalidLocale.vue');
+		const source = [
+			'<template>{{ $locale.sfc.valid }}</template>',
+			'<script setup lang="ts">',
+			'const valid = $locale.value.sfc.valid;',
+			'</script>',
+			'<locale locale="ja-JP" lang="yaml">',
+			'valid: ok',
+			'</locale>',
+			'<locale locale="ja-JP" lang="yaml">',
+			'broken: [',
+			'</locale>',
+			'<locale locale="ja-JP" lang="json">',
+			'{ "broken": }',
+			'</locale>',
+			'<locale locale="ja-JP" lang="toml">',
+			'valid = "no"',
+			'</locale>',
+			'<locale locale="ja-JP" lang="yaml">',
+			'- array',
+			'</locale>',
+			'<locale locale="ja-JP" lang="yaml">',
+			'constructor: unsafe',
+			'</locale>',
+		].join('\n');
+		const root = plugin.createVirtualCode?.(fileName, 'vue', ts.ScriptSnapshot.fromString(source), {} as never);
+
+		if (!root) {
+			throw new Error('Expected Vue virtual code to be created.');
+		}
+
+		const scriptEmbeddedCode = [...forEachEmbeddedCode(root)]
+			.find((code) => code.id === 'script_ts');
+		const scriptCode = scriptEmbeddedCode?.snapshot.getText(0, Number.MAX_SAFE_INTEGER);
+		const diagnostics = getSemanticDiagnosticMessages(scriptCode);
+
+		expect(scriptCode).toContain('{ valid: "ok"; }');
+		expect(scriptEmbeddedCode?.mappings.some((mapping) =>
+			scriptCode?.slice(mapping.generatedOffsets[0], mapping.generatedOffsets[0] + mapping.lengths[0])
+				.startsWith('__VUE_INTERNATIONALIZATION_LOCALE_DIAGNOSTIC_') &&
+			mapping.sourceOffsets[0] >= source.indexOf('broken: ['),
+		)).toBe(true);
+		expect(diagnostics.some((message) => message.includes('Failed to parse <locale locale=') && message.includes('Flow sequence'))).toBe(true);
+		expect(diagnostics.some((message) => message.includes('Failed to parse <locale locale=') && message.includes('Unexpected token'))).toBe(true);
+		expect(diagnostics.some((message) => message.includes('Unsupported locale lang'))).toBe(true);
+		expect(diagnostics.some((message) => message.includes('must contain an object at the top level'))).toBe(true);
+		expect(diagnostics.some((message) => message.includes('contains unsafe locale key'))).toBe(true);
+	});
 });
 
 function withConfig(
@@ -217,4 +277,42 @@ function getQuickInfo(source: string | undefined, needle: string): { documentati
 		display: ts.displayPartsToString(quickInfo?.displayParts ?? []),
 		tags: quickInfo?.tags?.map((tag) => `${tag.name}: ${ts.displayPartsToString(tag.text ?? [])}`) ?? [],
 	};
+}
+
+function getSemanticDiagnosticMessages(source: string | undefined): string[] {
+	if (!source) {
+		return [];
+	}
+
+	const fileName = 'virtual.ts';
+	const languageService = ts.createLanguageService({
+		getCompilationSettings: () => ({
+			module: ts.ModuleKind.ESNext,
+			moduleResolution: ts.ModuleResolutionKind.Bundler,
+			strict: true,
+			target: ts.ScriptTarget.ESNext,
+		}),
+		getCurrentDirectory: () => process.cwd(),
+		getDefaultLibFileName: (options) => ts.getDefaultLibFilePath(options),
+		getScriptFileNames: () => [fileName],
+		getScriptSnapshot: (requestedFileName) => {
+			if (requestedFileName === fileName) {
+				return ts.ScriptSnapshot.fromString(source);
+			}
+
+			const fileContent = ts.sys.readFile(requestedFileName);
+			return fileContent === undefined ? undefined : ts.ScriptSnapshot.fromString(fileContent);
+		},
+		getScriptVersion: () => '0',
+		directoryExists: ts.sys.directoryExists,
+		fileExists: ts.sys.fileExists,
+		getDirectories: ts.sys.getDirectories,
+		readDirectory: ts.sys.readDirectory,
+		readFile: ts.sys.readFile,
+		realpath: ts.sys.realpath,
+	});
+
+	return languageService.getSemanticDiagnostics(fileName).map((diagnostic) =>
+		ts.flattenDiagnosticMessageText(diagnostic.messageText, '\n'),
+	);
 }

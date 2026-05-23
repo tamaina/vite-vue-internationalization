@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { injectLocaleBinding, parseLocaleDictionary, stripLocaleBlocks, transformVueSfc } from '../src/parse.js';
+import { injectLocaleBinding, parseLocaleDictionary, parseLocaleDictionaryForDiagnostics, stripLocaleBlocks, transformVueSfc } from '../src/parse.js';
 
 describe('locale SFC parsing', () => {
 	it('parses yaml dictionaries', () => {
@@ -9,6 +9,14 @@ describe('locale SFC parsing', () => {
 				value: 'ok',
 			},
 		});
+	});
+
+	it('returns diagnostics for invalid locale dictionaries without throwing', () => {
+		expect(parseLocaleDictionaryForDiagnostics('broken: [', 'yaml', 'fixture').diagnostics[0]?.message).toContain('Failed to parse fixture:');
+		expect(parseLocaleDictionaryForDiagnostics('{ "broken": }', 'json', 'fixture').diagnostics[0]?.message).toContain('Failed to parse fixture:');
+		expect(parseLocaleDictionaryForDiagnostics('- array', 'yaml', 'fixture').diagnostics[0]?.message).toContain('fixture must contain an object at the top level.');
+		expect(parseLocaleDictionaryForDiagnostics('constructor: unsafe', 'yaml', 'fixture').diagnostics[0]?.message).toContain('fixture contains unsafe locale key "constructor".');
+		expect(parseLocaleDictionaryForDiagnostics('x = 1', 'toml', 'fixture').diagnostics[0]?.message).toBe('Unsupported locale lang "toml" in fixture. Use yaml, yml, or json.');
 	});
 
 	it('strips locale blocks and injects a setup binding', () => {
