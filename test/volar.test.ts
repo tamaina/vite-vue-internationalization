@@ -12,7 +12,7 @@ describe('volar plugin', () => {
 			fileExists: ts.sys.fileExists,
 			readFile: ts.sys.readFile,
 			useCaseSensitiveFileNames: ts.sys.useCaseSensitiveFileNames,
-		}, 'examples/motivation-1/tsconfig.json');
+		}, 'examples/vue/tsconfig.json');
 
 		expect(parsed.vueOptions.plugins.some((plugin) =>
 			(plugin as { __moduleConfig?: { name?: string } }).__moduleConfig?.name === 'vue-internationalization/volar',
@@ -36,7 +36,7 @@ describe('volar plugin', () => {
 			}),
 		];
 		const plugin = createVueLanguagePlugin(ts, {}, vueCompilerOptions, String);
-		const fileName = resolve('examples/motivation-1/src/App.vue');
+		const fileName = resolve('examples/vue/src/App.vue');
 		const source = [
 			'<template>{{ $locale.sfc.hoge }} {{ $locale.env.fuga }} {{ $l.sfc.count({ n: 1 }) }}',
 			'<!-- @ts-expect-error: ts-plugin(2339) -->',
@@ -78,6 +78,7 @@ describe('volar plugin', () => {
 		});
 		expect(scriptCode).toContain('ComponentPublicInstance & { $locale: import("vue-internationalization/runtime").LocaleScope<');
 		expect(scriptCode).toContain('$l: { env:');
+		expect(scriptCode).toContain('export default {} as typeof __VLS_export & { $locale: { hoge: string; count: string; }; $l: { hoge: () => string; count: (values: { n: import("vue-internationalization/runtime").LocaleTemplateValue; }) => string; }; };');
 		expect(scriptCode).toContain('__VLS_ctx.$locale.sfc.hoge');
 		expect(scriptCode).toContain('__VLS_ctx.$l.sfc.count');
 		expect(scriptCode).toContain('// @ts-expect-error: ts-plugin(2339)\n( __VLS_ctx.$locale.sfc.noTranslation );');
@@ -96,7 +97,7 @@ describe('volar plugin', () => {
 			}),
 		];
 		const plugin = createVueLanguagePlugin(ts, {}, vueCompilerOptions, String);
-		const fileName = resolve('examples/motivation-1/src/Compact.vue');
+		const fileName = resolve('examples/vue/src/Compact.vue');
 		const source = [
 			'<template>{{ $l.sfc.count({ n: 1 }) }}</template>',
 			'<script setup lang="ts">',
@@ -132,7 +133,7 @@ describe('volar plugin', () => {
 			}),
 		];
 		const plugin = createVueLanguagePlugin(ts, {}, vueCompilerOptions, String);
-		const fileName = resolve('examples/motivation-1/src/Merged.vue');
+		const fileName = resolve('examples/vue/src/Merged.vue');
 		const source = [
 			'<template>{{ $locale.sfc.title }} {{ $locale.sfc.nested.first }} {{ $locale.sfc.nested.second }}</template>',
 			'<script setup lang="ts">',
@@ -180,7 +181,7 @@ describe('volar plugin', () => {
 			}),
 		];
 		const plugin = createVueLanguagePlugin(ts, {}, vueCompilerOptions, String);
-		const fileName = resolve('examples/motivation-1/src/InvalidLocale.vue');
+		const fileName = resolve('examples/vue/src/InvalidLocale.vue');
 		const source = [
 			'<template>{{ $locale.sfc.valid }}</template>',
 			'<script setup lang="ts">',
@@ -283,7 +284,7 @@ describe('volar plugin', () => {
 			}),
 		];
 		const plugin = createVueLanguagePlugin(ts, {}, vueCompilerOptions, String);
-		const fileName = resolve('examples/motivation-1/src/LinkedLocale.vue');
+		const fileName = resolve('examples/vue/src/LinkedLocale.vue');
 		const source = [
 			'<template>{{ $l.sfc.valid() }} {{ $l.sfc.missing() }}</template>',
 			'<script setup lang="ts">',

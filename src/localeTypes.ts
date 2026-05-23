@@ -41,6 +41,14 @@ export function createLocalizerRefType(types: LocaleBindingTypes): string {
 	return `Readonly<import("vue").ComputedRef<${createLocalizerScopeType(types)}>>`;
 }
 
+export function createComponentLocaleType(types: LocaleBindingTypes): string {
+	return toTypeLiteral(types.module ?? {});
+}
+
+export function createComponentLocalizerType(types: LocaleBindingTypes): string {
+	return toLocalizerTypeLiteral(types.module ?? {}, types.messageSyntax ?? 'vue');
+}
+
 export function createLocalizerDocumentationScopeType(types: LocaleBindingTypes): string {
 	return `{ env: ${toLocalizerDocumentationTypeLiteral(types.global ?? {}, ['env'], types.messageSyntax ?? 'vue')}; sfc: ${toLocalizerDocumentationTypeLiteral(types.module ?? {}, ['sfc'], types.messageSyntax ?? 'vue')}; }`;
 }

@@ -24,6 +24,8 @@ export type {
 } from './message.js';
 export {
 	Internationalization,
+	createComponentLocale,
+	createComponentLocalizer,
 	createInternationalization,
 	defineInternationalization,
 	formatLocaleTemplate,

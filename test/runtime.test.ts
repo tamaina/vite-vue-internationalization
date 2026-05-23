@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { h } from 'vue';
-import { Internationalization, createInternationalization, formatLocaleTemplate, setActiveInternationalization, useDateTimeFormat, useLocale, useLocalizer, useNumberFormat } from '../src/runtime.js';
+import { Internationalization, createComponentLocale, createComponentLocalizer, createInternationalization, formatLocaleTemplate, setActiveInternationalization, useDateTimeFormat, useLocale, useLocalizer, useNumberFormat } from '../src/runtime.js';
 
 describe('runtime locale fallback', () => {
 	it('falls back to the primary locale and then the full locale expression', async () => {
@@ -92,6 +92,51 @@ describe('runtime locale fallback', () => {
 
 		expect(localizer.value.sfc.nApples({ n: 3 })).toBe('3 apples');
 		expect(localizer.value.sfc.nOranges({ n: 4 })).toBe('4 個のみかん');
+	});
+
+	it('exposes component-local locale and localizer dictionaries for static component access', async () => {
+		expect(() => createComponentLocale('/src/Messages.vue')).not.toThrow();
+		expect(() => createComponentLocalizer('/src/Messages.vue')).not.toThrow();
+
+		const internationalization = createInternationalization({
+			primaryLocale: 'ja-JP',
+			initialLocale: 'en-US',
+			loaders: {
+				'en-US': () =>
+					Promise.resolve({
+						modules: {
+							'/src/Messages.vue': {
+								title: 'Title',
+								count: '{n} items',
+							},
+						},
+					}),
+				'ja-JP': () =>
+					Promise.resolve({
+						modules: {
+							'/src/Messages.vue': {
+								title: 'タイトル',
+								fallback: 'フォールバック',
+							},
+						},
+					}),
+			},
+		});
+
+		await internationalization.ready;
+		await internationalization.loadLocale('ja-JP');
+		setActiveInternationalization(internationalization);
+
+		const locale = createComponentLocale('/src/Messages.vue') as Record<string, unknown>;
+		const localizer = createComponentLocalizer('/src/Messages.vue') as {
+			count(values: { n: number }): string;
+			fallback(): string;
+		};
+
+		expect(locale.title).toBe('Title');
+		expect(locale.fallback).toBe('フォールバック');
+		expect(localizer.count({ n: 3 })).toBe('3 items');
+		expect(localizer.fallback()).toBe('フォールバック');
 	});
 
 	it('calls message functions from localizer dictionaries', async () => {

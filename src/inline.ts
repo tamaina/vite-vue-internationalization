@@ -597,6 +597,10 @@ function parseLegacyInlineMarkerFallback(
 				return _match;
 			}
 
+			if (typeof resolved.value === 'function') {
+				return `((${resolved.value.toString()})(${valuesExpression}))`;
+			}
+
 			const template = typeof resolved.value === 'string' ? resolved.value : `$locale.${path}`;
 			return createInlineTemplateExpression(template, valuesExpression, resolvePayload(decodeInlineLocaleMarker(marker)), resolved.scope);
 		});
@@ -697,6 +701,13 @@ function getInlineLocalizerCallReplacement(
 
 	if (!resolved) {
 		return undefined;
+	}
+
+	if (typeof resolved.value === 'function') {
+		const valuesExpression = code.slice(values.start, values.end);
+		const plural = node.arguments.at(3);
+		const pluralExpression = plural ? `, ${code.slice(plural.start, plural.end)}` : '';
+		return `((${resolved.value.toString()})(${valuesExpression}${pluralExpression}))`;
 	}
 
 	const template = typeof resolved.value === 'string' ? resolved.value : `$locale.${path}`;

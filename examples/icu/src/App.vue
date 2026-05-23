@@ -21,11 +21,16 @@ defineInternationalization({
 import { computed, defineAsyncComponent, ref } from 'vue';
 import { currentLocale, primaryLocale } from 'virtual:vue-internationalization';
 import StaticPanel from './components/StaticPanel.vue';
+import Messages from './messages.vue';
 
 const AsyncPanel = defineAsyncComponent(() => import('./components/AsyncPanel.vue'));
 const n = ref(3);
 const scriptMessage = $locale.value.sfc.scriptMessage;
 const scriptApples = computed(() => $l.value.sfc.nApples({ n: n.value }));
+const staticPanelHeading = StaticPanel.$locale.heading;
+const staticPanelBody = computed(() => StaticPanel.$l.body());
+const localeOnlyTitle = Messages.$locale.title;
+const localeOnlyBody = computed(() => Messages.$l.body({ source: 'messages.vue' }));
 const previewUser = 'ICU';
 const gender = 'female';
 
@@ -79,6 +84,13 @@ function switchLocale(locale: string): void {
     <p>{{ $locale.sfc.noTranslation }}</p>
     <button type="button" :disabled="n <= 0" @click="n--">-1</button>
     <button type="button" @click="n++">+1</button>
+    <section :class="$style.preview">
+      <h2>{{ $locale.sfc.componentExportTitle }}</h2>
+      <p>{{ staticPanelHeading }}</p>
+      <p>{{ staticPanelBody }}</p>
+      <p>{{ localeOnlyTitle }}</p>
+      <p>{{ localeOnlyBody }}</p>
+    </section>
     <StaticPanel />
     <AsyncPanel />
     <button type="button" :disabled="currentLocale === 'ja-JP'" @click="switchLocale('ja-JP')">日本語</button>
@@ -125,6 +137,7 @@ title: ほげ
 nApples: "{n} 個のりんご"
 scriptMessage: script setup の中で参照した翻訳
 previewTitle: ICU MessageFormat preview
+componentExportTitle: component export locale access
 preview:
   named: "こんにちは {name}"
   argument: "{name} は {count} 個のりんごを見ています"
@@ -138,6 +151,7 @@ title: foo
 nApples: "{n} apples"
 scriptMessage: Translation referenced inside script setup
 previewTitle: ICU MessageFormat preview
+componentExportTitle: component export locale access
 preview:
   named: "Hello {name}"
   argument: "{name} is looking at {count} apples"

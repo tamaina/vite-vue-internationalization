@@ -1,5 +1,5 @@
 declare module 'virtual:vue-internationalization' {
-	import type { InternationalizationInstance, LocaleDateTimeFormatSource, LocaleDateTimeFormatter, LocaleLocalizerScope, LocaleNumberFormatSource, LocaleNumberFormatter, LocaleScope, RuntimeLocaleDictionary } from 'vue-internationalization/runtime';
+	import type { InternationalizationInstance, LocaleDateTimeFormatSource, LocaleDateTimeFormatter, LocaleLocalizerDictionary, LocaleLocalizerScope, LocaleNumberFormatSource, LocaleNumberFormatter, LocaleScope, RuntimeLocaleDictionary } from 'vue-internationalization/runtime';
 	import type { LocaleMessageSyntax } from 'vue-internationalization';
 	import type { ComputedRef } from 'vue';
 
@@ -23,6 +23,8 @@ declare module 'virtual:vue-internationalization' {
 		TModule extends RuntimeLocaleDictionary = RuntimeLocaleDictionary,
 	>(moduleUrl: string): Readonly<ComputedRef<LocaleScope<TGlobal, TModule>>>;
 	export function useLocalizer(moduleUrl: string): Readonly<ComputedRef<LocaleLocalizerScope>>;
+	export function createComponentLocale<TModule extends RuntimeLocaleDictionary = RuntimeLocaleDictionary>(moduleUrl: string): TModule;
+	export function createComponentLocalizer(moduleUrl: string): LocaleLocalizerDictionary;
 	export function useDateTimeFormat(): Readonly<ComputedRef<LocaleDateTimeFormatter>>;
 	export function useNumberFormat(): Readonly<ComputedRef<LocaleNumberFormatter>>;
 }

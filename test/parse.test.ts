@@ -36,6 +36,34 @@ describe('locale SFC parsing', () => {
 		expect(output).toContain('const $l = __useLocalizer(import.meta.url) as Readonly<import("vue").ComputedRef<{ env: import("vue-internationalization/runtime").LocaleLocalizerDictionary; sfc: { hoge: () => string; }; }>>;');
 		expect(output).not.toContain('<locale');
 		expect(output).toContain('const x = 1;');
+		expect(output).toContain('$locale: __createComponentLocale<');
+		expect(output).toContain('$l: __createComponentLocalizer(import.meta.url)');
+	});
+
+	it('attaches SFC locale accessors to the component default export', () => {
+		const input = [
+			'<script lang="ts">',
+			'export default {',
+			'  name: "MessagePanel",',
+			'};',
+			'</script>',
+			'<script setup lang="ts">',
+			'const x = 1;',
+			'</script>',
+			'<locale locale="ja-JP" lang="yaml">',
+			'title: ほげ',
+			'count: "{n} 個"',
+			'</locale>',
+		].join('\n');
+
+		const output = transformVueSfc(input, '/repo/src/MessagePanel.vue', {
+			primaryLocale: 'ja-JP',
+		});
+
+		expect(output).toContain('const __VUE_INTERNATIONALIZATION_COMPONENT__ = {');
+		expect(output).toContain('__VUE_INTERNATIONALIZATION_COMPONENT__.$locale = __createComponentLocale<{ title: string; count: string; }>(import.meta.url);');
+		expect(output).toContain('__VUE_INTERNATIONALIZATION_COMPONENT__.$l = __createComponentLocalizer(import.meta.url) as { title: () => string; count: (values: { n: import("vue-internationalization/runtime").LocaleTemplateValue; }) => string; };');
+		expect(output).toContain('export default __VUE_INTERNATIONALIZATION_COMPONENT__;');
 	});
 
 	it('injects primary locale dictionary types into TypeScript setup bindings', () => {

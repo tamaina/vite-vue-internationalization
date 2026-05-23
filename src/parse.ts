@@ -1,7 +1,7 @@
 import { parse as parseSfc } from '@vue/compiler-sfc';
 import ts from 'typescript';
 import YAML from 'yaml';
-import { createLocalizerRefType, createUseLocaleTypeParameters, type LocaleBindingTypes } from './localeTypes.js';
+import { createComponentLocaleType, createComponentLocalizerType, createLocalizerRefType, createUseLocaleTypeParameters, type LocaleBindingTypes } from './localeTypes.js';
 import { getScriptSetupOpenTag, injectScriptSetup } from './scriptSetup.js';
 import type { LocaleDictionary, LocaleMessageFunction, ParsedVueLocale, SfcLocaleBlock } from './types.js';
 import type { YAMLError } from 'yaml';
@@ -207,10 +207,12 @@ export function transformVueSfc(code: string, filename: string, types: LocaleBin
 		return undefined;
 	}
 
-	return injectLocaleBinding(stripLocaleBlocks(code, filename), {
+	const bindingTypes = {
 		...types,
 		module: getPrimaryLocaleDictionary(parsed.blocks, types.primaryLocale, parsed.scriptMessages),
-	});
+	};
+
+	return injectComponentLocaleOptions(injectLocaleBinding(stripLocaleBlocks(code, filename), bindingTypes), filename, bindingTypes);
 }
 
 export function normalizeModuleId(id: string): string {
@@ -258,6 +260,69 @@ function assertSafeLocaleArray(value: unknown[], sourceLabel: string, path: stri
 
 function isUnsafeDictionaryKey(key: string): boolean {
 	return key === '__proto__' || key === 'prototype' || key === 'constructor';
+}
+
+export function injectComponentLocaleOptions(
+	code: string,
+	filename: string,
+	types: LocaleBindingTypes,
+	options: {
+		importLine?: string;
+		localeExpression?: string;
+		localizerExpression?: string;
+	} = {},
+): string {
+	const result = parseSfc(code, { filename, pad: false });
+	const localeType = createComponentLocaleType(types);
+	const localizerType = createComponentLocalizerType(types);
+	const importLine = options.importLine ?? 'import { createComponentLocale as __createComponentLocale, createComponentLocalizer as __createComponentLocalizer } from "virtual:vue-internationalization";';
+	const localeExpression = options.localeExpression ?? `__createComponentLocale<${localeType}>(import.meta.url)`;
+	const localizerExpression = options.localizerExpression ?? `__createComponentLocalizer(import.meta.url) as ${localizerType}`;
+	const importSection = importLine.length > 0 ? `${importLine}\n\n` : '';
+	const optionLines = [
+		`$locale: ${localeExpression},`,
+		`$l: ${localizerExpression},`,
+	];
+
+	if (!result.descriptor.script) {
+		return `${code}\n<script lang="ts">\n${importSection}export default {\n${optionLines.map((line) => `\t${line}`).join('\n')}\n};\n</script>\n`;
+	}
+
+	const script = result.descriptor.script;
+	const content = script.content;
+	const sourceFile = ts.createSourceFile(filename, content, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+	const exportAssignment = sourceFile.statements.find(ts.isExportAssignment);
+	const insertAt = script.loc.start.offset;
+
+	if (!exportAssignment || exportAssignment.isExportEquals) {
+		const appended = [
+			content,
+			'',
+			importSection.trimEnd(),
+			'',
+			'export default {',
+			...optionLines.map((line) => `\t${line}`),
+			'};',
+			'',
+		].join('\n');
+
+		return `${code.slice(0, insertAt)}${appended}${code.slice(script.loc.end.offset)}`;
+	}
+
+	const expression = exportAssignment.expression;
+	const beforeExport = content.slice(0, exportAssignment.getStart(sourceFile));
+	const afterExport = content.slice(exportAssignment.end);
+	const componentVariable = '__VUE_INTERNATIONALIZATION_COMPONENT__';
+	const replacement = [
+		importLine,
+		`const ${componentVariable} = ${content.slice(expression.getStart(sourceFile), expression.end)};`,
+		`${componentVariable}.$locale = ${localeExpression};`,
+		`${componentVariable}.$l = ${localizerExpression};`,
+		`export default ${componentVariable};`,
+	].join('\n');
+	const nextContent = `${beforeExport}${replacement}${afterExport}`;
+
+	return `${code.slice(0, insertAt)}${nextContent}${code.slice(script.loc.end.offset)}`;
 }
 
 function mergeLocaleDictionaryInto(target: LocaleDictionary, source: LocaleDictionary): void {
@@ -456,7 +521,7 @@ function findCustomBlockRange(code: string, contentStart: number, contentEnd: nu
 	};
 }
 
-function getPrimaryLocaleDictionary(
+export function getPrimaryLocaleDictionary(
 	blocks: SfcLocaleBlock[],
 	primaryLocale: string | undefined,
 	scriptMessages: Partial<Record<string, LocaleDictionary>> = {},

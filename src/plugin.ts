@@ -5,6 +5,7 @@ import {
 	augmentViteManifestJson,
 	getInlineLocaleHtmlLoaders,
 	injectInlineLocaleBinding,
+	createInlineLocaleMarker,
 	inlineLocaleChunks,
 	inlineLocaleHtml,
 	replaceInlineLocalizerAccess,
@@ -16,6 +17,8 @@ import {
 } from './inline.js';
 import {
 	injectLocaleBinding,
+	injectComponentLocaleOptions,
+	getPrimaryLocaleDictionary,
 	mergeLocaleDictionaries,
 	parseLocaleDictionary,
 	parseVueLocales,
@@ -439,7 +442,7 @@ function generateRuntimeModule(primaryLocale: string, locales: string[], message
 		.join(',\n  ');
 
 	return [
-		'import { Internationalization, createInternationalization as __createInternationalization, defineInternationalization, setActiveInternationalization, useDateTimeFormat, useInternationalization, useLocale, useLocalizer, useNumberFormat } from "vue-internationalization/runtime";',
+		'import { Internationalization, createComponentLocale, createComponentLocalizer, createInternationalization as __createInternationalization, defineInternationalization, setActiveInternationalization, useDateTimeFormat, useInternationalization, useLocale, useLocalizer, useNumberFormat } from "vue-internationalization/runtime";',
 		`export const primaryLocale = ${JSON.stringify(primaryLocale)};`,
 		`export const locales = ${JSON.stringify(locales)};`,
 		`export const localeLoaders = {\n  ${loaderEntries}\n};`,
@@ -451,7 +454,7 @@ function generateRuntimeModule(primaryLocale: string, locales: string[], message
 		'  return primaryLocale;',
 		'}',
 		'export const currentLocale = resolveInitialLocale();',
-		'export { Internationalization, defineInternationalization, setActiveInternationalization, useDateTimeFormat, useInternationalization, useLocale, useLocalizer, useNumberFormat };',
+		'export { Internationalization, createComponentLocale, createComponentLocalizer, defineInternationalization, setActiveInternationalization, useDateTimeFormat, useInternationalization, useLocale, useLocalizer, useNumberFormat };',
 		'export function createInternationalization(options = {}) {',
 		'  return __createInternationalization({',
 		'    primaryLocale,',
@@ -472,11 +475,11 @@ function generateInlineRuntimeModule(primaryLocale: string, locales: string[], m
 		.join(',\n  ');
 
 	return [
-		'import { Internationalization, createInternationalization as __createInternationalization, defineInternationalization, setActiveInternationalization, useDateTimeFormat, useInternationalization, useLocale, useLocalizer, useNumberFormat } from "vue-internationalization/runtime";',
+		'import { Internationalization, createComponentLocale, createComponentLocalizer, createInternationalization as __createInternationalization, defineInternationalization, setActiveInternationalization, useDateTimeFormat, useInternationalization, useLocale, useLocalizer, useNumberFormat } from "vue-internationalization/runtime";',
 		`export const primaryLocale = ${JSON.stringify(primaryLocale)};`,
 		`export const locales = ${JSON.stringify(locales)};`,
 		`export const localeLoaders = {\n  ${loaderEntries}\n};`,
-		'export { Internationalization, defineInternationalization, setActiveInternationalization, useDateTimeFormat, useInternationalization, useLocale, useLocalizer, useNumberFormat };',
+		'export { Internationalization, createComponentLocale, createComponentLocalizer, defineInternationalization, setActiveInternationalization, useDateTimeFormat, useInternationalization, useLocale, useLocalizer, useNumberFormat };',
 		'export function resolveInitialLocale() {',
 		'  if (typeof window === "undefined") return primaryLocale;',
 		'  const locale = new URL(window.location.href).searchParams.get("locale");',
@@ -551,7 +554,17 @@ function transformVueSfcInline(code: string, filename: string, root: string): st
 	}
 
 	const moduleId = toRuntimeModuleId(filename, root);
-	return injectInlineLocaleBinding(rewriteInlineLocaleTemplateAccess(stripLocaleBlocks(code, filename), moduleId), moduleId);
+	const marker = createInlineLocaleMarker(moduleId);
+	const stripped = stripLocaleBlocks(code, filename);
+	const withSetupBinding = injectInlineLocaleBinding(rewriteInlineLocaleTemplateAccess(stripped, moduleId), moduleId);
+
+	return injectComponentLocaleOptions(withSetupBinding, filename, {
+		module: getPrimaryLocaleDictionary(parsed.blocks, undefined, parsed.scriptMessages),
+	}, {
+		importLine: '',
+		localeExpression: `__VUE_INTERNATIONALIZATION_INLINE_LOCALE__(${JSON.stringify(marker)}).sfc`,
+		localizerExpression: `__VUE_INTERNATIONALIZATION_INLINE_LOCALIZERS__(${JSON.stringify(marker)}).sfc`,
+	});
 }
 
 function rewriteWrittenHtml(outDir: string, manifest: InlineChunkManifest): void {

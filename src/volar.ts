@@ -3,6 +3,8 @@ import { dirname } from 'node:path';
 import { resolve } from 'node:path';
 import { allCodeFeatures } from '@vue/language-core';
 import {
+	createComponentLocaleType,
+	createComponentLocalizerType,
 	createLocaleConstRefType,
 	createLocaleConstScopeType,
 	createLocalizerRefType,
@@ -49,7 +51,7 @@ const plugin: VueLanguagePlugin<VueInternationalizationVolarPluginConfig> = ({ c
 			const moduleDictionary = getLocaleDictionary(cache, ir.content, fileName, ir.customBlocks, primaryLocale);
 			const globalDictionary = getGlobalDictionary(cache, config, primaryLocale, fileName);
 			const generatedTypes = getGeneratedTypes(cache, config, globalDictionary, moduleDictionary);
-			const { localeRefType, localeScopeType, localizerRefType, localizerScopeType } = generatedTypes;
+			const { localeRefType, localeScopeType, localizerRefType, localizerScopeType, componentLocaleType, componentLocalizerType } = generatedTypes;
 			const declaration = `declare const $locale: ${localeRefType};\ndeclare const $l: ${localizerRefType};\n`;
 			const setupExposure = '$locale: typeof $locale;\n$l: typeof $l;\n';
 
@@ -70,6 +72,11 @@ const plugin: VueLanguagePlugin<VueInternationalizationVolarPluginConfig> = ({ c
 				'const __VLS_ctx = {} as import(\'vue\').ComponentPublicInstance;',
 				`const __VLS_ctx = {} as import('vue').ComponentPublicInstance & { $locale: ${localeScopeType}; $l: ${localizerScopeType}; };`,
 			);
+			replaceFirst(
+				embeddedFile.content,
+				'export default {} as typeof __VLS_export;',
+				`export default {} as typeof __VLS_export & { $locale: ${componentLocaleType}; $l: ${componentLocalizerType}; };`,
+			);
 			applyTemplateTsDirectives(ir.content, embeddedFile.content);
 		},
 	};
@@ -82,6 +89,8 @@ type GeneratedTypes = {
 	localeScopeType: string;
 	localizerRefType: string;
 	localizerScopeType: string;
+	componentLocaleType: string;
+	componentLocalizerType: string;
 };
 
 type VolarCache = {
@@ -382,6 +391,13 @@ function getGeneratedTypes(
 				global: globalDictionary,
 				module: moduleDictionary,
 			}),
+		componentLocaleType: createComponentLocaleType({
+			module: moduleDictionary,
+		}),
+		componentLocalizerType: createComponentLocalizerType({
+			module: moduleDictionary,
+			messageSyntax: config.messageSyntax ?? 'vue',
+		}),
 	};
 
 	cache.generatedTypes.set(key, types);

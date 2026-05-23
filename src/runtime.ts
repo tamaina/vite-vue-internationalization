@@ -225,6 +225,39 @@ export function useLocalizer(moduleUrl: string): Readonly<ComputedRef<LocaleLoca
 	});
 }
 
+export function createComponentLocale<TModule extends RuntimeLocaleDictionary = RuntimeLocaleDictionary>(
+	moduleUrl: string,
+): TModule {
+	return new Proxy({}, {
+		get(_target, property) {
+			if (typeof property !== 'string') {
+				return undefined;
+			}
+
+			const internationalization = useInternationalization();
+			return Reflect.get(resolveLocale(internationalization, moduleUrl).sfc, property);
+		},
+	}) as TModule;
+}
+
+export function createComponentLocalizer(moduleUrl: string): LocaleLocalizerDictionary {
+	return new Proxy({}, {
+		get(_target, property) {
+			if (typeof property !== 'string') {
+				return undefined;
+			}
+
+			const internationalization = useInternationalization();
+			const locale = resolveLocale(internationalization, moduleUrl);
+			const rootDictionary = locale as RuntimeLocaleDictionary;
+			const state = getState(internationalization);
+			const localizer = createLocalizerDictionary(locale.sfc, ['sfc'], rootDictionary, state.locale, state.messageSyntax);
+
+			return Reflect.get(localizer, property);
+		},
+	}) as LocaleLocalizerDictionary;
+}
+
 export function useDateTimeFormat(): Readonly<ComputedRef<LocaleDateTimeFormatter>> {
 	const internationalization = useInternationalization();
 

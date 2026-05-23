@@ -118,6 +118,37 @@ app.mount('#app');
 `$locale` は翻訳値をそのまま返し、`$l` は同じ `global` / `module` scope の localizer 関数を返します。
 `$l` の文字列メッセージは vue-i18n の message format syntax に寄せた構文を解釈します。
 
+`<locale>` を持つ SFC の default export には、その SFC local messages だけを参照する `$locale` / `$l` も付与されます。任意の TypeScript から component に紐づく翻訳を参照できます。
+
+```ts
+import Messages from './Messages.vue';
+
+Messages.$locale.title;
+Messages.$l.count({ n: 3 });
+```
+
+`<template>` / `<script>` を持たない locale-only SFC も使用できます。翻訳を component から独立した typed message module として置きたい場合に使えます。
+
+```vue
+<!-- Messages.vue -->
+<locale locale="ja-JP" lang="yaml">
+title: タイトル
+count: "{n} 件"
+</locale>
+
+<locale locale="en-US" lang="yaml">
+title: Title
+count: "{n} items"
+</locale>
+```
+
+```ts
+import Messages from './Messages.vue';
+
+Messages.$locale.title;
+Messages.$l.count({ n: 3 });
+```
+
 ```vue
 <script setup lang="ts">
 const n = 3;
