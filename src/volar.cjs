@@ -1,5 +1,5 @@
 const { dirname, isAbsolute, resolve } = require('node:path');
-const { existsSync, readFileSync } = require('node:fs');
+const { existsSync, readFileSync, readdirSync, statSync } = require('node:fs');
 const YAML = require('yaml');
 
 const plugin = ({ config }) => {
@@ -174,13 +174,70 @@ function getGlobalDictionary(config, primaryLocale, fileName) {
 		return undefined;
 	}
 
-	if (typeof value !== 'string') {
+	if (typeof value !== 'string' && !Array.isArray(value)) {
 		return value;
 	}
 
-	const file = isAbsolute(value) ? value : resolve(findConfigDir(fileName), value);
-	const lang = file.endsWith('.json') ? 'json' : 'yaml';
-	return parseLocaleDictionary(readFileSync(file, 'utf8'), lang, file);
+	return loadLocaleEnvDictionary(findConfigDir(fileName), primaryLocale, value);
+}
+
+function loadLocaleEnvDictionary(root, locale, source) {
+	const files = expandLocaleEnvSources(root, source);
+	const merged = {};
+
+	for (const file of files) {
+		const lang = file.endsWith('.json') ? 'json' : 'yaml';
+		const dictionary = parseLocaleDictionary(readFileSync(file, 'utf8'), lang, file);
+		mergeLocaleEnvDictionary(merged, dictionary, [], `${locale}:${file}`);
+	}
+
+	return merged;
+}
+
+function mergeLocaleEnvDictionary(target, source, path, sourceLabel) {
+	for (const [key, value] of Object.entries(source)) {
+		const currentPath = [...path, key];
+		const current = target[key];
+
+		if (isPlainDictionary(current) && isPlainDictionary(value)) {
+			mergeLocaleEnvDictionary(current, value, currentPath, sourceLabel);
+			continue;
+		}
+
+		if (Object.prototype.hasOwnProperty.call(target, key)) {
+			console.warn(`[vue-internationalization] Duplicate env key "${currentPath.join('.')}" in ${sourceLabel}; overwriting previous value.`);
+		}
+
+		target[key] = value;
+	}
+}
+
+function expandLocaleEnvSources(root, source) {
+	const sources = Array.isArray(source) ? source : [source];
+	const files = new Set();
+
+	for (const entry of sources) {
+		for (const file of expandLocaleEnvSource(root, entry)) {
+			files.add(file);
+		}
+	}
+
+	return [...files].sort();
+}
+
+function expandLocaleEnvSource(root, source) {
+	const pattern = normalizePath(isAbsolute(source) ? source : resolve(root, source));
+
+	if (!hasGlob(pattern)) {
+		return [pattern];
+	}
+
+	const base = getGlobBase(pattern);
+	const files = findFiles(base)
+		.map((file) => normalizePath(file))
+		.filter((file) => matchGlob(pattern, file));
+
+	return files.sort();
 }
 
 function findConfigDir(fileName) {
@@ -195,6 +252,107 @@ function findConfigDir(fileName) {
 	}
 
 	return process.cwd();
+}
+
+function isPlainDictionary(value) {
+	return value != null && typeof value === 'object' && !Array.isArray(value);
+}
+
+function hasGlob(value) {
+	return /[*?]/u.test(value);
+}
+
+function normalizePath(value) {
+	return value.replace(/\\/g, '/');
+}
+
+function getGlobBase(pattern) {
+	const segments = pattern.split('/');
+	const globIndex = segments.findIndex((segment) => hasGlob(segment));
+	const baseSegments = globIndex < 0 ? segments : segments.slice(0, globIndex);
+	const base = baseSegments.join('/');
+
+	return base.length === 0 ? '/' : base;
+}
+
+function findFiles(dir) {
+	if (!existsSync(dir)) {
+		return [];
+	}
+
+	const stat = statSync(dir);
+
+	if (stat.isFile()) {
+		return [dir];
+	}
+
+	if (!stat.isDirectory()) {
+		return [];
+	}
+
+	const files = [];
+
+	for (const entry of readdirSync(dir)) {
+		const file = resolve(dir, entry);
+		const entryStat = statSync(file);
+
+		if (entryStat.isDirectory()) {
+			files.push(...findFiles(file));
+			continue;
+		}
+
+		if (entryStat.isFile()) {
+			files.push(file);
+		}
+	}
+
+	return files;
+}
+
+function matchGlob(pattern, file) {
+	return matchGlobSegments(pattern.split('/'), file.split('/'));
+}
+
+function matchGlobSegments(pattern, file) {
+	if (pattern.length === 0) {
+		return file.length === 0;
+	}
+
+	const [current, ...rest] = pattern;
+
+	if (current === '**') {
+		return matchGlobSegments(rest, file) || (file.length > 0 && matchGlobSegments(pattern, file.slice(1)));
+	}
+
+	if (file.length === 0) {
+		return false;
+	}
+
+	return matchGlobSegment(current ?? '', file[0] ?? '') && matchGlobSegments(rest, file.slice(1));
+}
+
+function matchGlobSegment(pattern, value) {
+	let regexp = '^';
+
+	for (const char of pattern) {
+		if (char === '*') {
+			regexp += '[^/]*';
+			continue;
+		}
+
+		if (char === '?') {
+			regexp += '[^/]';
+			continue;
+		}
+
+		regexp += escapeRegExp(char);
+	}
+
+	return new RegExp(`${regexp}$`, 'u').test(value);
+}
+
+function escapeRegExp(value) {
+	return value.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
 }
 
 function parseLocaleDictionary(content, lang, sourceLabel) {

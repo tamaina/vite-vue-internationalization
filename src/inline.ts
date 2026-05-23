@@ -266,7 +266,7 @@ function replaceInlineLocaleObjects(
 			module: mergeWithPrimary(modules[moduleId]?.[locale], modules[moduleId]?.[primaryLocale]),
 		};
 
-		return `{env:${createLocalizerObjectExpression(payload.global)},sfc:${createLocalizerObjectExpression(payload.module)}}`;
+		return createInlineRefAliasExpression(`{env:${createLocalizerObjectExpression(payload.global)},sfc:${createLocalizerObjectExpression(payload.module)}}`);
 	}).replaceAll(INLINE_CALL_RE, (_match, marker: string) => {
 		const moduleId = decodeInlineLocaleMarker(marker);
 		const payload = {
@@ -274,7 +274,7 @@ function replaceInlineLocaleObjects(
 			sfc: createFallbackObject(mergeWithPrimary(modules[moduleId]?.[locale], modules[moduleId]?.[primaryLocale]), 'sfc'),
 		};
 
-		return JSON.stringify(payload);
+		return createInlineRefAliasExpression(JSON.stringify(payload));
 	});
 }
 
@@ -419,6 +419,10 @@ function createLocalizerObjectExpression(dictionary: LocaleDictionary): string {
 	});
 
 	return `{${entries.join(',')}}`;
+}
+
+function createInlineRefAliasExpression(expression: string): string {
+	return `(() => { const __locale = ${expression}; __locale.value = __locale; return __locale; })()`;
 }
 
 function getPayloadScope(payload: InlineLocalePayload, scope: PublicLocaleScope): LocaleDictionary {

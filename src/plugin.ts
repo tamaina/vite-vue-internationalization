@@ -26,11 +26,13 @@ import type { LocaleDictionary } from './types.js';
 
 export type { LocaleDictionary };
 
+export type LocaleEnvSource = LocaleDictionary | string | string[];
 export type LocaleMessages = Partial<Record<string, LocaleDictionary>>;
+export type LocaleEnvSources = Partial<Record<string, LocaleEnvSource>>;
 
 export type VueInternationalizationOptions = {
 	primaryLocale: string;
-	global?: LocaleMessages | Record<string, string>;
+	global?: LocaleEnvSources;
 	buildStrategy?: 'virtual' | 'inline-chunks';
 };
 type ResolvedVueInternationalizationOptions = VueInternationalizationOptions;
@@ -90,10 +92,8 @@ export function vueInternationalization(options?: Partial<VueInternationalizatio
 		}
 
 		for (const [locale, value] of Object.entries(currentOptions.global)) {
-			if (typeof value === 'string') {
-				const file = isAbsolute(value) ? value : resolve(root, value);
-				const lang = file.endsWith('.json') ? 'json' : 'yaml';
-				globalMessages[locale] = parseLocaleDictionary(readFileSync(file, 'utf8'), lang, file);
+			if (typeof value === 'string' || Array.isArray(value)) {
+				globalMessages[locale] = loadLocaleEnvDictionary(root, locale, value);
 				continue;
 			}
 
@@ -220,6 +220,7 @@ export const internals = {
 	generateLocaleModule,
 	generateInlineRuntimeModule,
 	generateRuntimeModule,
+	loadLocaleEnvDictionary,
 	resolveOptions,
 	augmentViteManifestJson,
 	injectLocaleBinding,
@@ -301,17 +302,17 @@ function normalizeTsconfigPluginOptions(
 	return result;
 }
 
-function normalizeGlobalOption(value: unknown, sourceFile: string): LocaleMessages | Record<string, string> {
+function normalizeGlobalOption(value: unknown, sourceFile: string): LocaleEnvSources {
 	const global = getObject(value);
 
 	if (!global) {
 		throw new Error(`${sourceFile}: vue-internationalization global option must be an object.`);
 	}
 
-	const result: LocaleMessages | Record<string, string> = {};
+	const result: LocaleEnvSources = {};
 
 	for (const [locale, messages] of Object.entries(global)) {
-		if (typeof messages === 'string') {
+		if (typeof messages === 'string' || isStringArray(messages)) {
 			result[locale] = messages;
 			continue;
 		}
@@ -322,6 +323,70 @@ function normalizeGlobalOption(value: unknown, sourceFile: string): LocaleMessag
 	return result;
 }
 
+function loadLocaleEnvDictionary(root: string, locale: string, source: string | string[]): LocaleDictionary {
+	const files = expandLocaleEnvSources(root, source);
+	const merged: LocaleDictionary = {};
+
+	for (const file of files) {
+		const lang = file.endsWith('.json') ? 'json' : 'yaml';
+		const dictionary = parseLocaleDictionary(readFileSync(file, 'utf8'), lang, file);
+		mergeLocaleEnvDictionary(merged, dictionary, [], `${locale}:${file}`);
+	}
+
+	return merged;
+}
+
+function mergeLocaleEnvDictionary(
+	target: LocaleDictionary,
+	source: LocaleDictionary,
+	path: string[],
+	sourceLabel: string,
+): void {
+	for (const [key, value] of Object.entries(source)) {
+		const currentPath = [...path, key];
+		const current = target[key];
+
+		if (isPlainDictionary(current) && isPlainDictionary(value)) {
+			mergeLocaleEnvDictionary(current, value, currentPath, sourceLabel);
+			continue;
+		}
+
+		if (Object.prototype.hasOwnProperty.call(target, key)) {
+			console.warn(`[vue-internationalization] Duplicate env key "${currentPath.join('.')}" in ${sourceLabel}; overwriting previous value.`);
+		}
+
+		target[key] = value;
+	}
+}
+
+function expandLocaleEnvSources(root: string, source: string | string[]): string[] {
+	const sources = Array.isArray(source) ? source : [source];
+	const files = new Set<string>();
+
+	for (const entry of sources) {
+		for (const file of expandLocaleEnvSource(root, entry)) {
+			files.add(file);
+		}
+	}
+
+	return [...files].sort();
+}
+
+function expandLocaleEnvSource(root: string, source: string): string[] {
+	const pattern = normalizePath(isAbsolute(source) ? source : resolve(root, source));
+
+	if (!hasGlob(pattern)) {
+		return [pattern];
+	}
+
+	const base = getGlobBase(pattern);
+	const files = findFiles(base)
+		.map((file) => normalizePath(file))
+		.filter((file) => matchGlob(pattern, file));
+
+	return files.sort();
+}
+
 function normalizeLocaleDictionary(value: unknown, sourceLabel: string): LocaleDictionary {
 	const dictionary = getObject(value);
 
@@ -330,6 +395,111 @@ function normalizeLocaleDictionary(value: unknown, sourceLabel: string): LocaleD
 	}
 
 	return dictionary as LocaleDictionary;
+}
+
+function isStringArray(value: unknown): value is string[] {
+	return Array.isArray(value) && value.every((item) => typeof item === 'string');
+}
+
+function isPlainDictionary(value: unknown): value is LocaleDictionary {
+	return value != null && typeof value === 'object' && !Array.isArray(value);
+}
+
+function hasGlob(value: string): boolean {
+	return /[*?]/u.test(value);
+}
+
+function normalizePath(value: string): string {
+	return value.replace(/\\/g, '/');
+}
+
+function getGlobBase(pattern: string): string {
+	const segments = pattern.split('/');
+	const globIndex = segments.findIndex((segment) => hasGlob(segment));
+	const baseSegments = globIndex < 0 ? segments : segments.slice(0, globIndex);
+	const base = baseSegments.join('/');
+
+	return base.length === 0 ? '/' : base;
+}
+
+function findFiles(dir: string): string[] {
+	if (!existsSync(dir)) {
+		return [];
+	}
+
+	const stat = statSync(dir);
+
+	if (stat.isFile()) {
+		return [dir];
+	}
+
+	if (!stat.isDirectory()) {
+		return [];
+	}
+
+	const files: string[] = [];
+
+	for (const entry of readdirSync(dir)) {
+		const file = resolve(dir, entry);
+		const entryStat = statSync(file);
+
+		if (entryStat.isDirectory()) {
+			files.push(...findFiles(file));
+			continue;
+		}
+
+		if (entryStat.isFile()) {
+			files.push(file);
+		}
+	}
+
+	return files;
+}
+
+function matchGlob(pattern: string, file: string): boolean {
+	return matchGlobSegments(pattern.split('/'), file.split('/'));
+}
+
+function matchGlobSegments(pattern: string[], file: string[]): boolean {
+	if (pattern.length === 0) {
+		return file.length === 0;
+	}
+
+	const [current, ...rest] = pattern;
+
+	if (current === '**') {
+		return matchGlobSegments(rest, file) || (file.length > 0 && matchGlobSegments(pattern, file.slice(1)));
+	}
+
+	if (file.length === 0) {
+		return false;
+	}
+
+	return matchGlobSegment(current, file[0] as string) && matchGlobSegments(rest, file.slice(1));
+}
+
+function matchGlobSegment(pattern: string, value: string): boolean {
+	let regexp = '^';
+
+	for (const char of pattern) {
+		if (char === '*') {
+			regexp += '[^/]*';
+			continue;
+		}
+
+		if (char === '?') {
+			regexp += '[^/]';
+			continue;
+		}
+
+		regexp += escapeRegExp(char);
+	}
+
+	return new RegExp(`${regexp}$`, 'u').test(value);
+}
+
+function escapeRegExp(value: string): string {
+	return value.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
 }
 
 function parseJsonFile(file: string): unknown {

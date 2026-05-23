@@ -73,8 +73,11 @@ export default defineConfig({
         "primaryLocale": "ja-JP",
         "buildStrategy": "inline-chunks",
         "global": {
-          "ja-JP": "./src/locales/ja-JP.yaml",
-          "en-US": "./src/locales/en-US.yaml"
+          "ja-JP": "./src/locales/ja-JP/**/*.yaml",
+          "en-US": [
+            "./src/locales/en-US/base.yaml",
+            "./src/locales/en-US/features/**/*.yaml"
+          ]
         }
       }
     ]
@@ -83,6 +86,7 @@ export default defineConfig({
 ```
 
 `vueInternationalization()` に options を渡さない場合、Vite plugin は `tsconfig.json` の `vueCompilerOptions.plugins` から `vue-internationalization/volar` 設定を読みます。VS Code / Vue Language Tools も同じ設定を使うため、`primaryLocale` や `global` を二重管理する必要はありません。
+`global` の各 locale には object、ファイルパス、glob、またはパス配列を指定できます。複数ファイルに同じ key path がある場合は warning を出し、後から読み込まれたファイルの値で上書きします。
 
 ```ts
 // main.ts

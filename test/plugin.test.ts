@@ -1,7 +1,7 @@
-import { mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { internals } from '../src/plugin.js';
 
 describe('virtual module generation', () => {
@@ -72,6 +72,35 @@ describe('virtual module generation', () => {
 			buildStrategy: undefined,
 			global: undefined,
 		});
+	});
+
+	it('loads env dictionaries from globbed yaml files with duplicate warnings', () => {
+		const root = mkdtempSync(join(tmpdir(), 'vue-internationalization-'));
+		mkdirSync(join(root, 'src/locales/ja-JP'), { recursive: true });
+		writeFileSync(join(root, 'src/locales/ja-JP/base.yaml'), [
+			'fuga: base',
+			'nested:',
+			'  title: base title',
+		].join('\n'));
+		writeFileSync(join(root, 'src/locales/ja-JP/override.yaml'), [
+			'fuga: override',
+			'nested:',
+			'  body: override body',
+		].join('\n'));
+		const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+		try {
+			expect(internals.loadLocaleEnvDictionary(root, 'ja-JP', './src/locales/ja-JP/*.yaml')).toEqual({
+				fuga: 'override',
+				nested: {
+					title: 'base title',
+					body: 'override body',
+				},
+			});
+			expect(warn).toHaveBeenCalledWith(expect.stringContaining('Duplicate env key "fuga"'));
+		} finally {
+			warn.mockRestore();
+		}
 	});
 
 	it('generates dynamic locale loaders for chunk splitting', () => {
@@ -330,6 +359,7 @@ describe('virtual module generation', () => {
 		);
 
 		expect(manifest.entries).toHaveLength(1);
+		expect(bundle['assets/App.ja-JP.js'].code).toContain('__locale.value = __locale');
 		expect(bundle['assets/App.ja-JP.js'].code).toContain('nApples:(values = {}) => ((__values) =>');
 		expect(bundle['assets/App.ja-JP.js'].code).not.toContain('__VUE_INTERNATIONALIZATION_INLINE_LOCALIZERS__');
 	});
