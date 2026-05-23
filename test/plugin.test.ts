@@ -345,6 +345,40 @@ describe('virtual module generation', () => {
 		expect(replaced).toContain('const missing = "$locale.sfc.missing";');
 	});
 
+	it('preserves message functions in virtual and inline localizer output', () => {
+		const message = (values?: { name?: string }) => `Hello ${values?.name ?? 'there'}`;
+		const localeModule = internals.generateLocaleModule(
+			'en-US',
+			'en-US',
+			{},
+			{
+				'en-US': {
+					message,
+				},
+			},
+		);
+
+		expect(localeModule).toContain('"message":((values');
+
+		const marker = internals.injectInlineLocaleBinding('<script setup></script>', '/src/App.vue');
+		const binding = marker.match(/const \$l = (.*);/)?.[1];
+		const code = `const l = ${binding};const value = l.env.message({ name });`;
+		const replaced = internals.replaceInlineLocalizerAccess(
+			code,
+			'en-US',
+			'en-US',
+			{},
+			{
+				'en-US': {
+					message,
+				},
+			},
+		);
+
+		expect(replaced).toContain('const value = (((values');
+		expect(replaced).toContain(')({ name }));');
+	});
+
 	it('resolves linked messages in inline localizer calls', () => {
 		const marker = internals.injectInlineLocaleBinding('<script setup></script>', '/src/App.vue');
 		const binding = marker.match(/const \$l = (.*);/)?.[1];

@@ -44,6 +44,7 @@ export type {
 	LocaleLocalizerDictionary,
 	LocaleLocalizerScope,
 	LocaleLoader,
+	LocaleMessageFunction,
 	LocaleNumberFormatName,
 	LocaleNumberFormatOptions,
 	LocaleNumberFormatSource,

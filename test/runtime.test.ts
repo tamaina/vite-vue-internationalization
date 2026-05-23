@@ -94,6 +94,42 @@ describe('runtime locale fallback', () => {
 		expect(localizer.value.sfc.nOranges({ n: 4 })).toBe('4 個のみかん');
 	});
 
+	it('calls message functions from localizer dictionaries', async () => {
+		const internationalization = createInternationalization({
+			primaryLocale: 'en-US',
+			loaders: {
+				'en-US': () =>
+					Promise.resolve({
+						global: {
+							greeting: (values?: { name?: string }) => `Hello ${values?.name ?? 'there'}`,
+						},
+						modules: {
+							'/src/App.vue': {
+								apples: (values?: { count?: number }, plural?: number) => `${values?.count ?? plural ?? 0} apples`,
+							},
+						},
+					}),
+			},
+		});
+
+		await internationalization.ready;
+		setActiveInternationalization(internationalization);
+
+		const localizer = useLocalizer('/src/App.vue') as unknown as {
+			value: {
+				env: {
+					greeting: (values: { name: string }) => string;
+				};
+				sfc: {
+					apples: (values: { count: number }, plural?: number) => string;
+				};
+			};
+		};
+
+		expect(localizer.value.env.greeting({ name: 'Jane' })).toBe('Hello Jane');
+		expect(localizer.value.sfc.apples({ count: 3 }, 3)).toBe('3 apples');
+	});
+
 	it('keeps unresolved template parameters visible', () => {
 		expect(formatLocaleTemplate('Hello {name}', {})).toBe('Hello {name}');
 	});

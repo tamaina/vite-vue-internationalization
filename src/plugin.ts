@@ -494,10 +494,32 @@ function generateLocaleModule(locale: string, primaryLocale: string, modules: Mo
 
 	return [
 		`export const locale = ${JSON.stringify(locale)};`,
-		`export const global = ${JSON.stringify(mergeLocaleDictionaries(global[primaryLocale] ?? {}, global[locale] ?? {}))};`,
-		`export const modules = ${JSON.stringify(localeModules)};`,
+		`export const global = ${serializeLocaleValue(mergeLocaleDictionaries(global[primaryLocale] ?? {}, global[locale] ?? {}))};`,
+		`export const modules = ${serializeLocaleValue(localeModules)};`,
 		'export default { locale, global, modules };',
 	].join('\n');
+}
+
+function serializeLocaleValue(value: unknown): string {
+	if (typeof value === 'function') {
+		return `(${value.toString()})`;
+	}
+
+	if (Array.isArray(value)) {
+		return `[${value.map((item) => serializeLocaleValue(item)).join(',')}]`;
+	}
+
+	if (value != null && typeof value === 'object') {
+		return `{${Object.entries(value)
+			.map(([key, child]) => `${toObjectPropertyName(key)}:${serializeLocaleValue(child)}`)
+			.join(',')}}`;
+	}
+
+	return JSON.stringify(value);
+}
+
+function toObjectPropertyName(key: string): string {
+	return JSON.stringify(key);
 }
 
 function toRuntimeModuleId(filename: string, root: string): string {

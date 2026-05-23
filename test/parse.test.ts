@@ -117,6 +117,25 @@ describe('locale SFC parsing', () => {
 		expect(output).toContain('plural: (plural: number) => string;');
 	});
 
+	it('preserves message function types in injected localizer bindings', () => {
+		const input = [
+			'<script setup lang="ts">',
+			'</script>',
+			'<locale locale="ja-JP" lang="yaml">',
+			'title: ほげ',
+			'</locale>',
+		].join('\n');
+
+		const output = transformVueSfc(input, '/repo/src/App.vue', {
+			primaryLocale: 'ja-JP',
+			global: {
+				greeting: () => 'Hello',
+			},
+		});
+
+		expect(output).toContain('env: { greeting: import("vue-internationalization/runtime").LocaleMessageFunction; };');
+	});
+
 	it('does not inject TypeScript type parameters into JavaScript setup blocks', () => {
 		const input = [
 			'<script setup>',

@@ -53,6 +53,10 @@ export function toTypeLiteral(dictionary: LocaleDictionary): string {
 }
 
 function toType(value: LocaleValue): string {
+	if (typeof value === 'function') {
+		return 'import("vue-internationalization/runtime").LocaleMessageFunction';
+	}
+
 	if (typeof value === 'string') {
 		return 'string';
 	}
@@ -83,6 +87,10 @@ function toConstTypeLiteral(dictionary: LocaleDictionary): string {
 }
 
 function toConstType(value: LocaleValue): string {
+	if (typeof value === 'function') {
+		return 'import("vue-internationalization/runtime").LocaleMessageFunction';
+	}
+
 	if (typeof value === 'string') {
 		return JSON.stringify(value);
 	}
@@ -109,6 +117,10 @@ function toLocalizerType(value: LocaleValue): string {
 		return toLocalizerTypeLiteral(value);
 	}
 
+	if (typeof value === 'function') {
+		return 'import("vue-internationalization/runtime").LocaleMessageFunction';
+	}
+
 	return toLocaleTemplateFunctionType(value);
 }
 
@@ -125,6 +137,10 @@ function toLocalizerDocumentationTypeLiteral(dictionary: LocaleDictionary, path:
 function toLocalizerDocumentationType(value: LocaleValue, path: string[]): string {
 	if (value != null && typeof value === 'object' && !Array.isArray(value)) {
 		return toLocalizerDocumentationTypeLiteral(value, path);
+	}
+
+	if (typeof value === 'function') {
+		return 'import("vue-internationalization/runtime").LocaleMessageFunction';
 	}
 
 	return toLocaleTemplateFunctionType(value);
@@ -149,6 +165,10 @@ function toLocalizerExampleArguments(value: string): string {
 }
 
 function toLocaleTemplateFunctionType(value: LocaleValue): string {
+	if (typeof value === 'function') {
+		return 'import("vue-internationalization/runtime").LocaleMessageFunction';
+	}
+
 	const keys = typeof value === 'string' ? getLocaleMessageNamedKeys(value) : [];
 	const indexes = typeof value === 'string' ? getLocaleMessageListIndexes(value) : [];
 	const hasPlural = typeof value === 'string' && hasLocaleMessagePlural(value);

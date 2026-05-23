@@ -743,6 +743,13 @@ function getLocalizerBindingCallReplacement(
 	}
 
 	const value = getValueByPath(getPayloadScope(payload, normalized.scope), normalized.keys);
+	if (typeof value === 'function') {
+		const valuesExpression = code.slice(values.start, values.end);
+		const plural = node.arguments.at(1);
+		const pluralExpression = plural ? `, ${code.slice(plural.start, plural.end)}` : '';
+		return `((${value.toString()})(${valuesExpression}${pluralExpression}))`;
+	}
+
 	const template = typeof value === 'string' ? value : `$locale.${[normalized.scope, ...normalized.keys].join('.')}`;
 
 	return createInlineTemplateExpression(template, code.slice(values.start, values.end), payload, normalized.scope);
@@ -1023,7 +1030,9 @@ function createLocalizerObjectExpression(
 		const property = /^[$A-Z_a-z][$\w]*$/.test(key) ? key : JSON.stringify(key);
 		const expression = isDictionary(value)
 			? createLocalizerObjectExpression(value, payload, scope)
-			: `(values = {}) => ${createInlineTemplateExpression(typeof value === 'string' ? value : String(value), 'values', payload, scope)}`;
+			: typeof value === 'function'
+				? `(${value.toString()})`
+				: `(values = {}) => ${createInlineTemplateExpression(typeof value === 'string' ? value : String(value), 'values', payload, scope)}`;
 
 		return `${property}:${expression}`;
 	});

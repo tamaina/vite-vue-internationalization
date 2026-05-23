@@ -15,6 +15,9 @@ export type LocaleScope<
 export type LocaleTemplateValue = string | number | boolean | null | undefined;
 export type LocaleTemplateValues = Record<string, LocaleTemplateValue>;
 export type LocaleTemplateFunction = (values?: LocaleTemplateValues | LocaleTemplateValue[] | number, plural?: number) => string;
+export type LocaleMessageFunction<TValues = unknown> = {
+	bivarianceHack(values?: TValues, plural?: number): string;
+}['bivarianceHack'];
 export type InternationalizationScopeName = keyof LocaleScope;
 export type LocaleDateTimeValue = Date | number | string;
 export type LocaleNumberValue = number | bigint;
@@ -39,7 +42,7 @@ export type LocaleLocalizerScope = {
 	sfc: LocaleLocalizerDictionary;
 };
 export interface LocaleLocalizerDictionary {
-	[key: string]: LocaleTemplateFunction | LocaleLocalizerDictionary;
+	[key: string]: LocaleTemplateFunction | LocaleMessageFunction | LocaleLocalizerDictionary;
 }
 
 export type LocaleBundle = {
@@ -526,9 +529,14 @@ function createLocalizerDictionary(
 			}
 
 			return (values?: LocaleTemplateValues | LocaleTemplateValue[] | number, plural?: number) => {
-				const message = typeof value === 'string' ? value : `$locale.${nextPath.join('.')}`;
 				const normalizedValues = typeof values === 'number' ? { count: values, n: values } : values;
 				const normalizedPlural = typeof values === 'number' ? values : plural;
+
+				if (typeof value === 'function') {
+					return value(normalizedValues, normalizedPlural);
+				}
+
+				const message = typeof value === 'string' ? value : `$locale.${nextPath.join('.')}`;
 
 				return formatLocaleMessage(message, {
 					values: normalizedValues,

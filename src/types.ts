@@ -1,5 +1,8 @@
 export type LocaleCode = string;
-export type LocaleValue = string | number | boolean | null | LocaleDictionary | LocaleValue[];
+export type LocaleMessageFunction<TValues = unknown> = {
+	bivarianceHack(values?: TValues, plural?: number): string;
+}['bivarianceHack'];
+export type LocaleValue = string | number | boolean | null | LocaleMessageFunction | LocaleDictionary | LocaleValue[];
 export interface LocaleDictionary {
 	[key: string]: LocaleValue;
 }
