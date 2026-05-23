@@ -1,5 +1,7 @@
 import { computed, hasInjectionContext, inject, reactive } from 'vue';
+import { formatLocaleMessage } from './message.js';
 import type { App, ComputedRef, InjectionKey } from 'vue';
+import type { LocaleMessageValues } from './message.js';
 import type { LocaleDictionary } from './types.js';
 
 export type RuntimeLocaleDictionary = LocaleDictionary;
@@ -12,7 +14,7 @@ export type LocaleScope<
 };
 export type LocaleTemplateValue = string | number | boolean | null | undefined;
 export type LocaleTemplateValues = Record<string, LocaleTemplateValue>;
-export type LocaleTemplateFunction = (values?: LocaleTemplateValues) => string;
+export type LocaleTemplateFunction = (values?: LocaleTemplateValues | LocaleTemplateValue[] | number, plural?: number) => string;
 export type LocaleLocalizerScope = {
 	env: LocaleLocalizerDictionary;
 	sfc: LocaleLocalizerDictionary;
@@ -52,15 +54,10 @@ type InternationalizationState = {
 
 const INTERNATIONALIZATION_KEY: InjectionKey<InternationalizationInstance> = Symbol('vue-internationalization');
 const EMPTY_DICTIONARY: RuntimeLocaleDictionary = {};
-const TEMPLATE_CACHE_LIMIT = 500;
-const TEMPLATE_TOKEN_RE = /\{([A-Za-z_$][\w$]*)\}/g;
-const TEMPLATE_TOKEN_CACHE = new Map<string, TemplateToken[]>();
 const DICTIONARY_PROXY_CACHE = new WeakMap<RuntimeLocaleDictionary, WeakMap<RuntimeLocaleDictionary, Map<string, RuntimeLocaleDictionary>>>();
 const LOCALIZER_PROXY_CACHE = new WeakMap<RuntimeLocaleDictionary, Map<string, LocaleLocalizerDictionary>>();
 const STATES = new WeakMap<InternationalizationInstance, InternationalizationState>();
 let activeInternationalization: InternationalizationInstance | undefined;
-
-type TemplateToken = string | { key: string };
 
 export function createInternationalization(options: InternationalizationRuntimeOptions): InternationalizationInstance {
 	const state = reactive<InternationalizationState>({
@@ -145,20 +142,7 @@ export function useLocalizer(moduleUrl: string): Readonly<ComputedRef<LocaleLoca
 }
 
 export function formatLocaleTemplate(template: string, values: LocaleTemplateValues = {}): string {
-	const tokens = getTemplateTokens(template);
-
-	if (tokens.length === 1 && tokens[0] === template) {
-		return template;
-	}
-
-	return tokens.map((token) => {
-		if (typeof token === 'string') {
-			return token;
-		}
-
-		const value = values[token.key];
-		return value == null ? `{${token.key}}` : String(value);
-	}).join('');
+	return formatLocaleMessage(template, { values });
 }
 
 function resolveLocale(internationalization: InternationalizationInstance, moduleUrl: string) {
@@ -214,7 +198,11 @@ function createDictionaryProxy(
 	return proxy;
 }
 
-function createLocalizerDictionary(dictionary: RuntimeLocaleDictionary, path: string[]): LocaleLocalizerDictionary {
+function createLocalizerDictionary(
+	dictionary: RuntimeLocaleDictionary,
+	path: string[],
+	rootDictionary: RuntimeLocaleDictionary = dictionary,
+): LocaleLocalizerDictionary {
 	const pathKey = path.join('.');
 	const dictionaryCache = getOrCreateLocalizerCache(dictionary);
 	const cached = dictionaryCache.get(pathKey);
@@ -233,13 +221,20 @@ function createLocalizerDictionary(dictionary: RuntimeLocaleDictionary, path: st
 			const nextPath = [...path, property];
 
 			if (isDictionary(value)) {
-				return createLocalizerDictionary(value, nextPath);
+				return createLocalizerDictionary(value, nextPath, rootDictionary);
 			}
 
-			return (values?: LocaleTemplateValues) => formatLocaleTemplate(
-				typeof value === 'string' ? value : `$locale.${nextPath.join('.')}`,
-				values,
-			);
+			return (values?: LocaleTemplateValues | LocaleTemplateValue[] | number, plural?: number) => {
+				const message = typeof value === 'string' ? value : `$locale.${nextPath.join('.')}`;
+				const normalizedValues = typeof values === 'number' ? { count: values, n: values } : values;
+				const normalizedPlural = typeof values === 'number' ? values : plural;
+
+				return formatLocaleMessage(message, {
+					values: normalizedValues,
+					plural: normalizedPlural,
+					resolveLinked: (key) => resolveLinkedMessage(rootDictionary, key, normalizedValues, normalizedPlural),
+				});
+			};
 		},
 	}) as LocaleLocalizerDictionary;
 
@@ -289,56 +284,42 @@ function getOrCreateLocalizerCache(dictionary: RuntimeLocaleDictionary): Map<str
 	return cache;
 }
 
-function getTemplateTokens(template: string): TemplateToken[] {
-	const cached = TEMPLATE_TOKEN_CACHE.get(template);
-
-	if (cached) {
-		return cached;
-	}
-
-	const tokens = compileTemplate(template);
-
-	if (TEMPLATE_TOKEN_CACHE.size >= TEMPLATE_CACHE_LIMIT) {
-		const oldestKey = TEMPLATE_TOKEN_CACHE.keys().next().value;
-
-		if (oldestKey !== undefined) {
-			TEMPLATE_TOKEN_CACHE.delete(oldestKey);
-		}
-	}
-
-	TEMPLATE_TOKEN_CACHE.set(template, tokens);
-	return tokens;
-}
-
-function compileTemplate(template: string): TemplateToken[] {
-	const tokens: TemplateToken[] = [];
-	let cursor = 0;
-
-	for (const match of template.matchAll(TEMPLATE_TOKEN_RE)) {
-		const index = match.index;
-		const key = match[1];
-
-		if (!key) {
-			continue;
-		}
-
-		if (index > cursor) {
-			tokens.push(template.slice(cursor, index));
-		}
-
-		tokens.push({ key });
-		cursor = index + match[0].length;
-	}
-
-	if (cursor < template.length) {
-		tokens.push(template.slice(cursor));
-	}
-
-	return tokens.length === 0 ? [template] : tokens;
-}
-
 function getOwnValue(dictionary: RuntimeLocaleDictionary, key: string): unknown {
 	return Object.prototype.hasOwnProperty.call(dictionary, key) ? dictionary[key] : undefined;
+}
+
+function resolveLinkedMessage(
+	dictionary: RuntimeLocaleDictionary,
+	key: string,
+	values: LocaleMessageValues | undefined,
+	plural: number | undefined,
+	seen: Set<string> = new Set(),
+): string {
+	if (seen.has(key)) {
+		return `@:${key}`;
+	}
+
+	const value = getValueByPath(dictionary, key.split('.'));
+	if (typeof value !== 'string') {
+		return `@:${key}`;
+	}
+
+	seen.add(key);
+	return formatLocaleMessage(value, {
+		values,
+		plural,
+		resolveLinked: (linkedKey) => resolveLinkedMessage(dictionary, linkedKey, values, plural, seen),
+	});
+}
+
+function getValueByPath(dictionary: RuntimeLocaleDictionary, path: string[]): unknown {
+	return path.reduce<unknown>((current, key) => {
+		if (!isDictionary(current)) {
+			return undefined;
+		}
+
+		return Reflect.get(current, key);
+	}, dictionary);
 }
 
 function isDictionary(value: unknown): value is RuntimeLocaleDictionary {

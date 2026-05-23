@@ -59,6 +59,16 @@ export function validateLocaleDictionary(value: unknown, sourceLabel: string): L
 	return value as LocaleDictionary;
 }
 
+export function mergeLocaleDictionaries(...dictionaries: LocaleDictionary[]): LocaleDictionary {
+	const merged: LocaleDictionary = {};
+
+	for (const dictionary of dictionaries) {
+		mergeLocaleDictionaryInto(merged, dictionary);
+	}
+
+	return merged;
+}
+
 export function stripLocaleBlocks(code: string, filename: string): string {
 	const { blocks } = parseVueLocales(code, filename);
 
@@ -153,6 +163,35 @@ function isUnsafeDictionaryKey(key: string): boolean {
 	return key === '__proto__' || key === 'prototype' || key === 'constructor';
 }
 
+function mergeLocaleDictionaryInto(target: LocaleDictionary, source: LocaleDictionary): void {
+	for (const [key, value] of Object.entries(source)) {
+		const current = target[key];
+
+		if (isPlainDictionary(current) && isPlainDictionary(value)) {
+			mergeLocaleDictionaryInto(current, value);
+			continue;
+		}
+
+		target[key] = cloneLocaleValue(value);
+	}
+}
+
+function cloneLocaleValue(value: LocaleDictionary[string]): LocaleDictionary[string] {
+	if (Array.isArray(value)) {
+		return value.map((item) => cloneLocaleValue(item));
+	}
+
+	if (isPlainDictionary(value)) {
+		return mergeLocaleDictionaries(value);
+	}
+
+	return value;
+}
+
+function isPlainDictionary(value: unknown): value is LocaleDictionary {
+	return value != null && typeof value === 'object' && !Array.isArray(value);
+}
+
 function findCustomBlockRange(code: string, contentStart: number, contentEnd: number, filename: string) {
 	const start = code.lastIndexOf('<locale', contentStart);
 	const closeStart = code.indexOf('</locale>', contentEnd);
@@ -169,9 +208,12 @@ function findCustomBlockRange(code: string, contentStart: number, contentEnd: nu
 
 function getPrimaryLocaleDictionary(blocks: SfcLocaleBlock[], primaryLocale: string | undefined): LocaleDictionary {
 	const primaryBlock = primaryLocale ? blocks.find((block) => block.locale === primaryLocale) : undefined;
-	const block = primaryBlock ?? (blocks[0] as SfcLocaleBlock);
+	const locale = primaryBlock?.locale ?? (blocks[0] as SfcLocaleBlock).locale;
+	const dictionaries = blocks
+		.filter((block) => block.locale === locale)
+		.map((block) => parseLocaleDictionary(block.content, block.lang, `<locale locale="${block.locale}">`));
 
-	return parseLocaleDictionary(block.content, block.lang, `<locale locale="${block.locale}">`);
+	return mergeLocaleDictionaries(...dictionaries);
 }
 
 function isTypeScriptScript(scriptOpenTag: string): boolean {

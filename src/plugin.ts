@@ -16,6 +16,7 @@ import {
 } from './inline.js';
 import {
 	injectLocaleBinding,
+	mergeLocaleDictionaries,
 	parseLocaleDictionary,
 	parseVueLocales,
 	stripLocaleBlocks,
@@ -75,10 +76,10 @@ export function vueInternationalization(options?: Partial<VueInternationalizatio
 		const messages: LocaleMessages = {};
 
 		for (const block of parsed.blocks) {
-			messages[block.locale] = {
-				...(messages[block.locale] ?? {}),
-				...parseLocaleDictionary(block.content, block.lang, `${filename}<locale locale="${block.locale}">`),
-			};
+			messages[block.locale] = mergeLocaleDictionaries(
+				messages[block.locale] ?? {},
+				parseLocaleDictionary(block.content, block.lang, `${filename}<locale locale="${block.locale}">`),
+			);
 		}
 
 		modules[toRuntimeModuleId(filename, root)] = messages;
@@ -157,7 +158,7 @@ export function vueInternationalization(options?: Partial<VueInternationalizatio
 
 			if (id.startsWith(RESOLVED_LOCALE_PREFIX)) {
 				const locale = decodeURIComponent(id.slice(RESOLVED_LOCALE_PREFIX.length));
-				return generateLocaleModule(locale, modules, globalMessages);
+				return generateLocaleModule(locale, currentOptions.primaryLocale, modules, globalMessages);
 			}
 
 			return null;
@@ -476,18 +477,20 @@ function generateInlineRuntimeModule(primaryLocale: string, locales: string[]): 
 	].join('\n');
 }
 
-function generateLocaleModule(locale: string, modules: ModuleMessages, global: LocaleMessages): string {
+function generateLocaleModule(locale: string, primaryLocale: string, modules: ModuleMessages, global: LocaleMessages): string {
 	const localeModules: Record<string, LocaleDictionary> = {};
 
 	for (const [moduleId, messages] of Object.entries(modules)) {
-		if (messages?.[locale]) {
-			localeModules[moduleId] = messages[locale];
+		const module = mergeLocaleDictionaries(messages?.[primaryLocale] ?? {}, messages?.[locale] ?? {});
+
+		if (Object.keys(module).length > 0) {
+			localeModules[moduleId] = module;
 		}
 	}
 
 	return [
 		`export const locale = ${JSON.stringify(locale)};`,
-		`export const global = ${JSON.stringify(global[locale] ?? {})};`,
+		`export const global = ${JSON.stringify(mergeLocaleDictionaries(global[primaryLocale] ?? {}, global[locale] ?? {}))};`,
 		`export const modules = ${JSON.stringify(localeModules)};`,
 		'export default { locale, global, modules };',
 	].join('\n');
