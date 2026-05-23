@@ -11,13 +11,12 @@ import {
 	createLocalizerDocumentationScopeType,
 } from './localeTypes.js';
 import {
-	loadLocaleEnvDictionaryForDiagnostics,
+	loadLocaleEnvDictionaryWithDiagnostics,
 	type LocaleEnvSources,
 } from './localeEnv.js';
 import {
 	mergeLocaleDictionaries,
 	parseLocaleDictionaryForDiagnostics,
-	validateLocaleDictionary,
 	type LocaleDictionaryDiagnostic,
 } from './parse.js';
 import type { VueLanguagePlugin } from '@vue/language-core';
@@ -44,14 +43,17 @@ const plugin: VueLanguagePlugin<VueInternationalizationVolarPluginConfig> = ({ c
 
 			const primaryLocale = config.primaryLocale ?? getFirstLocale(ir.customBlocks);
 			const moduleDictionary = getLocaleDictionary(cache, ir.customBlocks, primaryLocale);
-			const globalDictionary = getGlobalDictionary(cache, config, primaryLocale, fileName);
-			const generatedTypes = getGeneratedTypes(cache, config, globalDictionary, moduleDictionary);
+			const globalResult = getGlobalDictionaryResult(cache, config, primaryLocale, fileName);
+			const generatedTypes = getGeneratedTypes(cache, config, globalResult.dictionary, moduleDictionary);
 			const { localeRefType, localeScopeType, localizerRefType, localizerScopeType } = generatedTypes;
 			const declaration = `declare const $locale: ${localeRefType};\ndeclare const $l: ${localizerRefType};\n`;
 			const setupExposure = '$locale: typeof $locale;\n$l: typeof $l;\n';
 
 			embeddedFile.content.unshift(declaration);
-			pushLocaleDiagnostics(embeddedFile.content, getLocaleDiagnostics(cache, ir.customBlocks));
+			pushLocaleDiagnostics(embeddedFile.content, [
+				...globalResult.diagnostics,
+				...getLocaleDiagnostics(cache, ir.customBlocks),
+			]);
 			insertAfter(
 				embeddedFile.content,
 				'type __VLS_SetupExposed = import(\'vue\').ShallowUnwrapRef<{\n',
@@ -82,7 +84,7 @@ type GeneratedTypes = {
 };
 
 type VolarCache = {
-	globalDictionaries: Map<string, LocaleDictionary | undefined>;
+	globalDictionaries: Map<string, GlobalDictionaryResult>;
 	moduleDictionaries: Map<string, LocaleDictionary>;
 	moduleDiagnostics: Map<string, LocaleBlockDiagnostic[]>;
 	generatedTypes: Map<string, GeneratedTypes>;
@@ -98,6 +100,11 @@ type LocaleCustomBlock = {
 
 type LocaleBlockDiagnostic = LocaleDictionaryDiagnostic & {
 	source: string;
+};
+
+type GlobalDictionaryResult = {
+	dictionary: LocaleDictionary | undefined;
+	diagnostics: LocaleBlockDiagnostic[];
 };
 
 function createVolarCache(): VolarCache {
@@ -482,22 +489,22 @@ function pushLocaleDiagnostics(content: Code[], diagnostics: LocaleBlockDiagnost
 	});
 }
 
-function getGlobalDictionary(
+function getGlobalDictionaryResult(
 	cache: VolarCache,
 	config: VueInternationalizationVolarPluginConfig,
 	primaryLocale: string | undefined,
 	fileName: string,
-): LocaleDictionary | undefined {
+): GlobalDictionaryResult {
 	const global = config.global;
 
 	if (!global || !primaryLocale) {
-		return undefined;
+		return createGlobalDictionaryResult(undefined);
 	}
 
 	const value = global[primaryLocale];
 
 	if (!value) {
-		return undefined;
+		return createGlobalDictionaryResult(undefined);
 	}
 
 	if (typeof value !== 'string' && !Array.isArray(value)) {
@@ -508,9 +515,14 @@ function getGlobalDictionary(
 			return cached;
 		}
 
-		const dictionary = validateLocaleDictionary(value, `global.${primaryLocale}`);
-		cache.globalDictionaries.set(key, dictionary);
-		return dictionary;
+		const result = parseLocaleDictionaryForDiagnostics(
+			JSON.stringify(value),
+			'json',
+			`global.${primaryLocale}`,
+		);
+		const globalResult = createGlobalDictionaryResult(result.dictionary, result.diagnostics, fileName);
+		cache.globalDictionaries.set(key, globalResult);
+		return globalResult;
 	}
 
 	const configDir = findConfigDir(fileName);
@@ -521,9 +533,26 @@ function getGlobalDictionary(
 		return cached;
 	}
 
-	const dictionary = loadLocaleEnvDictionaryForDiagnostics(configDir, primaryLocale, value);
-	cache.globalDictionaries.set(key, dictionary);
-	return dictionary;
+	const result = loadLocaleEnvDictionaryWithDiagnostics(configDir, primaryLocale, value);
+	const globalResult = createGlobalDictionaryResult(result.dictionary, result.diagnostics, fileName);
+	cache.globalDictionaries.set(key, globalResult);
+	return globalResult;
+}
+
+function createGlobalDictionaryResult(
+	dictionary: LocaleDictionary | undefined,
+	diagnostics: LocaleDictionaryDiagnostic[] = [],
+	source = '',
+): GlobalDictionaryResult {
+	return {
+		dictionary,
+		diagnostics: diagnostics.map((diagnostic) => ({
+			...diagnostic,
+			start: 0,
+			end: 1,
+			source,
+		})),
+	};
 }
 
 function findConfigDir(fileName: string): string {

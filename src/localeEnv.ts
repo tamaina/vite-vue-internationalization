@@ -1,10 +1,14 @@
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { isAbsolute, resolve } from 'node:path';
-import { parseLocaleDictionary, parseLocaleDictionaryForDiagnostics } from './parse.js';
+import { parseLocaleDictionary, parseLocaleDictionaryForDiagnostics, type LocaleDictionaryDiagnostic } from './parse.js';
 import type { LocaleDictionary } from './types.js';
 
 export type LocaleEnvSource = LocaleDictionary | string | string[];
 export type LocaleEnvSources = Partial<Record<string, LocaleEnvSource>>;
+export type LocaleEnvDictionaryDiagnosticsResult = {
+	dictionary: LocaleDictionary;
+	diagnostics: LocaleDictionaryDiagnostic[];
+};
 
 export function loadLocaleEnvDictionary(root: string, locale: string, source: string | string[]): LocaleDictionary {
 	const files = expandLocaleEnvSources(root, source);
@@ -20,23 +24,58 @@ export function loadLocaleEnvDictionary(root: string, locale: string, source: st
 }
 
 export function loadLocaleEnvDictionaryForDiagnostics(root: string, locale: string, source: string | string[]): LocaleDictionary {
+	return loadLocaleEnvDictionaryWithDiagnostics(root, locale, source).dictionary;
+}
+
+export function loadLocaleEnvDictionaryWithDiagnostics(
+	root: string,
+	locale: string,
+	source: string | string[],
+): LocaleEnvDictionaryDiagnosticsResult {
 	let files: string[];
 
 	try {
 		files = expandLocaleEnvSources(root, source);
-	} catch {
-		return {};
+	} catch (error) {
+		return {
+			dictionary: {},
+			diagnostics: [{
+				message: error instanceof Error ? error.message : String(error),
+				start: 0,
+				end: 1,
+			}],
+		};
 	}
 
 	const merged: LocaleDictionary = {};
+	const diagnostics: LocaleDictionaryDiagnostic[] = [];
 
 	for (const file of files) {
 		const lang = file.endsWith('.json') ? 'json' : 'yaml';
-		const dictionary = parseLocaleDictionaryForDiagnostics(readFileSync(file, 'utf8'), lang, file).dictionary;
+		let content: string;
+
+		try {
+			content = readFileSync(file, 'utf8');
+		} catch (error) {
+			diagnostics.push({
+				message: `Failed to read ${file}: ${error instanceof Error ? error.message : String(error)}`,
+				start: 0,
+				end: 1,
+			});
+			continue;
+		}
+
+		const result = parseLocaleDictionaryForDiagnostics(content, lang, file);
+		const dictionary = result.dictionary;
+
+		diagnostics.push(...result.diagnostics);
 		mergeLocaleEnvDictionaryForDiagnostics(merged, dictionary);
 	}
 
-	return merged;
+	return {
+		dictionary: merged,
+		diagnostics,
+	};
 }
 
 function mergeLocaleEnvDictionary(
