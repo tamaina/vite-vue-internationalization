@@ -271,6 +271,51 @@ describe('volar plugin', () => {
 		expect(scriptCode).toContain('{ title: "ok"; }');
 		expect(scriptCode).toContain('LocaleScope<{}, { title: "ok"; }>');
 	});
+
+	it('reports unresolved SFC linked message diagnostics', () => {
+		const vueCompilerOptions = getDefaultCompilerOptions();
+		vueCompilerOptions.plugins = [
+			withConfig(vueInternationalizationVolar, {
+				__moduleConfig: {
+					name: 'vue-internationalization/volar',
+					primaryLocale: 'ja-JP',
+				},
+			}),
+		];
+		const plugin = createVueLanguagePlugin(ts, {}, vueCompilerOptions, String);
+		const fileName = resolve('examples/motivation-1/src/LinkedLocale.vue');
+		const source = [
+			'<template>{{ $l.sfc.valid() }} {{ $l.sfc.missing() }}</template>',
+			'<script setup lang="ts">',
+			'const valid = $l.value.sfc.valid;',
+			'</script>',
+			'<locale locale="ja-JP" lang="yaml">',
+			'target: リンク先',
+			'valid: "@:target"',
+			'scoped: "@:sfc.target"',
+			'envLink: "@:env.globalTarget"',
+			'missing: "@:missing.target"',
+			'</locale>',
+		].join('\n');
+		const root = plugin.createVirtualCode?.(fileName, 'vue', ts.ScriptSnapshot.fromString(source), {} as never);
+
+		if (!root) {
+			throw new Error('Expected Vue virtual code to be created.');
+		}
+
+		const scriptCode = [...forEachEmbeddedCode(root)]
+			.find((code) => code.id === 'script_ts')
+			?.snapshot.getText(0, Number.MAX_SAFE_INTEGER);
+		const diagnostics = getSemanticDiagnosticMessages(scriptCode);
+
+		expect(diagnostics.some((message) =>
+			message.includes('@:missing.target') &&
+			message.includes('does not resolve in the SFC locale dictionary'),
+		)).toBe(true);
+		expect(diagnostics.some((message) => message.includes('@:target'))).toBe(false);
+		expect(diagnostics.some((message) => message.includes('@:sfc.target'))).toBe(false);
+		expect(diagnostics.some((message) => message.includes('@:env.globalTarget'))).toBe(false);
+	});
 });
 
 function withConfig(

@@ -86,6 +86,20 @@ export function hasLocaleMessagePlural(message: string): boolean {
 	return compileLocaleMessage(message).cases.length > 1;
 }
 
+export function getLocaleMessageLinkedKeys(message: string): string[] {
+	const keys: string[] = [];
+
+	for (const tokens of compileLocaleMessage(message).cases) {
+		for (const token of tokens) {
+			if (token.type === 'linked' && !keys.includes(token.key)) {
+				keys.push(token.key);
+			}
+		}
+	}
+
+	return keys;
+}
+
 function formatToken(token: LocaleMessageToken, context: LocaleMessageContext): string {
 	switch (token.type) {
 		case 'text':

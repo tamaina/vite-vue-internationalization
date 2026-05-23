@@ -10,6 +10,7 @@ import {
 	createLocalizerDocumentationRefType,
 	createLocalizerDocumentationScopeType,
 } from './localeTypes.js';
+import { getLocaleMessageLinkedKeys } from './message.js';
 import {
 	loadLocaleEnvDictionaryForDiagnostics,
 	type LocaleEnvSources,
@@ -50,7 +51,7 @@ const plugin: VueLanguagePlugin<VueInternationalizationVolarPluginConfig> = ({ c
 			const setupExposure = '$locale: typeof $locale;\n$l: typeof $l;\n';
 
 			embeddedFile.content.unshift(declaration);
-			pushLocaleDiagnostics(embeddedFile.content, getLocaleDiagnostics(cache, ir.customBlocks));
+			pushLocaleDiagnostics(embeddedFile.content, getLocaleDiagnostics(cache, ir.customBlocks, primaryLocale, moduleDictionary));
 			insertAfter(
 				embeddedFile.content,
 				'type __VLS_SetupExposed = import(\'vue\').ShallowUnwrapRef<{\n',
@@ -419,10 +420,16 @@ function getLocaleDictionary(
 	return dictionary;
 }
 
-function getLocaleDiagnostics(cache: VolarCache, customBlocks: readonly LocaleCustomBlock[]): LocaleBlockDiagnostic[] {
+function getLocaleDiagnostics(
+	cache: VolarCache,
+	customBlocks: readonly LocaleCustomBlock[],
+	primaryLocale: string | undefined,
+	moduleDictionary: LocaleDictionary,
+): LocaleBlockDiagnostic[] {
 	const localeBlocks = customBlocks.filter((block) => block.type === 'locale' && typeof block.attrs.locale === 'string');
 	const key = localeBlocks
 		.map((block) => [
+			String(primaryLocale ?? ''),
 			block.name,
 			String(block.attrs.locale),
 			block.lang ?? 'yaml',
@@ -447,9 +454,96 @@ function getLocaleDiagnostics(cache: VolarCache, customBlocks: readonly LocaleCu
 			source: block.name,
 		}));
 	});
+	const linkedDiagnostics = getLinkedMessageDiagnostics(localeBlocks, primaryLocale, moduleDictionary);
 
-	cache.moduleDiagnostics.set(key, diagnostics);
+	const allDiagnostics = [...diagnostics, ...linkedDiagnostics];
+	cache.moduleDiagnostics.set(key, allDiagnostics);
+	return allDiagnostics;
+}
+
+function getLinkedMessageDiagnostics(
+	localeBlocks: readonly LocaleCustomBlock[],
+	primaryLocale: string | undefined,
+	moduleDictionary: LocaleDictionary,
+): LocaleBlockDiagnostic[] {
+	if (!primaryLocale) {
+		return [];
+	}
+
+	return localeBlocks
+		.filter((block) => block.attrs.locale === primaryLocale)
+		.flatMap((block) => {
+			const result = parseLocaleDictionaryForDiagnostics(
+				block.content,
+				block.lang ?? 'yaml',
+				`<locale locale="${primaryLocale}">`,
+			);
+
+			return getDictionaryLinkedMessageDiagnostics(result.dictionary, moduleDictionary)
+				.map((message) => ({
+					message,
+					start: 0,
+					end: Math.max(1, block.content.length),
+					source: block.name,
+				}));
+		});
+}
+
+function getDictionaryLinkedMessageDiagnostics(
+	dictionary: LocaleDictionary,
+	rootDictionary: LocaleDictionary,
+	path: string[] = [],
+): string[] {
+	const diagnostics: string[] = [];
+
+	for (const [key, value] of Object.entries(dictionary)) {
+		const nextPath = [...path, key];
+
+		if (typeof value === 'string') {
+			for (const linkedKey of getLocaleMessageLinkedKeys(value)) {
+				const linkedPath = resolveSfcLinkedPath(linkedKey);
+
+				if (linkedPath && typeof getValueByPath(rootDictionary, linkedPath) !== 'string') {
+					diagnostics.push(`Linked message "@:${linkedKey}" in "${nextPath.join('.')}" does not resolve in the SFC locale dictionary.`);
+				}
+			}
+			continue;
+		}
+
+		if (isLocaleDictionary(value)) {
+			diagnostics.push(...getDictionaryLinkedMessageDiagnostics(value, rootDictionary, nextPath));
+		}
+	}
+
 	return diagnostics;
+}
+
+function resolveSfcLinkedPath(key: string): string[] | undefined {
+	const [scope, ...keys] = key.split('.');
+
+	if (scope === 'env') {
+		return undefined;
+	}
+
+	if (scope === 'sfc') {
+		return keys.length > 0 ? keys : undefined;
+	}
+
+	return key.split('.');
+}
+
+function getValueByPath(dictionary: LocaleDictionary, path: string[]): unknown {
+	return path.reduce<unknown>((current, key) => {
+		if (!isLocaleDictionary(current)) {
+			return undefined;
+		}
+
+		return current[key];
+	}, dictionary);
+}
+
+function isLocaleDictionary(value: unknown): value is LocaleDictionary {
+	return value != null && typeof value === 'object' && !Array.isArray(value);
 }
 
 function pushLocaleDiagnostics(content: Code[], diagnostics: LocaleBlockDiagnostic[]): void {
