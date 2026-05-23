@@ -46,8 +46,8 @@ importers:
         specifier: ^3.5.24
         version: 3.5.34(typescript@5.9.3)
       vue-internationalization:
-        specifier: file:../..
-        version: file:(vite@7.3.3(@types/node@24.12.4)(yaml@2.9.0))(vue@3.5.34(typescript@5.9.3))
+        specifier: workspace:*
+        version: link:../..
 
 packages:
 
@@ -648,12 +648,6 @@ packages:
       jsdom:
         optional: true
 
-  'vue-internationalization@file:':
-    resolution: {directory: '', type: directory}
-    peerDependencies:
-      vite: ^7.0.0
-      vue: ^3.5.0
-
   vue@3.5.34:
     resolution: {integrity: sha512-WdLBG9gm02OgJIG9axd5Hpx0TFLdzVgfG2evFFu8Rur5O/IoGc5cMjnjh3tPL6GnRGsYvUhBSKVPYVcxRKpMCA==}
     peerDependencies:
@@ -1131,13 +1125,6 @@ snapshots:
       '@types/node': 24.12.4
     transitivePeerDependencies:
       - msw
-
-  vue-internationalization@file:(vite@7.3.3(@types/node@24.12.4)(yaml@2.9.0))(vue@3.5.34(typescript@5.9.3)):
-    dependencies:
-      '@vue/compiler-sfc': 3.5.34
-      vite: 7.3.3(@types/node@24.12.4)(yaml@2.9.0)
-      vue: 3.5.34(typescript@5.9.3)
-      yaml: 2.9.0
 
   vue@3.5.34(typescript@5.9.3):
     dependencies:

@@ -16,6 +16,7 @@ export type I18nRuntimeOptions = {
   initialLocale?: string;
   fallbackLocale?: string;
   loaders: Record<string, LocaleLoader>;
+  onLocaleChange?: (locale: string) => void | Promise<void>;
 };
 
 export type I18nInstance = {
@@ -76,6 +77,7 @@ export function createI18n(options: I18nRuntimeOptions): I18nInstance {
     async setLocale(locale) {
       await this.loadLocale(locale);
       state.locale = locale;
+      await options.onLocaleChange?.(locale);
     },
     install(app) {
       app.provide(I18N_KEY, instance);

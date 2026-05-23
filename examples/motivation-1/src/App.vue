@@ -1,8 +1,17 @@
+<script setup lang="ts">
+import { defineAsyncComponent } from 'vue';
+import StaticPanel from './components/StaticPanel.vue';
+
+const AsyncPanel = defineAsyncComponent(() => import('./components/AsyncPanel.vue'));
+</script>
+
 <template>
   <main :class="$style.page">
     <h1>{{ $locale.module.title }}</h1>
     <p>{{ $locale.global.fuga }}</p>
     <p>{{ $locale.module.nApples }}</p>
+    <StaticPanel />
+    <AsyncPanel />
     <button type="button" @click="$setLocale('ja-JP')">日本語</button>
     <button type="button" @click="$setLocale('en-US')">English</button>
   </main>
