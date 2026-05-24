@@ -10,6 +10,7 @@ permissions:
 
 jobs:
   publish:
+    environment: npm-publish
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -65,9 +66,7 @@ jobs:
 
       - name: Publish
         if: steps.npm.outputs.exists != 'true'
-        run: npm publish --tag "${{ steps.npm_tag.outputs.tag }}" --provenance
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm publish --tag "${{ steps.npm_tag.outputs.tag }}"
 
       - name: Skip existing version
         if: steps.npm.outputs.exists == 'true'
