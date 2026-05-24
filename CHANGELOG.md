@@ -2,7 +2,8 @@
 
 ### Changes
 
--
+- feat: Add `sfcTransform: "all"` to inject `$locale` and `$l` into every Vue SFC for global dictionary access without local locale sources.
+- fix: Include `README.md` in the published package files.
 
 
 ## 0.4.1
