@@ -196,7 +196,7 @@ export function vueInternationalization(options?: Partial<VueInternationalizatio
 			const currentOptions = getResolvedOptions(resolvedOptions);
 			const transformed =
 				command === 'build' && currentOptions.buildStrategy === 'inline-chunks'
-					? transformVueSfcInline(code, id, root)
+					? transformVueSfcInline(code, id, root, currentOptions.primaryLocale)
 					: transformVueSfc(code, id, {
 						primaryLocale: currentOptions.primaryLocale,
 						global: globalMessages[currentOptions.primaryLocale],
@@ -264,6 +264,7 @@ export const internals = {
 	replaceInlineLocaleTextAccess,
 	rewriteInlineLocaleTemplateAccess,
 	stripLocaleBlocks,
+	transformVueSfcInline,
 };
 
 function resolveOptions(root: string, options: Partial<VueInternationalizationOptions> | undefined): ResolvedVueInternationalizationOptions {
@@ -560,10 +561,10 @@ function toRuntimeModuleId(filename: string, root: string): string {
 	return `/${relativePath}`;
 }
 
-function transformVueSfcInline(code: string, filename: string, root: string): string | undefined {
+function transformVueSfcInline(code: string, filename: string, root: string, primaryLocale?: string): string | undefined {
 	const parsed = parseVueLocales(code, filename);
 
-	if (parsed.blocks.length === 0) {
+	if (parsed.blocks.length === 0 && Object.keys(parsed.scriptMessages).length === 0) {
 		return undefined;
 	}
 
@@ -573,7 +574,7 @@ function transformVueSfcInline(code: string, filename: string, root: string): st
 	const withSetupBinding = injectInlineLocaleBinding(rewriteInlineLocaleTemplateAccess(stripped, moduleId), moduleId);
 
 	return injectComponentLocaleOptions(withSetupBinding, filename, {
-		module: getPrimaryLocaleDictionary(parsed.blocks, undefined, parsed.scriptMessages),
+		module: getPrimaryLocaleDictionary(parsed.blocks, primaryLocale, parsed.scriptMessages),
 	}, {
 		importLine: '',
 		localeExpression: `__VUE_INTERNATIONALIZATION_INLINE_LOCALE__(${JSON.stringify(marker)}).sfc`,

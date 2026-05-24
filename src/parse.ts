@@ -536,10 +536,13 @@ export function getPrimaryLocaleDictionary(
 	primaryLocale: string | undefined,
 	scriptMessages: Partial<Record<string, LocaleDictionary>> = {},
 ): LocaleDictionary {
-	const primaryBlock = primaryLocale ? blocks.find((block) => block.locale === primaryLocale) : undefined;
-	const scriptLocale = primaryLocale && scriptMessages[primaryLocale] ? primaryLocale : Object.keys(scriptMessages)[0];
+	const hasPrimaryLocale = primaryLocale != null && (
+		blocks.some((block) => block.locale === primaryLocale) ||
+		scriptMessages[primaryLocale] != null
+	);
 	const blockLocale = blocks.length > 0 ? blocks[0].locale : undefined;
-	const locale = primaryBlock?.locale ?? blockLocale ?? scriptLocale;
+	const scriptLocale = Object.keys(scriptMessages)[0];
+	const locale = hasPrimaryLocale ? primaryLocale : blockLocale ?? scriptLocale;
 
 	if (!locale) {
 		return {};

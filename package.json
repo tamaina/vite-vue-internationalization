@@ -3,7 +3,6 @@
   "version": "0.0.0",
   "description": "A Vite plugin for typed Vue SFC translations with SFC custom blocks and inline locale chunks",
   "type": "module",
-  "private": true,
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -32,7 +31,8 @@
     "dist"
   ],
   "scripts": {
-    "build": "tsc -p tsconfig.build.json && cp src/virtual.d.ts dist/virtual.d.ts && tsc -p tsconfig.volar-cjs.json && node scripts/build-volar-cjs.mjs",
+    "clean": "node -e \"const fs=require('node:fs'); fs.rmSync('dist',{recursive:true,force:true}); fs.rmSync('.volar-cjs-build',{recursive:true,force:true});\"",
+    "build": "pnpm clean && tsc -p tsconfig.build.json && cp src/virtual.d.ts dist/virtual.d.ts && tsc -p tsconfig.volar-cjs.json && node scripts/build-volar-cjs.mjs",
     "docs:api": "typedoc && node scripts/build-api-docs.mjs",
     "docs:build": "pnpm docs:prepare && pnpm docs:api && vitepress build docs",
     "docs:dev": "pnpm docs:prepare && pnpm docs:api && vitepress dev docs",

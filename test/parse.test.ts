@@ -242,6 +242,29 @@ describe('locale SFC parsing', () => {
 		expect(output).toContain('sfc: { title: () => string; greeting: import("vite-vue-internationalization/runtime").LocaleMessageFunction; };');
 	});
 
+	it('uses primary locale script messages for injected types when locale blocks start with another locale', () => {
+		const input = [
+			'<script setup lang="ts">',
+			'import { defineInternationalization } from "vite-vue-internationalization";',
+			'defineInternationalization({',
+			'  "ja-JP": {',
+			'    title: "ほげ",',
+			'  },',
+			'});',
+			'</script>',
+			'<locale locale="en-US" lang="yaml">',
+			'title: Title',
+			'</locale>',
+		].join('\n');
+
+		const output = transformVueSfc(input, '/repo/src/App.vue', {
+			primaryLocale: 'ja-JP',
+		});
+
+		expect(output).toContain('const $locale = __useLocale<{}, { title: string; }>');
+		expect(output).toContain('sfc: { title: () => string; };');
+	});
+
 	it('does not inject TypeScript type parameters into JavaScript setup blocks', () => {
 		const input = [
 			'<script setup>',

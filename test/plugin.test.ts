@@ -254,6 +254,24 @@ describe('virtual module generation', () => {
 		expect(bundle['assets/App-abc.en-US.js'].code).toContain('"title":"foo"');
 	});
 
+	it('injects inline bindings for script-defined locale messages without locale blocks', () => {
+		const output = internals.transformVueSfcInline([
+			'<template>{{ $locale.sfc.title }}</template>',
+			'<script setup lang="ts">',
+			'import { defineInternationalization } from "vite-vue-internationalization";',
+			'defineInternationalization({',
+			'  "ja-JP": { title: "ほげ" },',
+			'  "en-US": { title: "Title" },',
+			'});',
+			'</script>',
+		].join('\n'), '/repo/src/App.vue', '/repo', 'ja-JP');
+
+		expect(output).toContain('__VUE_INTERNATIONALIZATION_INLINE_LOCALE__');
+		expect(output).toContain('__VUE_INTERNATIONALIZATION_INLINE_TEXT__');
+		expect(output).toContain('$locale: __VUE_INTERNATIONALIZATION_INLINE_LOCALE__');
+		expect(output).toContain('$l: __VUE_INTERNATIONALIZATION_INLINE_LOCALIZERS__');
+	});
+
 	it('replaces script member access from inline locale bindings', () => {
 		const marker = internals.injectInlineLocaleBinding('<script setup></script>', '/src/App.vue');
 		const binding = marker.match(/const \$locale = (.*);/)?.[1];
