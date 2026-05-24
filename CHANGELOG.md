@@ -2,7 +2,7 @@
 
 ### Changes
 
--
+- fix: fix repository url for npm publish
 
 
 ## 0.4.0
