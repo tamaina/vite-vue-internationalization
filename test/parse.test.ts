@@ -64,6 +64,25 @@ describe('locale SFC parsing', () => {
 		expect(output).toContain('$l: __createComponentLocalizer(import.meta.url)');
 	});
 
+	it('preserves script setup generic attributes when injecting bindings', () => {
+		const input = [
+			'<script lang="ts" setup generic="T extends IPaginator<Misskey.entities.Note>">',
+			'import * as Misskey from "misskey-js";',
+			'import type { IPaginator } from "./paginator";',
+			'</script>',
+			'<template>{{ $locale.env.title }}</template>',
+		].join('\n');
+
+		const output = transformVueSfc(input, '/repo/src/App.vue', {
+			transformAll: true,
+		});
+
+		expect(output).toContain('<script lang="ts" setup generic="T extends IPaginator<Misskey.entities.Note>">');
+		expect(output).toContain('const $locale = __useLocale<');
+		expect(output).not.toContain('Note>\nimport { useLocale');
+		expect(() => compileScript(parseSfc(output ?? '', { filename: 'App.vue' }).descriptor, { id: 'generic' })).not.toThrow();
+	});
+
 	it('attaches SFC locale accessors to the component default export', () => {
 		const input = [
 			'<script lang="ts">',

@@ -2,7 +2,7 @@
 
 ### Changes
 
--
+- fix: Preserve Vue `<script setup generic="...">` attributes when injecting setup bindings.
 
 
 ## 0.6.0
