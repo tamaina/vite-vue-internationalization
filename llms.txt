@@ -1,0 +1,106 @@
+# vite-vue-internationalization
+
+> Vite plugin for typed Vue SFC translations using `<locale>` custom blocks, script-defined messages, Volar type injection, and optional locale-specific inline chunks.
+
+This file is a compact guide for AI coding assistants working with projects that use `vite-vue-internationalization`.
+
+## Package Entry Points
+
+- `vite-vue-internationalization`: Vite plugin, message helpers, and runtime exports.
+- `vite-vue-internationalization/runtime`: runtime-only APIs such as `createInternationalization`, `useLocale`, `useLocalizer`, `createComponentLocale`, and `createComponentLocalizer`.
+- `vite-vue-internationalization/virtual`: TypeScript declarations for the generated virtual module.
+- `vite-vue-internationalization/volar`: Vue Language Tools / Volar plugin.
+- `virtual:vite-vue-internationalization`: Vite-generated app runtime module. Import this from app code, not from this package source.
+
+## Correct `$locale` and `$l` Access
+
+In Vue templates, use unwrapped values:
+
+```vue
+<template>
+  <p>{{ $locale.env.appName }}</p>
+  <p>{{ $locale.sfc.title }}</p>
+  <p>{{ $l.sfc.count({ n }) }}</p>
+</template>
+```
+
+In `<script setup>`, the injected bindings are computed refs:
+
+```ts
+const appName = $locale.value.env.appName;
+const title = $locale.value.sfc.title;
+const countText = $l.value.sfc.count({ n: 3 });
+```
+
+Do not blindly replace all `$locale.env.foo` occurrences with one shape. Template code and `<script setup>` code require different access forms.
+
+## Transformation Scope
+
+The Vite plugin transforms Vue SFC files (`.vue`) that contain `<locale>` blocks or top-level `defineInternationalization()` calls.
+
+Plain `.ts` modules are not SFC transform targets. Do not assume `$locale` or `$l` is available in ordinary TypeScript modules. For non-SFC code, pass translated values in from Vue code or use an installed runtime instance through the public runtime APIs where appropriate.
+
+Do not add empty `defineInternationalization({ 'ja-JP': {} })` calls to every SFC just to force VVI transformation. That is a workaround, not intended usage. It can inject unnecessary bindings and component options, broaden `inline-chunks` localization, duplicate more chunks than needed, and obscure which components actually own messages.
+
+If an app needs global dictionary access in many SFCs that do not own local messages, prefer an explicit package feature or configuration option over injecting empty dictionaries into user components.
+
+## Message Sources
+
+SFC-local messages can be defined in `<locale>` blocks:
+
+```vue
+<locale locale="ja-JP" lang="yaml">
+title: タイトル
+count: "{n} 件"
+</locale>
+```
+
+Script-defined messages can be declared with `defineInternationalization()` at the top level of a normal `<script>` or `<script setup>` block:
+
+```ts
+import { defineInternationalization } from 'vite-vue-internationalization';
+
+defineInternationalization({
+  'ja-JP': {
+    greeting: (values?: { name?: string }) => `こんにちは ${values?.name ?? '名無し'}`,
+  },
+});
+```
+
+When message functions are extracted or emitted into inline chunks, their source is serialized. Keep those functions self-contained and avoid closures over local variables.
+
+## Build Strategies
+
+- `virtual`: default strategy. Locale payloads are loaded through virtual modules and dynamic imports.
+- `inline-chunks`: build-only strategy. Localizable chunks are duplicated per locale and static `$locale` / `$l` access is replaced with locale-specific output where possible.
+
+In `inline-chunks`, the plugin still only starts from localizable Vue SFC modules. Ordinary `.ts` files are not rewritten as localization modules.
+
+## Configuration
+
+Configure the same plugin options in Vite and Vue Language Tools via `tsconfig.json`:
+
+```json
+{
+  "vueCompilerOptions": {
+    "plugins": [
+      {
+        "name": "vite-vue-internationalization/volar",
+        "primaryLocale": "ja-JP",
+        "buildStrategy": "virtual",
+        "messageSyntax": "vue"
+      }
+    ]
+  }
+}
+```
+
+`primaryLocale` is required, either directly in `vueInternationalization({ primaryLocale })` or through the matching `vueCompilerOptions.plugins` entry.
+
+## Further Reading
+
+- `README.md`: overview and minimal setup.
+- `docs/en/getting-started.md`: application setup.
+- `docs/en/messages.md`: `<locale>` blocks, global dictionaries, locale-only SFCs, and script-defined messages.
+- `docs/en/build-strategy.md`: `virtual` vs `inline-chunks`.
+- `docs/en/message-syntax.md`: placeholders, pluralization, linked messages, and ICU mode.

@@ -29,7 +29,10 @@
     }
   },
   "files": [
-    "dist"
+    "dist",
+    "docs/api.md",
+    "docs/en/**/*.md",
+    "llms.txt"
   ],
   "publishConfig": {
     "access": "public"
