@@ -1,4 +1,7 @@
+import { existsSync, readFileSync } from 'node:fs';
+import { dirname, isAbsolute, relative, resolve } from 'node:path';
 import { parse } from 'acorn';
+import { parse as parseSfc } from '@vue/compiler-sfc';
 import { parse as parseIcuMessage, TYPE } from '@formatjs/icu-messageformat-parser';
 import { walk } from 'estree-walker';
 import MagicString from 'magic-string';
@@ -104,6 +107,7 @@ const INLINE_LOCALIZER_RE =
 	/(?:\b[A-Za-z_$][\w$]*\.)?__VUE_INTERNATIONALIZATION_INLINE_LOCALIZER__\((?:"|&quot;)(__VUE_INTERNATIONALIZATION_INLINE__:[A-Za-z0-9+/=]+)(?:"|&quot;),(?:"|&quot;)((?:env|sfc)(?:\.[A-Za-z_$][\w$]*)+)(?:"|&quot;),(\{[^)]*\})\)/g;
 const LOCALE_ACCESS_RE = /\$locale(?:\.value)?\.(env|sfc)((?:\.[A-Za-z_$][\w$]*)+)/g;
 const LOCALIZER_ACCESS_PREFIX_RE = /\$l(?:\.value)?\.(env|sfc)((?:\.[A-Za-z_$][\w$]*)+)\(/g;
+const VUE_DEFAULT_IMPORT_RE = /\bimport\s+([A-Za-z_$][\w$]*)\s+from\s+(["'])([^"']+\.vue(?:\?[^"']*)?)\2/g;
 
 export function createInlineLocaleMarker(moduleId: string): string {
 	return `${INLINE_MARKER_PREFIX}${Buffer.from(moduleId, 'utf8').toString('base64')}`;
@@ -128,6 +132,19 @@ export function rewriteInlineLocaleTemplateAccess(code: string, moduleId: string
 			.replace(LOCALE_ACCESS_RE, (_match, scope: PublicLocaleScope, pathExpression: string) =>
 				`__VUE_INTERNATIONALIZATION_INLINE_TEXT__(${createTemplateStringArgument(marker)},${createTemplateStringArgument(`${scope}${pathExpression}`)})`,
 			),
+	);
+}
+
+export function rewriteInlineComponentLocaleAccess(code: string, filename: string, root: string): string {
+	const imports = collectVueDefaultImports(code, filename, root);
+
+	if (imports.size === 0) {
+		return code;
+	}
+
+	return rewriteScriptComponentLocaleAccess(
+		rewriteTemplateComponentLocaleAccess(code, imports),
+		imports,
 	);
 }
 
@@ -157,6 +174,138 @@ function rewriteTemplateLocalizerAccess(template: string, marker: string): strin
 	}
 
 	return cursor === 0 ? template : next + template.slice(cursor);
+}
+
+function rewriteScriptComponentLocaleAccess(code: string, imports: Map<string, string>): string {
+	let next = '';
+	let cursor = 0;
+
+	for (const match of code.matchAll(/<template\b[^>]*>[\s\S]*?<\/template>/g)) {
+		const start = match.index;
+		const template = match[0];
+
+		next += rewriteComponentLocaleAccess(code.slice(cursor, start), imports, false);
+		next += template;
+		cursor = start + template.length;
+	}
+
+	return next + rewriteComponentLocaleAccess(code.slice(cursor), imports, false);
+}
+
+function rewriteTemplateComponentLocaleAccess(code: string, imports: Map<string, string>): string {
+	return code.replace(/<template\b[^>]*>[\s\S]*?<\/template>/g, (template) =>
+		rewriteComponentLocaleAccess(template, imports, true),
+	);
+}
+
+function rewriteComponentLocaleAccess(code: string, imports: Map<string, string>, htmlEscaped: boolean): string {
+	let next = code;
+
+	for (const [name, moduleId] of imports) {
+		const marker = createInlineLocaleMarker(moduleId);
+		next = rewriteComponentLocalizerAccess(next, name, marker, htmlEscaped);
+		next = rewriteComponentLocaleMemberAccess(next, name, marker, htmlEscaped);
+	}
+
+	return next;
+}
+
+function rewriteComponentLocaleMemberAccess(code: string, name: string, marker: string, htmlEscaped: boolean): string {
+	const stringArgument = htmlEscaped ? createTemplateStringArgument : JSON.stringify;
+	const regexp = new RegExp(`\\b${escapeRegExp(name)}\\.\\$locale((?:\\.[A-Za-z_$][\\w$]*)+)`, 'g');
+
+	return code.replace(regexp, (_match, pathExpression: string) =>
+		`__VUE_INTERNATIONALIZATION_INLINE_TEXT__(${stringArgument(marker)},${stringArgument(`sfc${pathExpression}`)})`,
+	);
+}
+
+function rewriteComponentLocalizerAccess(code: string, name: string, marker: string, htmlEscaped: boolean): string {
+	const stringArgument = htmlEscaped ? createTemplateStringArgument : JSON.stringify;
+	const regexp = new RegExp(`\\b${escapeRegExp(name)}\\.\\$l((?:\\.[A-Za-z_$][\\w$]*)+)\\(`, 'g');
+	let next = '';
+	let cursor = 0;
+
+	for (const match of code.matchAll(regexp)) {
+		const start = match.index;
+		const pathExpression = match[1];
+
+		if (start < cursor || !pathExpression) {
+			continue;
+		}
+
+		const valuesStart = start + match[0].length;
+		const callEnd = findBalancedExpressionEnd(code, valuesStart, '(', ')');
+
+		if (callEnd === undefined) {
+			continue;
+		}
+
+		next += code.slice(cursor, start);
+		next += `__VUE_INTERNATIONALIZATION_INLINE_LOCALIZER__(${stringArgument(marker)},${stringArgument(`sfc${pathExpression}`)},${code.slice(valuesStart, callEnd)})`;
+		cursor = callEnd + 1;
+	}
+
+	return cursor === 0 ? code : next + code.slice(cursor);
+}
+
+function collectVueDefaultImports(code: string, filename: string, root: string): Map<string, string> {
+	const imports = new Map<string, string>();
+
+	for (const match of code.matchAll(VUE_DEFAULT_IMPORT_RE)) {
+		const name = match[1];
+		const source = match[3];
+
+		if (!name || !source) {
+			continue;
+		}
+
+		const resolved = resolveVueImport(filename, source);
+
+		if (!resolved || !isLocaleOnlyVueFile(resolved)) {
+			continue;
+		}
+
+		const moduleId = toRuntimeModuleId(resolved, root);
+
+		if (moduleId) {
+			imports.set(name, moduleId);
+		}
+	}
+
+	return imports;
+}
+
+function resolveVueImport(filename: string, source: string): string | undefined {
+	const sourcePath = source.split('?', 1)[0] ?? source;
+
+	if (!sourcePath.startsWith('.') && !sourcePath.startsWith('/') && !isAbsolute(sourcePath)) {
+		return undefined;
+	}
+
+	const resolved = isAbsolute(sourcePath)
+		? sourcePath
+		: resolve(dirname(filename), sourcePath);
+
+	return resolved;
+}
+
+function toRuntimeModuleId(filename: string, root: string): string {
+	const relativePath = relative(resolve(root), filename);
+
+	return `/${normalizePath(relativePath)}`;
+}
+
+function isLocaleOnlyVueFile(filename: string): boolean {
+	if (!existsSync(filename)) {
+		return false;
+	}
+
+	const descriptor = parseSfc(readFileSync(filename, 'utf8'), { filename }).descriptor;
+
+	return !descriptor.template &&
+		!descriptor.script &&
+		!descriptor.scriptSetup &&
+		descriptor.customBlocks.some((block) => block.type === 'locale');
 }
 
 function createTemplateStringArgument(value: string): string {
@@ -693,7 +842,7 @@ function getInlineLocalizerCallReplacement(
 	const path = getStringArgument(node, 1);
 	const values = node.arguments.at(2);
 
-	if (!marker || !isInlineLocaleMarker(marker) || !path || !values) {
+	if (!marker || !isInlineLocaleMarker(marker) || !path) {
 		return undefined;
 	}
 
@@ -704,14 +853,14 @@ function getInlineLocalizerCallReplacement(
 	}
 
 	if (typeof resolved.value === 'function') {
-		const valuesExpression = code.slice(values.start, values.end);
+		const valuesExpression = values ? code.slice(values.start, values.end) : '{}';
 		const plural = node.arguments.at(3);
 		const pluralExpression = plural ? `, ${code.slice(plural.start, plural.end)}` : '';
 		return `((${resolved.value.toString()})(${valuesExpression}${pluralExpression}))`;
 	}
 
 	const template = typeof resolved.value === 'string' ? resolved.value : `$locale.${path}`;
-	return createInlineTemplateExpression(template, code.slice(values.start, values.end), resolvePayload(decodeInlineLocaleMarker(marker)), resolved.scope);
+	return createInlineTemplateExpression(template, values ? code.slice(values.start, values.end) : '{}', resolvePayload(decodeInlineLocaleMarker(marker)), resolved.scope);
 }
 
 function getInlineLocaleObjectReplacement(node: AstCallExpression, resolvePayload: InlinePayloadResolver): string | undefined {
@@ -749,7 +898,7 @@ function getLocalizerBindingCallReplacement(
 	const access = readMemberAccess(node.callee);
 	const values = node.arguments.at(0);
 
-	if (!access || !values) {
+	if (!access) {
 		return undefined;
 	}
 
@@ -767,7 +916,7 @@ function getLocalizerBindingCallReplacement(
 
 	const value = getValueByPath(getPayloadScope(payload, normalized.scope), normalized.keys);
 	if (typeof value === 'function') {
-		const valuesExpression = code.slice(values.start, values.end);
+		const valuesExpression = values ? code.slice(values.start, values.end) : '{}';
 		const plural = node.arguments.at(1);
 		const pluralExpression = plural ? `, ${code.slice(plural.start, plural.end)}` : '';
 		return `((${value.toString()})(${valuesExpression}${pluralExpression}))`;
@@ -775,7 +924,7 @@ function getLocalizerBindingCallReplacement(
 
 	const template = typeof value === 'string' ? value : `$locale.${[normalized.scope, ...normalized.keys].join('.')}`;
 
-	return createInlineTemplateExpression(template, code.slice(values.start, values.end), payload, normalized.scope);
+	return createInlineTemplateExpression(template, values ? code.slice(values.start, values.end) : '{}', payload, normalized.scope);
 }
 
 function getLocaleMemberReplacement(
@@ -1300,6 +1449,10 @@ function findManifestEntry(
 
 function escapeRegExp(value: string): string {
 	return value.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
+}
+
+function normalizePath(value: string): string {
+	return value.replace(/\\/g, '/');
 }
 
 function decodeInlineLocaleMarker(marker: string): string {

@@ -496,6 +496,94 @@ describe('virtual module generation', () => {
 		expect(compiled.code).toContain('_ctx.__VUE_INTERNATIONALIZATION_INLINE_LOCALIZER__("__VUE_INTERNATIONALIZATION_INLINE__:L3NyYy9BcHAudnVl","sfc.nApples",{ n: Math.max(_ctx.n, 1) })');
 	});
 
+	it('rewrites locale-only SFC static access in scripts and templates for inline chunks', () => {
+		const root = mkdtempSync(join(tmpdir(), 'vite-vue-internationalization-'));
+		mkdirSync(join(root, 'src'), { recursive: true });
+		writeFileSync(join(root, 'src/messages.vue'), [
+			'<locale locale="ja-JP" lang="yaml">',
+			'title: タイトル',
+			'body: 本文',
+			'</locale>',
+		].join('\n'));
+		const code = internals.rewriteInlineComponentLocaleAccess([
+			'<script setup lang="ts">',
+			'import Messages from "./messages.vue";',
+			'const title = Messages.$locale.title;',
+			'const body = Messages.$l.body({ source: "script" });',
+			'</script>',
+			'<template>',
+			'  <p>{{ Messages.$locale.title }}</p>',
+			'  <p>{{ Messages.$l.body({ source: "template" }) }}</p>',
+			'</template>',
+		].join('\n'), join(root, 'src/App.vue'), root);
+
+		expect(code).toContain('__VUE_INTERNATIONALIZATION_INLINE_TEXT__("__VUE_INTERNATIONALIZATION_INLINE__:L3NyYy9tZXNzYWdlcy52dWU=","sfc.title")');
+		expect(code).toContain('__VUE_INTERNATIONALIZATION_INLINE_LOCALIZER__("__VUE_INTERNATIONALIZATION_INLINE__:L3NyYy9tZXNzYWdlcy52dWU=","sfc.body",{ source: "script" })');
+		expect(code).toContain('__VUE_INTERNATIONALIZATION_INLINE_TEXT__(&quot;__VUE_INTERNATIONALIZATION_INLINE__:L3NyYy9tZXNzYWdlcy52dWU=&quot;,&quot;sfc.title&quot;)');
+		expect(code).toContain('__VUE_INTERNATIONALIZATION_INLINE_LOCALIZER__(&quot;__VUE_INTERNATIONALIZATION_INLINE__:L3NyYy9tZXNzYWdlcy52dWU=&quot;,&quot;sfc.body&quot;,{ source: "template" })');
+	});
+
+	it('replaces locale-only SFC static access markers with localized values', () => {
+		const root = mkdtempSync(join(tmpdir(), 'vite-vue-internationalization-'));
+		mkdirSync(join(root, 'src'), { recursive: true });
+		writeFileSync(join(root, 'src/messages.vue'), [
+			'<locale locale="ja-JP" lang="yaml">',
+			'title: タイトル',
+			'body: 本文',
+			'</locale>',
+		].join('\n'));
+		const code = internals.rewriteInlineComponentLocaleAccess([
+			'import Messages from "./messages.vue";',
+			'const title = Messages.$locale.title;',
+			'const titleText = Messages.$l.title();',
+			'const body = Messages.$l.body({ source });',
+		].join('\n'), join(root, 'src/App.vue'), root);
+		const replaced = internals.replaceInlineLocaleMarkers(
+			code,
+			'en-US',
+			'ja-JP',
+			'vue',
+			{
+				'/src/messages.vue': {
+					'ja-JP': {
+						title: 'タイトル',
+					},
+					'en-US': {
+						title: 'Title',
+						body: 'From {source}',
+					},
+				},
+			},
+			{},
+		);
+
+		expect(replaced).toContain('const title = "Title";');
+		expect(replaced).toContain('const titleText = "Title";');
+		expect(replaced).toContain('const body = ((__values) => "From " + ((typeof __values === "number" ? (undefined) : __values?.["source"]) ?? "{source}"))({ source });');
+		expect(replaced).not.toContain('Messages.$locale');
+		expect(replaced).not.toContain('Messages.$l');
+	});
+
+	it('does not rewrite static access for component SFC imports with script setup', () => {
+		const root = mkdtempSync(join(tmpdir(), 'vite-vue-internationalization-'));
+		mkdirSync(join(root, 'src'), { recursive: true });
+		writeFileSync(join(root, 'src/Panel.vue'), [
+			'<script setup lang="ts">',
+			'console.log("keep component side effects");',
+			'</script>',
+			'<locale locale="ja-JP" lang="yaml">',
+			'title: タイトル',
+			'</locale>',
+		].join('\n'));
+		const input = [
+			'import Panel from "./Panel.vue";',
+			'const title = Panel.$locale.title;',
+		].join('\n');
+		const code = internals.rewriteInlineComponentLocaleAccess(input, join(root, 'src/App.vue'), root);
+
+		expect(code).toBe(input);
+	});
+
 	it('replaces compiled template attribute locale markers', () => {
 		const code = internals.rewriteInlineLocaleTemplateAccess(
 			'<template><button :title="$locale.sfc.title" :aria-label="$l.sfc.nApples({ n: Math.max(n, 1) })">x</button></template>',

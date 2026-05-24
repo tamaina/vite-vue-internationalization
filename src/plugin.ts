@@ -11,7 +11,9 @@ import {
 	replaceInlineLocalizerAccess,
 	replaceInlineLocaleMemberAccess,
 	replaceInlineLocaleHtml,
+	replaceInlineLocaleMarkers,
 	replaceInlineLocaleTextAccess,
+	rewriteInlineComponentLocaleAccess,
 	rewriteInlineLocaleTemplateAccess,
 	type InlineChunkManifest,
 } from './inline.js';
@@ -261,7 +263,9 @@ export const internals = {
 	replaceInlineLocalizerAccess,
 	replaceInlineLocaleMemberAccess,
 	replaceInlineLocaleHtml,
+	replaceInlineLocaleMarkers,
 	replaceInlineLocaleTextAccess,
+	rewriteInlineComponentLocaleAccess,
 	rewriteInlineLocaleTemplateAccess,
 	stripLocaleBlocks,
 	transformVueSfcInline,
@@ -571,7 +575,8 @@ function transformVueSfcInline(code: string, filename: string, root: string, pri
 	const moduleId = toRuntimeModuleId(filename, root);
 	const marker = createInlineLocaleMarker(moduleId);
 	const stripped = stripLocaleBlocks(code, filename);
-	const withSetupBinding = injectInlineLocaleBinding(rewriteInlineLocaleTemplateAccess(stripped, moduleId), moduleId);
+	const rewrittenComponentAccess = rewriteInlineComponentLocaleAccess(stripped, filename, root);
+	const withSetupBinding = injectInlineLocaleBinding(rewriteInlineLocaleTemplateAccess(rewrittenComponentAccess, moduleId), moduleId);
 
 	return injectComponentLocaleOptions(withSetupBinding, filename, {
 		module: getPrimaryLocaleDictionary(parsed.blocks, primaryLocale, parsed.scriptMessages),

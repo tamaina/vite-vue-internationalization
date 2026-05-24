@@ -88,8 +88,12 @@ function switchLocale(locale: string): void {
       <h2>{{ $locale.sfc.componentExportTitle }}</h2>
       <p>{{ staticPanelHeading }}</p>
       <p>{{ staticPanelBody }}</p>
+      <p>{{ StaticPanel.$locale.heading }}</p>
+      <p>{{ StaticPanel.$l.body() }}</p>
       <p>{{ localeOnlyTitle }}</p>
       <p>{{ localeOnlyBody }}</p>
+      <p>{{ Messages.$locale.title }}</p>
+      <p>{{ Messages.$l.body({ source: 'template import' }) }}</p>
     </section>
     <StaticPanel />
     <AsyncPanel />
