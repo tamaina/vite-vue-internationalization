@@ -6,6 +6,7 @@
 - fix: Emit inline locale chunks through the plugin context for Rolldown compatibility.
 - fix: Allow configured global locale files to live outside the package-local tsconfig directory.
 - feat: Add Volar `globalType: "runtime"` for large global dictionaries.
+- fix: Keep `globalType: "runtime"` permissive for nested global dictionary access.
 
 
 ## 0.6.0

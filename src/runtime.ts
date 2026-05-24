@@ -4,8 +4,9 @@ import type { App, ComputedRef, InjectionKey, PropType, VNodeChild } from 'vue';
 import type { LocaleMessageSyntax, LocaleMessageToken, LocaleMessageValues } from './message.js';
 import type { LocaleDictionary } from './types.js';
 
-/** Runtime dictionary shape used by locale bundles. */
-export type RuntimeLocaleDictionary = LocaleDictionary;
+/** Runtime dictionary shape used when generated types intentionally skip detailed keys. */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export type RuntimeLocaleDictionary = Record<string, any>;
 /** Combined locale scope exposed to components. */
 export type LocaleScope<
 	TGlobal extends RuntimeLocaleDictionary = RuntimeLocaleDictionary,
@@ -63,7 +64,8 @@ export interface LocaleLocalizerDictionary {
 }
 /** Permissive runtime localizer dictionary for large untyped global message sets. */
 export interface RuntimeLocaleLocalizerDictionary {
-	(values?: LocaleTemplateValues | LocaleTemplateValue[] | number, plural?: number): string;
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any
+	(values?: any, plural?: number): string;
 	[key: string]: RuntimeLocaleLocalizerDictionary;
 }
 
