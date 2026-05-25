@@ -1250,6 +1250,79 @@ describe('virtual module generation', () => {
 		expect(html).not.toContain('__vueInternationalizationLocale');
 	});
 
+	it('injects the external locale loader when Vite removes the original html entry script', () => {
+		const html = internals.replaceInlineLocaleHtml(
+			'<div id="app"></div>',
+			{
+				primaryLocale: 'ja-JP',
+				entries: [
+					{
+						fileName: 'assets/App-abc.ja-JP.js',
+						originalFileName: 'assets/App-abc.js',
+						isEntry: true,
+						isDynamicEntry: false,
+						css: ['assets/App-abc.css'],
+						locales: {
+							'ja-JP': 'assets/App-abc.ja-JP.js',
+							'en-US': 'assets/App-abc.en-US.js',
+						},
+					},
+					{
+						fileName: 'assets/AsyncPanel-abc.ja-JP.js',
+						originalFileName: 'assets/AsyncPanel-abc.js',
+						isEntry: false,
+						isDynamicEntry: true,
+						locales: {
+							'ja-JP': 'assets/AsyncPanel-abc.ja-JP.js',
+							'en-US': 'assets/AsyncPanel-abc.en-US.js',
+						},
+					},
+				],
+			},
+		);
+
+		expect(html).toContain('href="/assets/App-abc.css"');
+		expect(html).toContain('src="/assets/App-abc.i18n-loader.js"');
+		expect(html).not.toContain('AsyncPanel-abc.i18n-loader.js');
+	});
+
+	it('injects only the matching html entry loader when Vite removes multiple html entry scripts', () => {
+		const html = internals.replaceInlineLocaleHtml(
+			'<div id="admin"></div>',
+			{
+				primaryLocale: 'ja-JP',
+				entries: [
+					{
+						fileName: 'assets/App-abc.ja-JP.js',
+						originalFileName: 'assets/App-abc.js',
+						facadeModuleId: '/project/index.html',
+						isEntry: true,
+						isDynamicEntry: false,
+						locales: {
+							'ja-JP': 'assets/App-abc.ja-JP.js',
+							'en-US': 'assets/App-abc.en-US.js',
+						},
+					},
+					{
+						fileName: 'assets/Admin-abc.ja-JP.js',
+						originalFileName: 'assets/Admin-abc.js',
+						facadeModuleId: '/project/admin/index.html',
+						isEntry: true,
+						isDynamicEntry: false,
+						locales: {
+							'ja-JP': 'assets/Admin-abc.ja-JP.js',
+							'en-US': 'assets/Admin-abc.en-US.js',
+						},
+					},
+				],
+			},
+			'admin/index.html',
+		);
+
+		expect(html).toContain('src="/assets/Admin-abc.i18n-loader.js"');
+		expect(html).not.toContain('App-abc.i18n-loader.js');
+	});
+
 	it('augments vite manifest with localized chunks', () => {
 		const manifest = internals.augmentViteManifestJson(
 			JSON.stringify({

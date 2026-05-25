@@ -633,7 +633,8 @@ function rewriteWrittenHtml(outDir: string, manifest: InlineChunkManifest): void
 
 	for (const file of findHtmlFiles(outDir)) {
 		const html = readFileSync(file, 'utf8');
-		for (const loader of getInlineLocaleHtmlLoaders(html, manifest)) {
+		const fileName = relative(outDir, file);
+		for (const loader of getInlineLocaleHtmlLoaders(html, manifest, fileName)) {
 			if (writtenLoaders.has(loader.fileName)) {
 				continue;
 			}
@@ -642,7 +643,7 @@ function rewriteWrittenHtml(outDir: string, manifest: InlineChunkManifest): void
 			writtenLoaders.add(loader.fileName);
 		}
 
-		const next = replaceInlineLocaleHtml(html, manifest);
+		const next = replaceInlineLocaleHtml(html, manifest, fileName);
 
 		if (next !== html) {
 			writeFileSync(file, next);

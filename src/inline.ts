@@ -26,8 +26,11 @@ export type InlineChunkManifest = {
 		fileName: string;
 		originalFileName: string;
 		facadeModuleId?: string;
+		isEntry?: boolean;
+		isDynamicEntry?: boolean;
 		imports?: string[];
 		dynamicImports?: string[];
+		css?: string[];
 		locales: Record<string, string>;
 	}>;
 };
@@ -706,8 +709,11 @@ export function inlineLocaleChunks(
 			fileName: primaryFileName,
 			originalFileName,
 			facadeModuleId: typeof chunk.facadeModuleId === 'string' ? chunk.facadeModuleId : undefined,
+			isEntry: typeof chunk.isEntry === 'boolean' ? chunk.isEntry : undefined,
+			isDynamicEntry: typeof chunk.isDynamicEntry === 'boolean' ? chunk.isDynamicEntry : undefined,
 			imports: originalImports.length > 0 ? originalImports : undefined,
 			dynamicImports: originalDynamicImports.length > 0 ? originalDynamicImports : undefined,
+			css: [...(chunk.viteMetadata?.importedCss ?? [])],
 			locales: localeFiles,
 		});
 	}
@@ -842,7 +848,7 @@ export function inlineLocaleHtml(
 			continue;
 		}
 
-		for (const loader of getInlineLocaleHtmlLoaders(asset.source, manifest)) {
+		for (const loader of getInlineLocaleHtmlLoaders(asset.source, manifest, asset.fileName)) {
 			const loaderAsset: MutableOutputAsset = {
 				type: 'asset',
 				fileName: loader.fileName,
@@ -857,22 +863,34 @@ export function inlineLocaleHtml(
 			}
 		}
 
-		asset.source = replaceInlineLocaleHtml(asset.source, manifest);
+		asset.source = replaceInlineLocaleHtml(asset.source, manifest, asset.fileName);
 	}
 }
 
-export function getInlineLocaleHtmlLoaders(html: string, manifest: InlineChunkManifest): InlineLocaleLoaderAsset[] {
-	return findHtmlLocaleEntries(html, manifest).map((entry) => ({
+export function getInlineLocaleHtmlLoaders(
+	html: string,
+	manifest: InlineChunkManifest,
+	htmlFileName?: string,
+): InlineLocaleLoaderAsset[] {
+	return findHtmlLocaleEntries(html, manifest, htmlFileName).map((entry) => ({
 		fileName: createLocaleLoaderFileName(entry.originalFileName),
 		source: createLocaleLoaderSource(entry.locales, manifest.primaryLocale),
 	}));
 }
 
-export function replaceInlineLocaleHtml(html: string, manifest: InlineChunkManifest): string {
+export function replaceInlineLocaleHtml(
+	html: string,
+	manifest: InlineChunkManifest,
+	htmlFileName?: string,
+): string {
 	let next = html;
+	const fallbackEntries = findFallbackHtmlLocaleEntries(html, manifest, htmlFileName);
 
 	for (const entry of manifest.entries) {
-		next = replaceEntryScript(next, entry.locales, manifest.primaryLocale);
+		const replaced = replaceEntryScript(next, entry.locales, manifest.primaryLocale);
+		next = replaced === next && fallbackEntries.includes(entry)
+			? injectLocaleLoaderScript(next, entry, manifest.primaryLocale)
+			: replaced;
 	}
 
 	return next;
@@ -2159,8 +2177,38 @@ function replaceEntryScript(html: string, localeFiles: Record<string, string>, p
 	});
 }
 
-function findHtmlLocaleEntries(html: string, manifest: InlineChunkManifest): InlineChunkManifest['entries'] {
-	return manifest.entries.filter((entry) => createEntryScriptRegExp(entry.locales, manifest.primaryLocale).test(html));
+function findHtmlLocaleEntries(
+	html: string,
+	manifest: InlineChunkManifest,
+	htmlFileName?: string,
+): InlineChunkManifest['entries'] {
+	const scriptEntries = manifest.entries.filter((entry) => createEntryScriptRegExp(entry.locales, manifest.primaryLocale).test(html));
+
+	return scriptEntries.length > 0 ? scriptEntries : findFallbackHtmlLocaleEntries(html, manifest, htmlFileName);
+}
+
+function findFallbackHtmlLocaleEntries(
+	html: string,
+	manifest: InlineChunkManifest,
+	htmlFileName?: string,
+): InlineChunkManifest['entries'] {
+	if (manifest.entries.some((entry) => createEntryScriptRegExp(entry.locales, manifest.primaryLocale).test(html))) {
+		return [];
+	}
+
+	const htmlEntries = manifest.entries.filter(isHtmlEntry);
+
+	if (!htmlFileName) {
+		return htmlEntries;
+	}
+
+	const matchingEntries = htmlEntries.filter((entry) => matchesHtmlFileName(entry, htmlFileName));
+
+	if (matchingEntries.length > 0) {
+		return matchingEntries;
+	}
+
+	return htmlEntries.length === 1 ? htmlEntries : [];
 }
 
 function createEntryScriptRegExp(localeFiles: Record<string, string>, primaryLocale: string): RegExp {
@@ -2195,6 +2243,39 @@ function createLoaderScriptAttributes(beforeSrc: string, afterSrc: string, loade
 	const typeAttribute = hasScriptAttribute(withoutIntegrity, 'type') ? '' : ' type="module"';
 
 	return `${withoutIntegrity}${typeAttribute} src="/${loaderFileName}"`;
+}
+
+function injectLocaleLoaderScript(
+	html: string,
+	entry: InlineChunkManifest['entries'][number],
+	primaryLocale: string,
+): string {
+	const primaryFile = entry.locales[primaryLocale];
+	const loaderFileName = createLocaleLoaderFileName(originalFileNameFromLocaleFile(primaryFile, primaryLocale));
+	const cssLinks = (entry.css ?? [])
+		.map((fileName) => `<link rel="stylesheet" href="/${fileName}">`)
+		.join('');
+	const script = `<script type="module" src="/${loaderFileName}"></script>`;
+	const injection = `${cssLinks}${script}`;
+
+	if (html.includes(`src="/${loaderFileName}"`) || html.includes(`src='/${loaderFileName}'`)) {
+		return html;
+	}
+
+	if (/<\/body>/iu.test(html)) {
+		return html.replace(/<\/body>/iu, `${injection}</body>`);
+	}
+
+	return `${html}${injection}`;
+}
+
+function isHtmlEntry(entry: InlineChunkManifest['entries'][number]): boolean {
+	return entry.isEntry === true && entry.isDynamicEntry !== true;
+}
+
+function matchesHtmlFileName(entry: InlineChunkManifest['entries'][number], htmlFileName: string): boolean {
+	return typeof entry.facadeModuleId === 'string' &&
+		normalizePath(entry.facadeModuleId).endsWith(normalizePath(htmlFileName));
 }
 
 function removeScriptAttribute(attributes: string, name: string): string {
