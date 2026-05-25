@@ -673,7 +673,7 @@ export function inlineLocaleChunks(
 			);
 			localizedChunk.code = replaceChunkFileReferences(
 				applyInlineReplacementPlan(originalCode, plan, payloadCache.resolve(locale)),
-				getLocalizableChunkReferences(originalCode, originalImports, originalDynamicImports, localizableFiles),
+				localizableFiles,
 				locale,
 			);
 			localizedChunk.code = replaceVitePreloadMarkers(
