@@ -17,7 +17,10 @@ Treat the workflow as a state machine around the release PR from the development
    - Dispatch with `merge=false` and `start-rc=false`.
    - The workflow runs `create-target`.
    - It creates the next release target from the current package version using `version_increment_type`.
-   - Default to `patch` unless the user explicitly asks for `minor` or `major`.
+   - Decide `minor` or `patch` from unreleased commits unless the user explicitly specifies an increment.
+   - Use `minor` when unreleased commits include user-facing features such as `feat:` commits or documented new public API/configuration.
+   - Use `patch` when unreleased commits are fixes, refactors, perf improvements, docs, tests, chores, or internal tooling without new public capability.
+   - Use `major` only when the user explicitly asks for it or the release notes clearly describe breaking changes and the user confirms.
    - The expected result is a draft prerelease/release PR from the repository default branch to `STABLE_BRANCH`.
 2. Release PR exists and is still in draft/early prerelease:
    - Dispatch with `merge=false` and `start-rc=false`.
@@ -46,9 +49,14 @@ Treat the workflow as a state machine around the release PR from the development
 5. Determine release state:
    - Get `STABLE_BRANCH` with `gh variable get STABLE_BRANCH`.
    - List the existing release PR with `gh pr list --limit 1 --search "head:<default-branch> base:<stable-branch> is:open" --json number,title,headRefName,baseRefName,isDraft`.
-6. Choose dispatch inputs from the lifecycle above.
-7. If the user explicitly requested the release action, dispatch it. If the user only asked to inspect, plan, or "see if possible", dry-run and report the exact command.
-8. After dispatch, provide the workflow run URL from `gh run list --workflow release-with-dispatch.yml --limit 1 --json databaseId,url,status,conclusion,createdAt`.
+6. If no release PR exists, decide the version increment:
+   - Compare unreleased work with `git fetch origin <default-branch> <stable-branch> --tags` and `git log --oneline origin/<stable-branch>..origin/<default-branch>`.
+   - Prefer `minor` if there is a `feat:` commit or a clear new public option/API documented in README/docs/llms.
+   - Prefer `patch` if the range is only `fix:`, `perf:`, `refactor:`, `docs:`, `test:`, `chore:`, release tooling, or generated release commits.
+   - Do not silently choose `major`; stop and ask unless the user already requested it.
+7. Choose dispatch inputs from the lifecycle above.
+8. If the user explicitly requested the release action, dispatch it. If the user only asked to inspect, plan, or "see if possible", dry-run and report the exact command.
+9. After dispatch, provide the workflow run URL from `gh run list --workflow release-with-dispatch.yml --limit 1 --json databaseId,url,status,conclusion,createdAt`.
 
 ## Script
 
@@ -63,13 +71,13 @@ The script defaults to dry-run. Add `--execute` only when the user clearly asked
 Common examples:
 
 ```bash
-# Inspect and print the dispatch command for a patch release PR.
+# Inspect release state, choose minor/patch, and print the dispatch command.
 python3 .agents/skills/release-with-dispatch/scripts/release_with_dispatch.py
 
-# Actually dispatch the default patch flow.
+# Actually dispatch using the inferred minor/patch increment.
 python3 .agents/skills/release-with-dispatch/scripts/release_with_dispatch.py --execute
 
-# Dispatch a minor release target.
+# Override the inferred increment.
 python3 .agents/skills/release-with-dispatch/scripts/release_with_dispatch.py --version-increment-type minor --execute
 
 # Start an RC for an existing release PR.
@@ -83,6 +91,6 @@ python3 .agents/skills/release-with-dispatch/scripts/release_with_dispatch.py --
 
 - Do not use `--merge` unless the user explicitly requests final merge or release finalization.
 - Do not set `--start-rc` for ordinary alpha/beta prerelease advancement unless the user asks for RC.
-- Do not assume `major` or `minor`; default to `patch` for new target releases.
+- Do not assume `major`; choose only `minor` or `patch` automatically.
 - Do not expose or print release app secrets.
 - If `gh` is unavailable, unauthenticated, or lacks workflow dispatch permission, stop after reporting the failing preflight.

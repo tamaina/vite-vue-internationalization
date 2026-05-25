@@ -25,6 +25,7 @@
 - fix: Preserve method calls chained after inline locale text access.
 - feat: Inline static and finite dynamic computed `$locale` template access for inline chunks.
 - perf: Cache inline chunk locale payloads and reuse planned marker replacements across locales.
+- chore: Make the release dispatch skill infer patch or minor increments from unreleased commits.
 
 
 ## 0.6.0
