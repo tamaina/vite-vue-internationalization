@@ -8,6 +8,7 @@
 - feat: Add Volar `globalType: "runtime"` for large global dictionaries.
 - fix: Keep `globalType: "runtime"` permissive for nested global dictionary access.
 - fix: Avoid injecting component `$locale`/`$l` options for global-only `sfcTransform: "all"` SFCs.
+- fix: Make Vue SFC binding injection idempotent when a transform pipeline sees an already-injected file.
 
 
 ## 0.6.0

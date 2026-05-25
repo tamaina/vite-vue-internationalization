@@ -22,6 +22,7 @@ import {
 	injectComponentLocaleOptions,
 	getPrimaryLocaleDictionary,
 	hasLocaleDictionaryEntries,
+	hasInjectedLocaleBinding,
 	mergeLocaleDictionaries,
 	parseLocaleDictionary,
 	parseVueLocales,
@@ -595,6 +596,10 @@ function toRuntimeModuleId(filename: string, root: string): string {
 }
 
 function transformVueSfcInline(code: string, filename: string, root: string, primaryLocale?: string, transformAll = false): string | undefined {
+	if (hasInjectedLocaleBinding(code) || code.includes('__VUE_INTERNATIONALIZATION_INLINE_LOCALE__')) {
+		return undefined;
+	}
+
 	const parsed = parseVueLocales(code, filename);
 
 	if (!transformAll && parsed.blocks.length === 0 && Object.keys(parsed.scriptMessages).length === 0) {

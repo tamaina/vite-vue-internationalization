@@ -205,6 +205,10 @@ export function injectLocaleBinding(code: string, types: LocaleBindingTypes = {}
 }
 
 export function transformVueSfc(code: string, filename: string, types: LocaleBindingTypes = {}): string | undefined {
+	if (hasInjectedLocaleBinding(code)) {
+		return undefined;
+	}
+
 	const parsed = parseVueLocales(code, filename);
 
 	if (!types.transformAll && parsed.blocks.length === 0 && Object.keys(parsed.scriptMessages).length === 0) {
@@ -226,6 +230,11 @@ export function transformVueSfc(code: string, filename: string, types: LocaleBin
 
 export function hasLocaleDictionaryEntries(dictionary: LocaleDictionary | undefined): boolean {
 	return dictionary != null && Object.keys(dictionary).length > 0;
+}
+
+export function hasInjectedLocaleBinding(code: string): boolean {
+	return code.includes('virtual:vite-vue-internationalization') &&
+		code.includes('const $locale = __useLocale');
 }
 
 export function normalizeModuleId(id: string): string {

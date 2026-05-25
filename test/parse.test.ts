@@ -64,6 +64,30 @@ describe('locale SFC parsing', () => {
 		expect(output).not.toContain('$l: __createComponentLocalizer');
 	});
 
+	it('does not inject setup bindings twice', () => {
+		const input = [
+			'<script setup lang="ts">',
+			'const x = 1;',
+			'</script>',
+			'<template>{{ $locale.env.title }}</template>',
+		].join('\n');
+
+		const output = transformVueSfc(input, '/repo/src/App.vue', {
+			global: {
+				title: 'App',
+			},
+			transformAll: true,
+		});
+
+		expect(output).toBeDefined();
+		expect(transformVueSfc(output ?? '', '/repo/src/App.vue', {
+			global: {
+				title: 'App',
+			},
+			transformAll: true,
+		})).toBeUndefined();
+	});
+
 	it('preserves script setup generic attributes when injecting bindings', () => {
 		const input = [
 			'<script lang="ts" setup generic="T extends IPaginator<Misskey.entities.Note>">',
