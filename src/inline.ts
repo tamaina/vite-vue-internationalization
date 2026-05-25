@@ -631,17 +631,22 @@ export function inlineLocaleChunks(
 		primaryLocale,
 		entries: [],
 	};
-	const localizableChunks = Object.values(bundle)
-		.filter((chunk): chunk is MutableOutputChunk => isMutableOutputChunk(chunk) && chunk.code.includes(INLINE_MARKER_PREFIX))
+	const chunks = Object.values(bundle)
+		.filter((chunk): chunk is MutableOutputChunk => isMutableOutputChunk(chunk))
 		.map((chunk) => ({
 			chunk,
 			originalCode: chunk.code,
-			plan: createRequiredInlineReplacementPlan(chunk.code),
 			originalFileName: chunk.fileName,
 			originalImports: [...chunk.imports],
 			originalDynamicImports: [...chunk.dynamicImports],
 		}));
-	const localizableFiles = new Set(localizableChunks.map(({ originalFileName }) => originalFileName));
+	const localizableFiles = collectLocalizableChunkFiles(chunks);
+	const localizableChunks = chunks
+		.filter(({ originalFileName }) => localizableFiles.has(originalFileName))
+		.map((chunk) => ({
+			...chunk,
+			plan: createRequiredInlineReplacementPlan(chunk.originalCode),
+		}));
 	const payloadCache = createInlinePayloadResolverCache(primaryLocale, messageSyntax, modules, globalMessages);
 
 	for (const { chunk, originalCode, plan, originalFileName, originalImports, originalDynamicImports } of localizableChunks) {
@@ -685,6 +690,40 @@ export function inlineLocaleChunks(
 	}
 
 	return manifest;
+}
+
+function collectLocalizableChunkFiles(chunks: Array<{
+	originalCode: string;
+	originalFileName: string;
+	originalImports: string[];
+	originalDynamicImports: string[];
+}>): Set<string> {
+	const localizableFiles = new Set(chunks
+		.filter(({ originalCode }) => originalCode.includes(INLINE_MARKER_PREFIX))
+		.map(({ originalFileName }) => originalFileName));
+	let changed = true;
+
+	while (changed) {
+		changed = false;
+
+		for (const chunk of chunks) {
+			if (localizableFiles.has(chunk.originalFileName)) {
+				continue;
+			}
+
+			if (getLocalizableChunkReferences(
+				chunk.originalCode,
+				chunk.originalImports,
+				chunk.originalDynamicImports,
+				localizableFiles,
+			).size > 0) {
+				localizableFiles.add(chunk.originalFileName);
+				changed = true;
+			}
+		}
+	}
+
+	return localizableFiles;
 }
 
 export function replaceInlineLocaleMarkers(

@@ -6,6 +6,7 @@
 - fix: Emit inline locale chunks through the plugin context for Rolldown compatibility.
 - fix: Restore inline localized entries in Vite manifest files when Rolldown emits CSS-only entry records.
 - fix: Rewrite inline chunk references embedded in Vite preload dependency lists.
+- fix: Localize chunks that only reference other localized chunks in inline builds.
 - fix: Allow configured global locale files to live outside the package-local tsconfig directory.
 - feat: Add Volar `globalType: "runtime"` for large global dictionaries.
 - fix: Keep `globalType: "runtime"` permissive for nested global dictionary access.

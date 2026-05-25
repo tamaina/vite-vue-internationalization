@@ -1028,6 +1028,64 @@ describe('virtual module generation', () => {
 		expect(bundle['assets/App.en-US.js'].code).not.toContain('"AsyncPanel.js"');
 	});
 
+	it('localizes chunks that reference localized chunks', () => {
+		const appMarker = internals.injectInlineLocaleBinding('<script setup></script>', '/src/App.vue');
+		const childMarker = internals.injectInlineLocaleBinding('<script setup></script>', '/src/AsyncPanel.vue');
+		const appCode = appMarker.match(/const \$locale = (.*);/)?.[1];
+		const childCode = childMarker.match(/const \$locale = (.*);/)?.[1];
+		const bundle: Record<string, {
+			type: string;
+			fileName: string;
+			code: string;
+			imports: string[];
+			dynamicImports: string[];
+		}> = {
+			'assets/App.js': {
+				type: 'chunk',
+				fileName: 'assets/App.js',
+				code: `const msg = ${appCode}; import("./Router.js");`,
+				imports: [],
+				dynamicImports: ['assets/Router.js'],
+			},
+			'assets/Router.js': {
+				type: 'chunk',
+				fileName: 'assets/Router.js',
+				code: 'preload(() => import("./AsyncPanel.js"), ["AsyncPanel.js"]);',
+				imports: [],
+				dynamicImports: [],
+			},
+			'assets/AsyncPanel.js': {
+				type: 'chunk',
+				fileName: 'assets/AsyncPanel.js',
+				code: `const msg = ${childCode};`,
+				imports: [],
+				dynamicImports: [],
+			},
+		};
+
+		internals.inlineLocaleChunks(
+			bundle,
+			['en-US', 'ja-JP'],
+			'ja-JP',
+			{
+				'/src/App.vue': {
+					'ja-JP': { title: '親' },
+					'en-US': { title: 'Parent' },
+				},
+				'/src/AsyncPanel.vue': {
+					'ja-JP': { title: '子' },
+					'en-US': { title: 'Child' },
+				},
+			},
+			{},
+		);
+
+		expect(bundle['assets/App.ja-JP.js'].code).toContain('./Router.ja-JP.js');
+		expect(bundle['assets/Router.ja-JP.js'].code).toContain('"AsyncPanel.ja-JP.js"');
+		expect(bundle['assets/Router.en-US.js'].code).toContain('"AsyncPanel.en-US.js"');
+		expect(bundle['assets/Router.js']).toBeUndefined();
+	});
+
 	it('can emit localized chunks without assigning to the output bundle', () => {
 		const marker = internals.injectInlineLocaleBinding('<script setup></script>', '/src/App.vue');
 		const code = marker.match(/const \$locale = (.*);/)?.[1];
