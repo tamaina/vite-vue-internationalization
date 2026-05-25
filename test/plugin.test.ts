@@ -290,7 +290,7 @@ describe('virtual module generation', () => {
 
 		expect(output).toContain('__VUE_INTERNATIONALIZATION_INLINE_LOCALE__');
 		expect(output).toContain('__VUE_INTERNATIONALIZATION_INLINE_TEXT__');
-		expect(output).toContain('$locale: __VUE_INTERNATIONALIZATION_INLINE_LOCALE__');
+		expect(output).not.toContain('$locale: __VUE_INTERNATIONALIZATION_INLINE_LOCALE__');
 	});
 
 	it('replaces script member access from inline locale bindings', () => {

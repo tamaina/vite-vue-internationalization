@@ -7,6 +7,7 @@
 - fix: Allow configured global locale files to live outside the package-local tsconfig directory.
 - feat: Add Volar `globalType: "runtime"` for large global dictionaries.
 - fix: Keep `globalType: "runtime"` permissive for nested global dictionary access.
+- fix: Avoid injecting component `$locale`/`$l` options for global-only `sfcTransform: "all"` SFCs.
 
 
 ## 0.6.0

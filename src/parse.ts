@@ -215,8 +215,17 @@ export function transformVueSfc(code: string, filename: string, types: LocaleBin
 		...types,
 		module: getPrimaryLocaleDictionary(parsed.blocks, types.primaryLocale, parsed.scriptMessages),
 	};
+	const withSetupBinding = injectLocaleBinding(stripLocaleBlocks(code, filename), bindingTypes);
 
-	return injectComponentLocaleOptions(injectLocaleBinding(stripLocaleBlocks(code, filename), bindingTypes), filename, bindingTypes);
+	if (!hasLocaleDictionaryEntries(bindingTypes.module)) {
+		return withSetupBinding;
+	}
+
+	return injectComponentLocaleOptions(withSetupBinding, filename, bindingTypes);
+}
+
+export function hasLocaleDictionaryEntries(dictionary: LocaleDictionary | undefined): boolean {
+	return dictionary != null && Object.keys(dictionary).length > 0;
 }
 
 export function normalizeModuleId(id: string): string {

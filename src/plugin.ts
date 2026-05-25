@@ -21,6 +21,7 @@ import {
 	injectLocaleBinding,
 	injectComponentLocaleOptions,
 	getPrimaryLocaleDictionary,
+	hasLocaleDictionaryEntries,
 	mergeLocaleDictionaries,
 	parseLocaleDictionary,
 	parseVueLocales,
@@ -605,9 +606,14 @@ function transformVueSfcInline(code: string, filename: string, root: string, pri
 	const stripped = stripLocaleBlocks(code, filename);
 	const rewrittenComponentAccess = rewriteInlineComponentLocaleAccess(stripped, filename, root);
 	const withSetupBinding = injectInlineLocaleBinding(rewriteInlineLocaleTemplateAccess(rewrittenComponentAccess, moduleId), moduleId);
+	const moduleDictionary = getPrimaryLocaleDictionary(parsed.blocks, primaryLocale, parsed.scriptMessages);
+
+	if (!hasLocaleDictionaryEntries(moduleDictionary)) {
+		return withSetupBinding;
+	}
 
 	return injectComponentLocaleOptions(withSetupBinding, filename, {
-		module: getPrimaryLocaleDictionary(parsed.blocks, primaryLocale, parsed.scriptMessages),
+		module: moduleDictionary,
 	}, {
 		importLine: '',
 		localeExpression: `__VUE_INTERNATIONALIZATION_INLINE_LOCALE__(${JSON.stringify(marker)}).sfc`,

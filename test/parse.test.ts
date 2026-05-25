@@ -60,8 +60,8 @@ describe('locale SFC parsing', () => {
 
 		expect(output).toContain('const $locale = __useLocale<import("vite-vue-internationalization/runtime").RuntimeLocaleDictionary, {}>(import.meta.url);');
 		expect(output).toContain('const $l = __useLocalizer(import.meta.url) as Readonly<import("vue").ComputedRef<{ env: import("vite-vue-internationalization/runtime").RuntimeLocaleLocalizerDictionary; sfc: import("vite-vue-internationalization/runtime").LocaleLocalizerDictionary; }>>;');
-		expect(output).toContain('$locale: __createComponentLocale<{}>(import.meta.url)');
-		expect(output).toContain('$l: __createComponentLocalizer(import.meta.url)');
+		expect(output).not.toContain('$locale: __createComponentLocale');
+		expect(output).not.toContain('$l: __createComponentLocalizer');
 	});
 
 	it('preserves script setup generic attributes when injecting bindings', () => {
