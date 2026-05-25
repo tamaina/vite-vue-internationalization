@@ -40,6 +40,18 @@ Treat the workflow as a state machine around the release PR from the development
    - The workflow runs `merge`.
    - It merges the release PR into `STABLE_BRANCH`, rewrites configured package JSON files, and refreshes the unreleased changes template.
 
+## Rollback
+
+When the user asks to roll back a release target before final merge:
+
+1. Close the open release PR with `gh pr close <number> --comment "<reason>"`.
+2. Delete the prerelease and tag created for the abandoned target when they exist, for example `gh release delete <version>-alpha.0 --cleanup-tag --yes`.
+3. Restore the development branch release workspace:
+   - Change the top `CHANGELOG.md` heading back from `## <version>` to `## Unreleased`.
+   - Restore `package.json` to the latest stable package version if it was bumped to a prerelease version.
+4. Commit and push the rollback before dispatching a replacement release target.
+5. Re-check that no open release PR remains before running `create-target` again.
+
 ## Workflow
 
 1. Confirm the workspace is `tamaina/vite-vue-internationalization` or ask before applying this skill elsewhere.
