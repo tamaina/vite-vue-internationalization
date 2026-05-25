@@ -88,6 +88,27 @@ describe('locale SFC parsing', () => {
 		})).toBeUndefined();
 	});
 
+	it('does not redeclare existing locale bindings', () => {
+		const input = [
+			'<script setup lang="ts">',
+			'import { $locale, $l } from "@/i18n";',
+			'</script>',
+			'<template>{{ $locale.env.title }} {{ $l.env.description({ value: 1 }) }}</template>',
+		].join('\n');
+
+		const output = transformVueSfc(input, '/repo/src/App.vue', {
+			global: {
+				title: 'App',
+				description: '{value}',
+			},
+			transformAll: true,
+		});
+
+		expect(output).toContain('import { $locale, $l } from "@/i18n";');
+		expect(output).not.toContain('const $locale = __useLocale');
+		expect(output).not.toContain('const $l = __useLocalizer');
+	});
+
 	it('preserves script setup generic attributes when injecting bindings', () => {
 		const input = [
 			'<script lang="ts" setup generic="T extends IPaginator<Misskey.entities.Note>">',

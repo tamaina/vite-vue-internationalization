@@ -305,6 +305,19 @@ describe('virtual module generation', () => {
 		expect(internals.transformVueSfcInline(output ?? '', '/repo/src/App.vue', '/repo', 'ja-JP', true)).toBeUndefined();
 	});
 
+	it('does not redeclare existing inline locale bindings', () => {
+		const output = internals.transformVueSfcInline([
+			'<template>{{ $locale.env.title }}</template>',
+			'<script setup lang="ts">',
+			'import { $locale, $l } from "@/i18n";',
+			'</script>',
+		].join('\n'), '/repo/src/App.vue', '/repo', 'ja-JP', true);
+
+		expect(output).toContain('import { $locale, $l } from "@/i18n";');
+		expect(output).not.toContain('const $locale = __VUE_INTERNATIONALIZATION_INLINE_LOCALE__');
+		expect(output).not.toContain('const $l = __VUE_INTERNATIONALIZATION_INLINE_LOCALIZERS__');
+	});
+
 	it('replaces script member access from inline locale bindings', () => {
 		const marker = internals.injectInlineLocaleBinding('<script setup></script>', '/src/App.vue');
 		const binding = marker.match(/const \$locale = (.*);/)?.[1];

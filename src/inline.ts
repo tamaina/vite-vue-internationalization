@@ -6,6 +6,7 @@ import { parse as parseIcuMessage, TYPE } from '@formatjs/icu-messageformat-pars
 import { walk } from 'estree-walker';
 import MagicString from 'magic-string';
 import { compileLocaleMessage } from './message.js';
+import { hasLocaleBinding } from './parse.js';
 import { injectScriptSetup } from './scriptSetup.js';
 import type { Node as EstreeNode } from 'estree-walker';
 import type { MessageFormatElement } from '@formatjs/icu-messageformat-parser';
@@ -116,12 +117,19 @@ export function createInlineLocaleMarker(moduleId: string): string {
 }
 
 export function injectInlineLocaleBinding(code: string, moduleId: string): string {
+	const needsLocaleBinding = !hasLocaleBinding(code, '$locale');
+	const needsLocalizerBinding = !hasLocaleBinding(code, '$l');
+
+	if (!needsLocaleBinding && !needsLocalizerBinding) {
+		return code;
+	}
+
 	const injection = [
 		'',
-		`const $locale = __VUE_INTERNATIONALIZATION_INLINE_LOCALE__(${JSON.stringify(createInlineLocaleMarker(moduleId))});`,
-		`const $l = __VUE_INTERNATIONALIZATION_INLINE_LOCALIZERS__(${JSON.stringify(createInlineLocaleMarker(moduleId))});`,
+		needsLocaleBinding ? `const $locale = __VUE_INTERNATIONALIZATION_INLINE_LOCALE__(${JSON.stringify(createInlineLocaleMarker(moduleId))});` : '',
+		needsLocalizerBinding ? `const $l = __VUE_INTERNATIONALIZATION_INLINE_LOCALIZERS__(${JSON.stringify(createInlineLocaleMarker(moduleId))});` : '',
 		'',
-	].join('\n');
+	].filter((line, index, lines) => line.length > 0 || index === 0 || index === lines.length - 1).join('\n');
 
 	return injectScriptSetup(code, injection);
 }

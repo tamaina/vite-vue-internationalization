@@ -9,6 +9,7 @@
 - fix: Keep `globalType: "runtime"` permissive for nested global dictionary access.
 - fix: Avoid injecting component `$locale`/`$l` options for global-only `sfcTransform: "all"` SFCs.
 - fix: Make Vue SFC binding injection idempotent when a transform pipeline sees an already-injected file.
+- fix: Avoid redeclaring `$locale`/`$l` when a Vue SFC already imports or declares those bindings.
 
 
 ## 0.6.0
