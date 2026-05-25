@@ -1033,6 +1033,58 @@ describe('virtual module generation', () => {
 		expect(bundle['assets/App.en-US.js'].code).not.toContain('"AsyncPanel.js"');
 	});
 
+	it('rewrites css-only preload proxy imports without keeping the proxy chunk as a dependency', () => {
+		const appMarker = internals.injectInlineLocaleBinding('<script setup></script>', '/src/App.vue');
+		const appCode = appMarker.match(/const \$locale = (.*);/)?.[1];
+		const bundle: Record<string, {
+			type: string;
+			fileName: string;
+			code: string;
+			imports: string[];
+			dynamicImports: string[];
+			viteMetadata?: {
+				importedAssets?: Set<string>;
+				importedCss?: Set<string>;
+			};
+		}> = {
+			'assets/App.js': {
+				type: 'chunk',
+				fileName: 'assets/App.js',
+				code: `const msg = ${appCode}; preload(() => import("./style-proxy.js"), __VITE_PRELOAD__);`,
+				imports: [],
+				dynamicImports: [],
+			},
+			'assets/style-proxy.js': {
+				type: 'chunk',
+				fileName: 'assets/style-proxy.js',
+				code: '',
+				imports: [],
+				dynamicImports: [],
+				viteMetadata: {
+					importedCss: new Set(['assets/style.css']),
+					importedAssets: new Set(['assets/font.woff2']),
+				},
+			},
+		};
+
+		internals.inlineLocaleChunks(
+			bundle,
+			['ja-JP'],
+			'ja-JP',
+			{
+				'/src/App.vue': {
+					'ja-JP': { title: '親' },
+				},
+			},
+			{},
+		);
+
+		expect(bundle['assets/App.ja-JP.js'].code).toContain('Promise.resolve({})');
+		expect(bundle['assets/App.ja-JP.js'].code).toContain('"assets/style.css"');
+		expect(bundle['assets/App.ja-JP.js'].code).toContain('"assets/font.woff2"');
+		expect(bundle['assets/App.ja-JP.js'].code).not.toContain('style-proxy');
+	});
+
 	it('localizes chunks that reference localized chunks', () => {
 		const appMarker = internals.injectInlineLocaleBinding('<script setup></script>', '/src/App.vue');
 		const childMarker = internals.injectInlineLocaleBinding('<script setup></script>', '/src/AsyncPanel.vue');

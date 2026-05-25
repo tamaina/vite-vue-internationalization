@@ -9,6 +9,7 @@
 - fix: Localize chunks that only reference other localized chunks in inline builds.
 - fix: Replace Vite preload placeholders in emitted inline locale chunks with localized dependency lists.
 - refactor: Centralize inline chunk reference localization through one resolver.
+- fix: Avoid preserving CSS-only preload proxy chunks as runtime imports in inline builds.
 - fix: Allow configured global locale files to live outside the package-local tsconfig directory.
 - feat: Add Volar `globalType: "runtime"` for large global dictionaries.
 - fix: Keep `globalType: "runtime"` permissive for nested global dictionary access.

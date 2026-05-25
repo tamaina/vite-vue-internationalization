@@ -990,10 +990,15 @@ function createInlineChunkReferenceMap(
 		seen.add(fileName);
 
 		const chunk = chunksByOriginalFileName.get(fileName);
-		const dependencies = new Set<string>([localizeFileName(fileName, locale)]);
+		const dependencies = new Set<string>();
 
 		if (!chunk) {
+			dependencies.add(localizeFileName(fileName, locale));
 			return [...dependencies];
+		}
+
+		if (!isCssOnlyProxyChunk(chunk)) {
+			dependencies.add(localizeFileName(fileName, locale));
 		}
 
 		for (const css of chunk.chunk.viteMetadata?.importedCss ?? []) {
@@ -1017,16 +1022,20 @@ function createInlineChunkReferenceMap(
 
 	function replacePreloadMarkers(code: string, locale: string): string {
 		return code
-			.replace(/(import\(\s*(["'`])\.\/([^"'`]+)\2\s*\)(?:(?!,\s*__VITE_PRELOAD__)[\s\S])*,\s*)__VITE_PRELOAD__/gu, (
+			.replace(/(import\(\s*(["'`])\.\/([^"'`]+)\2\s*\)(?:(?!,\s*__VITE_PRELOAD__)[\s\S])*?)(\s*,\s*)__VITE_PRELOAD__/gu, (
 				_match,
-				prefix: string,
+				importExpression: string,
 				_quote: string,
 				specifier: string,
+				separator: string,
 			) => {
 				const fileName = findOriginalFileName(specifier, locale);
 				const dependencies = fileName ? collectPreloadDependencies(fileName, locale) : [specifier];
+				const preloadTarget = fileName && isCssOnlyProxyChunk(chunksByOriginalFileName.get(fileName))
+					? 'Promise.resolve({})'
+					: importExpression;
 
-				return `${prefix}${JSON.stringify(dependencies)}`;
+				return `${preloadTarget}${separator}${JSON.stringify(dependencies)}`;
 			})
 			.replaceAll('__VITE_PRELOAD__', '[]');
 	}
@@ -1036,6 +1045,21 @@ function createInlineChunkReferenceMap(
 		localizeCodeReferences,
 		replacePreloadMarkers,
 	};
+}
+
+function isCssOnlyProxyChunk(chunk?: InlineChunkSnapshot): boolean {
+	if (!chunk) {
+		return false;
+	}
+
+	const hasCssOrAssets = (chunk.chunk.viteMetadata?.importedCss?.size ?? 0) > 0 ||
+		(chunk.chunk.viteMetadata?.importedAssets?.size ?? 0) > 0;
+
+	if (!hasCssOrAssets || chunk.originalImports.length > 0 || chunk.originalDynamicImports.length > 0) {
+		return false;
+	}
+
+	return /^\s*(?:export\s+default\s+["']["'];?)?\s*$/u.test(chunk.originalCode);
 }
 
 function createInlinePayloadResolver(
