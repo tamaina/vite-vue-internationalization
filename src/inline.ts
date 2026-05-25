@@ -26,6 +26,8 @@ export type InlineChunkManifest = {
 		fileName: string;
 		originalFileName: string;
 		facadeModuleId?: string;
+		imports?: string[];
+		dynamicImports?: string[];
 		locales: Record<string, string>;
 	}>;
 };
@@ -704,6 +706,8 @@ export function inlineLocaleChunks(
 			fileName: primaryFileName,
 			originalFileName,
 			facadeModuleId: typeof chunk.facadeModuleId === 'string' ? chunk.facadeModuleId : undefined,
+			imports: originalImports.length > 0 ? originalImports : undefined,
+			dynamicImports: originalDynamicImports.length > 0 ? originalDynamicImports : undefined,
 			locales: localeFiles,
 		});
 	}
@@ -876,6 +880,8 @@ export function replaceInlineLocaleHtml(html: string, manifest: InlineChunkManif
 
 export function augmentViteManifestJson(source: string, inlineManifest: InlineChunkManifest): string {
 	const manifest = JSON.parse(source) as Record<string, Record<string, unknown>>;
+	const fileToManifestKey = new Map(Object.entries(manifest)
+		.flatMap(([key, value]) => typeof value.file === 'string' ? [[value.file, key] as const] : []));
 
 	for (const entry of inlineManifest.entries) {
 		const manifestEntry = findManifestEntry(manifest, entry);
@@ -890,6 +896,16 @@ export function augmentViteManifestJson(source: string, inlineManifest: InlineCh
 		value.file = entry.locales[inlineManifest.primaryLocale];
 		value.locale = inlineManifest.primaryLocale;
 		value.isEntry ??= true;
+		const imports = mapManifestImports(entry.imports, fileToManifestKey);
+		const dynamicImports = mapManifestImports(entry.dynamicImports, fileToManifestKey);
+
+		if (imports.length > 0) {
+			value.imports = imports;
+		}
+
+		if (dynamicImports.length > 0) {
+			value.dynamicImports = dynamicImports;
+		}
 
 		if (originalFile?.endsWith('.css')) {
 			const css = Array.isArray(value.css) ? value.css : [];
@@ -912,6 +928,15 @@ export function augmentViteManifestJson(source: string, inlineManifest: InlineCh
 	}
 
 	return `${JSON.stringify(manifest, null, 2)}\n`;
+}
+
+function mapManifestImports(
+	fileNames: string[] | undefined,
+	fileToManifestKey: Map<string, string>,
+): string[] {
+	return fileNames
+		?.map((fileName) => fileToManifestKey.get(fileName))
+		.filter((key): key is string => typeof key === 'string') ?? [];
 }
 
 export function addLocaleToFileName(fileName: string, locale: string): string {

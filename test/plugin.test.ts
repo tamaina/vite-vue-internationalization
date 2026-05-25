@@ -1259,6 +1259,14 @@ describe('virtual module generation', () => {
 					src: 'index.html',
 					isEntry: true,
 				},
+				'_shared-abc.js': {
+					file: 'assets/shared-abc.js',
+					name: 'shared',
+				},
+				'_page-abc.js': {
+					file: 'assets/page-abc.js',
+					name: 'page',
+				},
 			}),
 			{
 				primaryLocale: 'ja-JP',
@@ -1266,6 +1274,8 @@ describe('virtual module generation', () => {
 					{
 						fileName: 'assets/App-abc.ja-JP.js',
 						originalFileName: 'assets/App-abc.js',
+						imports: ['assets/shared-abc.js'],
+						dynamicImports: ['assets/page-abc.js'],
 						locales: {
 							'ja-JP': 'assets/App-abc.ja-JP.js',
 							'en-US': 'assets/App-abc.en-US.js',
@@ -1278,9 +1288,13 @@ describe('virtual module generation', () => {
 
 		expect(parsed['index.html'].file).toBe('assets/App-abc.ja-JP.js');
 		expect(parsed['index.html'].locale).toBe('ja-JP');
+		expect(parsed['index.html'].imports).toEqual(['_shared-abc.js']);
+		expect(parsed['index.html'].dynamicImports).toEqual(['_page-abc.js']);
 		expect(parsed['index.html'].internationalization.locales['en-US']).toBe('assets/App-abc.en-US.js');
 		expect(parsed['index.html?locale=en-US'].file).toBe('assets/App-abc.en-US.js');
 		expect(parsed['index.html?locale=en-US'].locale).toBe('en-US');
+		expect(parsed['index.html?locale=en-US'].imports).toEqual(['_shared-abc.js']);
+		expect(parsed['index.html?locale=en-US'].dynamicImports).toEqual(['_page-abc.js']);
 	});
 
 	it('augments css-only vite manifest entries by facade module id', () => {
