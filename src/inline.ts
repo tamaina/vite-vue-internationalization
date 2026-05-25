@@ -891,14 +891,35 @@ function getInlineLocalizerCallReplacement(
 	}
 
 	if (typeof resolved.value === 'function') {
-		const valuesExpression = values ? code.slice(values.start, values.end) : '{}';
+		const valuesExpression = values ? replaceNestedInlineMarkerExpression(code.slice(values.start, values.end), resolvePayload) : '{}';
 		const plural = node.arguments.at(3);
 		const pluralExpression = plural ? `, ${code.slice(plural.start, plural.end)}` : '';
 		return `((${resolved.value.toString()})(${valuesExpression}${pluralExpression}))`;
 	}
 
 	const template = typeof resolved.value === 'string' ? resolved.value : `$locale.${path}`;
-	return createInlineTemplateExpression(template, values ? code.slice(values.start, values.end) : '{}', resolvePayload(decodeInlineLocaleMarker(marker)), resolved.scope);
+	const valuesExpression = values ? replaceNestedInlineMarkerExpression(code.slice(values.start, values.end), resolvePayload) : '{}';
+	return createInlineTemplateExpression(template, valuesExpression, resolvePayload(decodeInlineLocaleMarker(marker)), resolved.scope);
+}
+
+function replaceNestedInlineMarkerExpression(expression: string, resolvePayload: InlinePayloadResolver): string {
+	const wrapped = `(${expression})`;
+	let replaced: string;
+
+	try {
+		replaced = replaceInlineLocaleAccessAst(wrapped, resolvePayload, {
+			localeMembers: true,
+			localizerCalls: true,
+			textCalls: true,
+			objectCalls: true,
+		});
+	} catch {
+		return expression;
+	}
+
+	return replaced.startsWith('(') && replaced.endsWith(')')
+		? replaced.slice(1, -1)
+		: expression;
 }
 
 function getInlineLocaleObjectReplacement(node: AstCallExpression, resolvePayload: InlinePayloadResolver): string | undefined {

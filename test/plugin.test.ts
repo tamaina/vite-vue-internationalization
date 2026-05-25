@@ -635,6 +635,27 @@ describe('virtual module generation', () => {
 		expect(replaced).not.toContain('__VUE_INTERNATIONALIZATION_INLINE_');
 	});
 
+	it('replaces inline marker calls nested in localizer values', () => {
+		const marker = internals.injectInlineLocaleBinding('<script setup></script>', '/src/App.vue').match(/"(__VUE_INTERNATIONALIZATION_INLINE__:[^"]+)"/)?.[1];
+		const code = `const body = ctx.__VUE_INTERNATIONALIZATION_INLINE_LOCALIZER__(\`${marker}\`, \`env.body\`, { ok: ctx.__VUE_INTERNATIONALIZATION_INLINE_TEXT__(\`${marker}\`, \`env.ok\`) });`;
+		const replaced = internals.replaceInlineLocaleMarkers(
+			code,
+			'ja-JP',
+			'ja-JP',
+			'vue',
+			{},
+			{
+				'ja-JP': {
+					body: '[{ok}] をクリックしてください',
+					ok: 'OK',
+				},
+			},
+		);
+
+		expect(replaced).toContain('ok: "OK"');
+		expect(replaced).not.toContain('__VUE_INTERNATIONALIZATION_INLINE_');
+	});
+
 	it('does not rewrite static access for component SFC imports with script setup', () => {
 		const root = mkdtempSync(join(tmpdir(), 'vite-vue-internationalization-'));
 		mkdirSync(join(root, 'src'), { recursive: true });

@@ -12,6 +12,7 @@
 - fix: Avoid redeclaring `$locale`/`$l` when a Vue SFC already imports or declares those bindings.
 - fix: Avoid setup-binding injection for inline global-only SFC transforms.
 - fix: Replace inline marker calls whose marker arguments are emitted as template literals.
+- fix: Replace inline marker calls nested in localizer values expressions.
 
 
 ## 0.6.0
