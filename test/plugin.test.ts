@@ -583,6 +583,71 @@ describe('virtual module generation', () => {
 		expect(replaced).not.toContain('$locale.env.description.replaceAll');
 	});
 
+	it('rewrites static computed locale access', () => {
+		const code = internals.rewriteInlineLocaleTemplateAccess(
+			'<template><p>{{ $locale.env[`2fa`] }} {{ $locale.env["token"] }} {{ $locale.env[\'password\'] }}</p></template>',
+			'/src/App.vue',
+		);
+		const compiled = compileTemplate({ source: code, filename: '/src/App.vue', id: 'test' });
+		const replaced = internals.replaceInlineLocaleMarkers(
+			compiled.code,
+			'ja-JP',
+			'ja-JP',
+			'vue',
+			{},
+			{
+				'ja-JP': {
+					'2fa': '二要素認証',
+					token: 'トークン',
+					password: 'パスワード',
+				},
+			},
+		);
+
+		expect(code).toContain('&quot;env.2fa&quot;');
+		expect(code).toContain('&quot;env.token&quot;');
+		expect(code).toContain('&quot;env.password&quot;');
+		expect(replaced).not.toContain('$locale.env');
+	});
+
+	it('rewrites dynamic computed locale access to subtree lookups', () => {
+		const code = internals.rewriteInlineLocaleTemplateAccess(
+			'<template><p>{{ $locale.env._permissions[p] ?? p }}</p><p>{{ $locale.env._achievements._types[`_${achievement}`].title }}</p></template>',
+			'/src/App.vue',
+		);
+		const compiled = compileTemplate({ source: code, filename: '/src/App.vue', id: 'test' });
+		const replaced = internals.replaceInlineLocaleMarkers(
+			compiled.code,
+			'ja-JP',
+			'ja-JP',
+			'vue',
+			{},
+			{
+				'ja-JP': {
+					_permissions: {
+						read: '読む',
+						write: '書く',
+					},
+					_achievements: {
+						_types: {
+							_login: {
+								title: 'ログイン',
+								description: 'ログインした',
+							},
+						},
+					},
+				},
+			},
+		);
+
+		expect(code).toContain('__VUE_INTERNATIONALIZATION_INLINE_LOOKUP__');
+		expect(replaced).toContain('"read":"読む"');
+		expect(replaced).toContain('"write":"書く"');
+		expect(replaced).toContain('"_login":"ログイン"');
+		expect(replaced).not.toContain('__VUE_INTERNATIONALIZATION_INLINE_');
+		expect(replaced).not.toContain('$locale.env');
+	});
+
 	it('rewrites locale-only SFC static access in scripts and templates for inline chunks', () => {
 		const root = mkdtempSync(join(tmpdir(), 'vite-vue-internationalization-'));
 		mkdirSync(join(root, 'src'), { recursive: true });

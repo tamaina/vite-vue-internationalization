@@ -45,6 +45,20 @@ type AstReplaceOptions = {
 	objectCalls?: boolean;
 	allowMarkerFallback?: boolean;
 };
+type ParsedLocaleAccess = {
+	end: number;
+	segments: LocaleAccessSegment[];
+	source: string;
+};
+type LocaleAccessSegment =
+	| {
+		type: 'static';
+		value: string;
+	}
+	| {
+		type: 'dynamic';
+		expression: string;
+	};
 type ParsedInlineJavaScript = {
 	ast: AstNode;
 	code: string;
@@ -114,6 +128,7 @@ const INLINE_LOCALE_CALL = '__VUE_INTERNATIONALIZATION_INLINE_LOCALE__';
 const INLINE_LOCALIZERS_CALL = '__VUE_INTERNATIONALIZATION_INLINE_LOCALIZERS__';
 const INLINE_TEXT_CALL = '__VUE_INTERNATIONALIZATION_INLINE_TEXT__';
 const INLINE_LOCALIZER_CALL = '__VUE_INTERNATIONALIZATION_INLINE_LOCALIZER__';
+const INLINE_LOOKUP_CALL = '__VUE_INTERNATIONALIZATION_INLINE_LOOKUP__';
 const INLINE_TEXT_RE =
 	/(?:\b[A-Za-z_$][\w$]*\.)?__VUE_INTERNATIONALIZATION_INLINE_TEXT__\((?:"|&quot;)(__VUE_INTERNATIONALIZATION_INLINE__:[A-Za-z0-9+/=]+)(?:"|&quot;),(?:"|&quot;)((?:env|sfc)(?:\.[A-Za-z_$][\w$]*)+)(?:"|&quot;)\)/g;
 const INLINE_LOCALIZER_RE =
@@ -148,11 +163,7 @@ export function rewriteInlineLocaleTemplateAccess(code: string, moduleId: string
 	const marker = createInlineLocaleMarker(moduleId);
 
 	return replaceVueTemplateContent(code, (template) =>
-		rewriteTemplateLocalizerAccess(template, marker)
-			.replace(LOCALE_ACCESS_RE, (match, scope: PublicLocaleScope, pathExpression: string, offset: number, source: string) => {
-				const split = splitCallableLocalePath(pathExpression, offset + match.length, source);
-				return `__VUE_INTERNATIONALIZATION_INLINE_TEXT__(${createTemplateStringArgument(marker)},${createTemplateStringArgument(`${scope}${split.pathExpression}`)})${split.suffix}`;
-			}),
+		rewriteTemplateLocaleAccess(rewriteTemplateLocalizerAccess(template, marker), marker),
 	);
 }
 
@@ -195,6 +206,67 @@ function rewriteTemplateLocalizerAccess(template: string, marker: string): strin
 	}
 
 	return cursor === 0 ? template : next + template.slice(cursor);
+}
+
+function rewriteTemplateLocaleAccess(template: string, marker: string): string {
+	let next = '';
+	let cursor = 0;
+
+	for (const match of template.matchAll(/\$locale(?:\.value)?\.(env|sfc)/g)) {
+		const start = match.index;
+		const scope = match[1] as PublicLocaleScope | undefined;
+
+		if (start < cursor || !scope) {
+			continue;
+		}
+
+		const access = parseLocaleAccessSegments(template, start + match[0].length);
+
+		if (!access || access.segments.length === 0) {
+			continue;
+		}
+
+		const replacement = createInlineTemplateAccessReplacement(marker, scope, access);
+
+		if (!replacement) {
+			continue;
+		}
+
+		next += template.slice(cursor, start);
+		next += replacement;
+		cursor = access.end;
+	}
+
+	return cursor === 0 ? template : next + template.slice(cursor);
+}
+
+function createInlineTemplateAccessReplacement(
+	marker: string,
+	scope: PublicLocaleScope,
+	access: ParsedLocaleAccess,
+): string | undefined {
+	const dynamicIndex = access.segments.findIndex((segment) => segment.type === 'dynamic');
+
+	if (dynamicIndex === -1) {
+		const keys = access.segments.map((segment) => segment.type === 'static' ? segment.value : '');
+		return `__VUE_INTERNATIONALIZATION_INLINE_TEXT__(${createTemplateStringArgument(marker)},${createTemplateStringArgument(`${scope}.${keys.join('.')}`)})`;
+	}
+
+	if (access.segments.findIndex((segment, index) => index > dynamicIndex && segment.type === 'dynamic') !== -1) {
+		return undefined;
+	}
+
+	const base = access.segments.slice(0, dynamicIndex);
+	const dynamic = access.segments[dynamicIndex];
+	const suffix = access.segments.slice(dynamicIndex + 1);
+
+	if (dynamic?.type !== 'dynamic' || base.length === 0) {
+		return undefined;
+	}
+
+	const baseKeys = base.map((segment) => segment.type === 'static' ? segment.value : '');
+	const suffixKeys = suffix.map((segment) => segment.type === 'static' ? segment.value : '');
+	return `__VUE_INTERNATIONALIZATION_INLINE_LOOKUP__(${createTemplateStringArgument(marker)},${createTemplateStringArgument(`${scope}.${baseKeys.join('.')}`)},${dynamic.expression},${createTemplateStringArgument(suffixKeys.join('.'))})`;
 }
 
 function rewriteScriptComponentLocaleAccess(code: string, imports: Map<string, string>): string {
@@ -241,6 +313,85 @@ function splitCallableLocalePath(pathExpression: string, end: number, source: st
 	return lastDot > 0
 		? { pathExpression: pathExpression.slice(0, lastDot), suffix: pathExpression.slice(lastDot) }
 		: { pathExpression, suffix: '' };
+}
+
+function parseLocaleAccessSegments(source: string, start: number): ParsedLocaleAccess | undefined {
+	const segments: LocaleAccessSegment[] = [];
+	let cursor = start;
+
+	while (cursor < source.length) {
+		if (source[cursor] === '.') {
+			const identifier = readIdentifier(source, cursor + 1);
+
+			if (!identifier) {
+				break;
+			}
+
+			if (source[identifier.end] === '(') {
+				break;
+			}
+
+			segments.push({ type: 'static', value: identifier.value });
+			cursor = identifier.end;
+			continue;
+		}
+
+		if (source[cursor] === '[') {
+			const end = findBalancedExpressionEnd(source, cursor + 1, '[', ']');
+
+			if (end === undefined) {
+				break;
+			}
+
+			const expression = source.slice(cursor + 1, end);
+			const staticKey = parseStaticPropertyKey(expression);
+			segments.push(staticKey === undefined
+				? { type: 'dynamic', expression }
+				: { type: 'static', value: staticKey });
+			cursor = end + 1;
+			continue;
+		}
+
+		break;
+	}
+
+	if (segments.length === 0) {
+		return undefined;
+	}
+
+	return {
+		end: cursor,
+		segments,
+		source: source.slice(start, cursor),
+	};
+}
+
+function readIdentifier(source: string, start: number): { value: string; end: number } | undefined {
+	const match = /^[A-Za-z_$][\w$]*/.exec(source.slice(start));
+
+	return match
+		? { value: match[0], end: start + match[0].length }
+		: undefined;
+}
+
+function parseStaticPropertyKey(expression: string): string | undefined {
+	const trimmed = expression.trim();
+
+	if (/^`[^`$]*`$/u.test(trimmed)) {
+		return trimmed.slice(1, -1);
+	}
+
+	if (/^"([^"\\]|\\.)*"$/u.test(trimmed)) {
+		return JSON.parse(trimmed) as string;
+	}
+
+	const singleQuoted = /^'((?:[^'\\]|\\.)*)'$/u.exec(trimmed);
+
+	if (singleQuoted) {
+		return singleQuoted[1]
+			.replaceAll("\\'", "'")
+			.replaceAll('\\\\', '\\');
+	}
 }
 
 function rewriteComponentLocaleAccess(code: string, imports: Map<string, string>, htmlEscaped: boolean): string {
@@ -866,6 +1017,10 @@ function getCallReplacement(
 		return getInlineLocalizerCallReplacement(code, node, resolvePayload);
 	}
 
+	if (options.textCalls === true && calleeName === INLINE_LOOKUP_CALL) {
+		return getInlineLookupCallReplacement(code, node, resolvePayload);
+	}
+
 	if (options.objectCalls === true && calleeName === INLINE_LOCALE_CALL) {
 		return getInlineLocaleObjectReplacement(node, resolvePayload);
 	}
@@ -925,6 +1080,78 @@ function getInlineLocalizerCallReplacement(
 	const template = typeof resolved.value === 'string' ? resolved.value : `$locale.${path}`;
 	const valuesExpression = values ? replaceNestedInlineMarkerExpression(code.slice(values.start, values.end), resolvePayload) : '{}';
 	return createInlineTemplateExpression(template, valuesExpression, resolvePayload(decodeInlineLocaleMarker(marker)), resolved.scope);
+}
+
+function getInlineLookupCallReplacement(
+	code: string,
+	node: AstCallExpression,
+	resolvePayload: InlinePayloadResolver,
+): string | undefined {
+	const marker = getStringArgument(node, 0);
+	const path = getStringArgument(node, 1);
+	const key = node.arguments.at(2);
+	const suffix = getStringArgument(node, 3) ?? '';
+
+	if (!marker || !isInlineLocaleMarker(marker) || !path || !key) {
+		return undefined;
+	}
+
+	const resolved = resolveInlinePath(marker, path, resolvePayload);
+
+	if (!resolved || !isDictionary(resolved.value)) {
+		return 'undefined';
+	}
+
+	return createInlineLookupExpression(
+		resolved.value,
+		code.slice(key.start, key.end),
+		suffix === '' ? [] : suffix.split('.'),
+		resolvePayload(decodeInlineLocaleMarker(marker)),
+		resolved.scope,
+	);
+}
+
+function createInlineLookupExpression(
+	dictionary: LocaleDictionary,
+	keyExpression: string,
+	suffixKeys: string[],
+	payload: InlineLocalePayload,
+	scope: PublicLocaleScope,
+): string {
+	const entries = Object.entries(dictionary)
+		.map(([key, value]) => {
+			const selected = suffixKeys.length > 0 && isDictionary(value)
+				? getValueByPath(value, suffixKeys)
+				: value;
+
+			if (selected === undefined) {
+				return undefined;
+			}
+
+			return `${JSON.stringify(key)}:${serializeInlineLookupValue(selected, payload, scope)}`;
+		})
+		.filter((entry): entry is string => entry !== undefined)
+		.join(',');
+
+	return `(({${entries}})[String(${keyExpression})])`;
+}
+
+function serializeInlineLookupValue(value: unknown, payload: InlineLocalePayload, scope: PublicLocaleScope): string {
+	if (isDictionary(value)) {
+		return `{${Object.entries(value)
+			.map(([key, child]) => `${toObjectPropertyName(key)}:${serializeInlineLookupValue(child, payload, scope)}`)
+			.join(',')}}`;
+	}
+
+	if (typeof value === 'function') {
+		return `(${value.toString()})`;
+	}
+
+	if (typeof value === 'string') {
+		return createInlineTemplateExpression(value, '{}', payload, scope);
+	}
+
+	return JSON.stringify(value);
 }
 
 function replaceNestedInlineMarkerExpression(expression: string, resolvePayload: InlinePayloadResolver): string {
@@ -1390,6 +1617,10 @@ function createLocalizerObjectExpression(
 
 function createInlineRefAliasExpression(expression: string): string {
 	return `(() => { const __locale = ${expression}; __locale.value = __locale; return __locale; })()`;
+}
+
+function toObjectPropertyName(key: string): string {
+	return /^[$A-Z_a-z][$\w]*$/.test(key) ? key : JSON.stringify(key);
 }
 
 function getPayloadScope(payload: InlineLocalePayload, scope: PublicLocaleScope): LocaleDictionary {
