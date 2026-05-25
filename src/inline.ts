@@ -63,6 +63,16 @@ type AstLiteral = AstNode & {
 	type: 'Literal';
 	value: unknown;
 };
+type AstTemplateLiteral = AstNode & {
+	type: 'TemplateLiteral';
+	expressions: AstNode[];
+	quasis: Array<{
+		value: {
+			cooked?: string | null;
+			raw: string;
+		};
+	}>;
+};
 type AstMemberExpression = AstNode & {
 	type: 'MemberExpression';
 	object: AstNode;
@@ -1047,9 +1057,17 @@ function normalizeInlineAccessPath(properties: string[]): { scope: PublicLocaleS
 function getStringArgument(node: AstCallExpression, index: number): string | undefined {
 	const argument = node.arguments.at(index);
 
-	return argument && isLiteral(argument) && typeof argument.value === 'string'
-		? argument.value
-		: undefined;
+	if (!argument) {
+		return undefined;
+	}
+
+	if (isLiteral(argument) && typeof argument.value === 'string') {
+		return argument.value;
+	}
+
+	if (isTemplateLiteral(argument) && argument.expressions.length === 0) {
+		return argument.quasis[0]?.value.cooked ?? argument.quasis[0]?.value.raw;
+	}
 }
 
 function getCalleeName(callee: AstNode): string | undefined {
@@ -1088,6 +1106,10 @@ function isIdentifier(node: AstNode): node is AstIdentifier {
 
 function isLiteral(node: AstNode): node is AstLiteral {
 	return node.type === 'Literal';
+}
+
+function isTemplateLiteral(node: AstNode): node is AstTemplateLiteral {
+	return node.type === 'TemplateLiteral';
 }
 
 function isMemberExpression(node: AstNode): node is AstMemberExpression {

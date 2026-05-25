@@ -11,6 +11,7 @@
 - fix: Make Vue SFC binding injection idempotent when a transform pipeline sees an already-injected file.
 - fix: Avoid redeclaring `$locale`/`$l` when a Vue SFC already imports or declares those bindings.
 - fix: Avoid setup-binding injection for inline global-only SFC transforms.
+- fix: Replace inline marker calls whose marker arguments are emitted as template literals.
 
 
 ## 0.6.0

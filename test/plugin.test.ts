@@ -610,6 +610,31 @@ describe('virtual module generation', () => {
 		expect(replaced).not.toContain('Messages.$l');
 	});
 
+	it('replaces inline marker calls with template literal arguments', () => {
+		const marker = internals.injectInlineLocaleBinding('<script setup></script>', '/src/App.vue').match(/"(__VUE_INTERNATIONALIZATION_INLINE__:[^"]+)"/)?.[1];
+		const code = [
+			`const title = ctx.__VUE_INTERNATIONALIZATION_INLINE_TEXT__(\`${marker}\`, \`env.title\`);`,
+			`const body = ctx.__VUE_INTERNATIONALIZATION_INLINE_LOCALIZER__(\`${marker}\`, \`env.body\`, { count: 2 });`,
+		].join('\n');
+		const replaced = internals.replaceInlineLocaleMarkers(
+			code,
+			'ja-JP',
+			'ja-JP',
+			'vue',
+			{},
+			{
+				'ja-JP': {
+					title: 'タイトル',
+					body: '{count} 件',
+				},
+			},
+		);
+
+		expect(replaced).toContain('const title = "タイトル";');
+		expect(replaced).toContain('" 件"');
+		expect(replaced).not.toContain('__VUE_INTERNATIONALIZATION_INLINE_');
+	});
+
 	it('does not rewrite static access for component SFC imports with script setup', () => {
 		const root = mkdtempSync(join(tmpdir(), 'vite-vue-internationalization-'));
 		mkdirSync(join(root, 'src'), { recursive: true });
