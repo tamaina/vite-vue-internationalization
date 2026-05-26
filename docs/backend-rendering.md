@@ -47,4 +47,6 @@ export default defineConfig({
 
 `inline-chunks` はブラウザ配信用のチャンクを locale ごとに分ける最適化です。Worker やメール送信用のバックエンド描画では、まず標準の `virtual` 戦略を使ってください。
 
-軽い動作例は `examples/cloudflare-worker-ssr` にあります。他の SSR フレームワークで使う場合は、そのフレームワークが Vite の SFC 変換と `virtual:vite-vue-internationalization` の解決をどの層で扱うかを確認してください。たとえば Nuxt は Vite をビルドツールとして使えますが、サーバー実行は Nitro の仕組みに乗るため、この Cloudflare Workers example と同じ構成としては扱いません。
+軽い動作例は `examples/cloudflare-worker-ssr` にあります。
+
+Nuxt での動作確認用には `examples/nuxt` があります。この例では `nuxt.config.ts` の `vite.plugins` に VVI を登録し、Nuxt plugin で `createInternationalization({ initialLocale })` を Vue app に install します。Nuxt は Vite をビルドツールとして使えますが、サーバー実行は Nitro の仕組みに乗るため、Cloudflare Workers example と同じ構成としては扱いません。他の SSR フレームワークで使う場合も、そのフレームワークが Vite の SFC 変換と `virtual:vite-vue-internationalization` の解決をどの層で扱うかを確認してください。

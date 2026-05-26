@@ -47,4 +47,6 @@ export default defineConfig({
 
 `inline-chunks` is an optimization for browser delivery that emits locale-specific chunks. For Workers or email-style backend rendering, start with the default `virtual` strategy.
 
-See `examples/cloudflare-worker-ssr` for a small working example. For other SSR frameworks, check which layer owns Vite's SFC transform and resolution of `virtual:vite-vue-internationalization`. For example, Nuxt can use Vite as its build tool, but its server runtime is built around Nitro, so it should not be treated as the same setup as this Cloudflare Workers example.
+See `examples/cloudflare-worker-ssr` for a small working example.
+
+For Nuxt, see `examples/nuxt`. That example registers VVI in `vite.plugins` in `nuxt.config.ts`, then installs `createInternationalization({ initialLocale })` into the Vue app from a Nuxt plugin. Nuxt can use Vite as its build tool, but its server runtime is built around Nitro, so it should not be treated as the same setup as the Cloudflare Workers example. For other SSR frameworks, check which layer owns Vite's SFC transform and resolution of `virtual:vite-vue-internationalization`.

@@ -213,7 +213,7 @@ export function vueInternationalization(options?: Partial<VueInternationalizatio
 						global: globalMessages[currentOptions.primaryLocale],
 						messageSyntax: currentOptions.messageSyntax,
 						transformAll: currentOptions.sfcTransform === 'all',
-						moduleExpression: transformOptions?.ssr ? JSON.stringify(toRuntimeModuleId(id, root)) : undefined,
+						moduleExpression: JSON.stringify(toRuntimeModuleId(id, root)),
 					});
 
 			if (!transformed) {

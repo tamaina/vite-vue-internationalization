@@ -17,6 +17,15 @@ type WorkerSsrExampleCase = {
 	footerText: string;
 };
 
+type NuxtExampleCase = {
+	name: string;
+	url: string;
+	heading: string;
+	greetingText: string;
+	bodyText: string;
+	countText: string;
+};
+
 const examples: ExampleCase[] = [
 	{
 		name: 'vue dev ja',
@@ -76,6 +85,41 @@ const examples: ExampleCase[] = [
 	},
 ];
 
+const nuxtExamples: NuxtExampleCase[] = [
+	{
+		name: 'nuxt dev ja',
+		url: 'http://127.0.0.1:3005/?locale=ja-JP',
+		heading: 'Nuxt で VVI',
+		greetingText: 'こんにちは VVI',
+		bodyText: 'Nuxt の Vite plugin 設定から Vue SFC の翻訳を読み込んでいます。',
+		countText: '項目が 3 件あります',
+	},
+	{
+		name: 'nuxt dev en',
+		url: 'http://127.0.0.1:3005/?locale=en-US',
+		heading: 'VVI with Nuxt',
+		greetingText: 'Hello VVI',
+		bodyText: "Vue SFC translations are loaded through Nuxt's Vite plugin configuration.",
+		countText: '3 items',
+	},
+	{
+		name: 'nuxt preview ja',
+		url: 'http://127.0.0.1:3006/?locale=ja-JP',
+		heading: 'Nuxt で VVI',
+		greetingText: 'こんにちは VVI',
+		bodyText: 'Nuxt の Vite plugin 設定から Vue SFC の翻訳を読み込んでいます。',
+		countText: '項目が 3 件あります',
+	},
+	{
+		name: 'nuxt preview en',
+		url: 'http://127.0.0.1:3006/?locale=en-US',
+		heading: 'VVI with Nuxt',
+		greetingText: 'Hello VVI',
+		bodyText: "Vue SFC translations are loaded through Nuxt's Vite plugin configuration.",
+		countText: '3 items',
+	},
+];
+
 const workerSsrExamples: WorkerSsrExampleCase[] = [
 	{
 		name: 'cloudflare worker ssr ja',
@@ -105,6 +149,22 @@ for (const example of examples) {
 		await expect(page.getByRole('heading', { level: 1 })).toHaveText(example.heading);
 		await expect(page.getByText(example.bodyText, { exact: true })).toBeVisible();
 		await expect(page.getByText(example.asyncText, { exact: true })).toBeVisible();
+
+		expect(problems).toEqual([]);
+	});
+}
+
+for (const example of nuxtExamples) {
+	test(`${example.name} renders localized content`, async ({ page }) => {
+		const problems = collectPageProblems(page);
+
+		await page.goto(example.url, { waitUntil: 'networkidle' });
+
+		await expect(page.locator('#__nuxt')).not.toBeEmpty();
+		await expect(page.getByRole('heading', { level: 1 })).toHaveText(example.heading);
+		await expect(page.getByText(example.greetingText, { exact: true })).toBeVisible();
+		await expect(page.getByText(example.bodyText, { exact: true })).toBeVisible();
+		await expect(page.getByText(example.countText, { exact: true })).toBeVisible();
 
 		expect(problems).toEqual([]);
 	});

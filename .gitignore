@@ -1,6 +1,9 @@
 node_modules/
 dist/
 examples/*/dist/
+examples/*/.nuxt*/
+examples/*/.output/
+examples/*/.wrangler/
 docs/.vitepress/
 docs/.typedoc-api/
 docs/api.md
