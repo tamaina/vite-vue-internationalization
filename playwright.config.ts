@@ -37,5 +37,23 @@ export default defineConfig({
 			reuseExistingServer: !isCI,
 			timeout: 30_000,
 		},
+		{
+			command: 'pnpm --filter ./examples/cloudflare-worker-ssr exec vite preview --host 127.0.0.1 --port 4175 --strictPort',
+			url: 'http://127.0.0.1:4175/',
+			reuseExistingServer: !isCI,
+			timeout: 30_000,
+		},
+		{
+			command: 'NUXT_BUILD_DIR=.nuxt-dev pnpm --filter ./examples/nuxt exec nuxt dev --host 127.0.0.1 --port 3005',
+			url: 'http://127.0.0.1:3005/',
+			reuseExistingServer: !isCI,
+			timeout: 60_000,
+		},
+		{
+			command: 'NUXT_BUILD_DIR=.nuxt-preview pnpm --filter ./examples/nuxt exec nuxt preview -p 3006',
+			url: 'http://127.0.0.1:3006/',
+			reuseExistingServer: !isCI,
+			timeout: 60_000,
+		},
 	],
 });

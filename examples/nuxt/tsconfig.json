@@ -1,0 +1,13 @@
+{
+  "extends": "./.nuxt/tsconfig.json",
+  "vueCompilerOptions": {
+    "plugins": [
+      {
+        "name": "vite-vue-internationalization/volar",
+        "primaryLocale": "ja-JP",
+        "buildStrategy": "virtual",
+        "messageSyntax": "vue"
+      }
+    ]
+  }
+}

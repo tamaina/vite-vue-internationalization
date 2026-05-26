@@ -8,6 +8,24 @@ type ExampleCase = {
 	asyncText: string;
 };
 
+type WorkerSsrExampleCase = {
+	name: string;
+	url: string;
+	lang: string;
+	heading: string;
+	bodyText: string;
+	footerText: string;
+};
+
+type NuxtExampleCase = {
+	name: string;
+	url: string;
+	heading: string;
+	greetingText: string;
+	bodyText: string;
+	countText: string;
+};
+
 const examples: ExampleCase[] = [
 	{
 		name: 'vue dev ja',
@@ -67,6 +85,60 @@ const examples: ExampleCase[] = [
 	},
 ];
 
+const nuxtExamples: NuxtExampleCase[] = [
+	{
+		name: 'nuxt dev ja',
+		url: 'http://127.0.0.1:3005/?locale=ja-JP',
+		heading: 'Nuxt で VVI',
+		greetingText: 'こんにちは VVI',
+		bodyText: 'Nuxt の Vite plugin 設定から Vue SFC の翻訳を読み込んでいます。',
+		countText: '項目が 3 件あります',
+	},
+	{
+		name: 'nuxt dev en',
+		url: 'http://127.0.0.1:3005/?locale=en-US',
+		heading: 'VVI with Nuxt',
+		greetingText: 'Hello VVI',
+		bodyText: 'Vue SFC translations are loaded through Nuxt\'s Vite plugin configuration.',
+		countText: '3 items',
+	},
+	{
+		name: 'nuxt preview ja',
+		url: 'http://127.0.0.1:3006/?locale=ja-JP',
+		heading: 'Nuxt で VVI',
+		greetingText: 'こんにちは VVI',
+		bodyText: 'Nuxt の Vite plugin 設定から Vue SFC の翻訳を読み込んでいます。',
+		countText: '項目が 3 件あります',
+	},
+	{
+		name: 'nuxt preview en',
+		url: 'http://127.0.0.1:3006/?locale=en-US',
+		heading: 'VVI with Nuxt',
+		greetingText: 'Hello VVI',
+		bodyText: 'Vue SFC translations are loaded through Nuxt\'s Vite plugin configuration.',
+		countText: '3 items',
+	},
+];
+
+const workerSsrExamples: WorkerSsrExampleCase[] = [
+	{
+		name: 'cloudflare worker ssr ja',
+		url: 'http://127.0.0.1:4175/?locale=ja-JP',
+		lang: 'ja-JP',
+		heading: 'バックエンドで描画したメール',
+		bodyText: 'Vite の SSR module graph で Vue SFC の翻訳を読み込んでいます。',
+		footerText: 'Cloudflare Workers から送信できます。',
+	},
+	{
+		name: 'cloudflare worker ssr en',
+		url: 'http://127.0.0.1:4175/?locale=en-US',
+		lang: 'en-US',
+		heading: 'Email rendered on the backend',
+		bodyText: 'Vue SFC translations are loaded through the Vite SSR module graph.',
+		footerText: 'Ready to send from Cloudflare Workers.',
+	},
+];
+
 for (const example of examples) {
 	test(`${example.name} renders localized content`, async ({ page }) => {
 		const problems = collectPageProblems(page);
@@ -77,6 +149,38 @@ for (const example of examples) {
 		await expect(page.getByRole('heading', { level: 1 })).toHaveText(example.heading);
 		await expect(page.getByText(example.bodyText, { exact: true })).toBeVisible();
 		await expect(page.getByText(example.asyncText, { exact: true })).toBeVisible();
+
+		expect(problems).toEqual([]);
+	});
+}
+
+for (const example of nuxtExamples) {
+	test(`${example.name} renders localized content`, async ({ page }) => {
+		const problems = collectPageProblems(page);
+
+		await page.goto(example.url, { waitUntil: 'networkidle' });
+
+		await expect(page.locator('#__nuxt')).not.toBeEmpty();
+		await expect(page.getByRole('heading', { level: 1 })).toHaveText(example.heading);
+		await expect(page.getByText(example.greetingText, { exact: true })).toBeVisible();
+		await expect(page.getByText(example.bodyText, { exact: true })).toBeVisible();
+		await expect(page.getByText(example.countText, { exact: true })).toBeVisible();
+
+		expect(problems).toEqual([]);
+	});
+}
+
+for (const example of workerSsrExamples) {
+	test(`${example.name} renders localized html`, async ({ page }) => {
+		const problems = collectPageProblems(page);
+
+		await page.goto(example.url, { waitUntil: 'networkidle' });
+
+		await expect(page.locator('html')).toHaveAttribute('lang', example.lang);
+		await expect(page.getByRole('heading', { level: 1 })).toHaveText(example.heading);
+		await expect(page.getByText(example.bodyText, { exact: true })).toBeVisible();
+		await expect(page.getByText(example.footerText, { exact: true })).toBeVisible();
+		await expect(page.locator('#app')).toHaveCount(0);
 
 		expect(problems).toEqual([]);
 	});

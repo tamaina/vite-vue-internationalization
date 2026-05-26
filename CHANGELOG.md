@@ -1,3 +1,13 @@
+## 0.9.0
+
+### Changes
+
+- feat: Add a Cloudflare Workers SSR example for rendering Vue SFC translations to backend HTML strings.
+- feat: Add a Nuxt example that installs VVI through Nuxt's Vite plugin and verifies dev/preview rendering.
+- fix: Use stable Vue SFC module IDs in Vite transforms so SSR and client hydration resolve the same locale dictionaries.
+- docs: Document backend HTML rendering with per-request `createInternationalization({ initialLocale })` setup and performance notes.
+
+
 ## 0.8.0
 
 ### Changes
