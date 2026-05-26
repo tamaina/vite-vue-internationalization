@@ -146,18 +146,22 @@ Static references such as `$locale.sfc.title` and `$l.sfc.count({ n })` are full
   - [Messages](./docs/en/messages.md)
   - [Message Syntax](./docs/en/message-syntax.md)
   - [Build Strategy](./docs/en/build-strategy.md)
+  - [Backend HTML Rendering](./docs/en/backend-rendering.md)
 - Japanese:
   - [はじめる](./docs/getting-started.md)
   - [設定](./docs/configuration.md)
   - [メッセージ定義](./docs/messages.md)
   - [メッセージ構文](./docs/message-syntax.md)
   - [ビルド戦略](./docs/build-strategy.md)
+  - [バックエンド HTML 描画](./docs/backend-rendering.md)
   - [API リファレンス](./docs/api.md)
 
 ## Examples
 
 - [Vue syntax example on StackBlitz](https://stackblitz.com/github/tamaina/vite-vue-internationalization?startScript=example%3Avue&title=vite-vue-internationalization%20Vue%20syntax)
 - [ICU syntax example on StackBlitz](https://stackblitz.com/github/tamaina/vite-vue-internationalization?startScript=example%3Aicu&title=vite-vue-internationalization%20ICU%20syntax)
+- [`examples/cloudflare-worker-ssr`](./examples/cloudflare-worker-ssr): Vue SSR to an HTML string in a Cloudflare Workers-style Vite build.
+- [`examples/nuxt`](./examples/nuxt): Nuxt app using VVI through `vite.plugins` and a Nuxt plugin.
 
 To view the documentation locally:
 
