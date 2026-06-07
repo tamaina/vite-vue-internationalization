@@ -2,7 +2,7 @@
 
 ### Changes
 
--
+- chore: Mark the Volar plugin dependency on `@vue/language-core` as an optional peer dependency.
 
 
 ## 0.9.0
