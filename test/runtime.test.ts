@@ -1,8 +1,28 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, expectTypeOf, it } from 'vitest';
 import { h } from 'vue';
 import { Internationalization, createComponentLocale, createComponentLocalizer, createInternationalization, formatLocaleTemplate, setActiveInternationalization, useDateTimeFormat, useLocale, useLocalizer, useNumberFormat } from '../src/runtime.js';
+import type { LocaleMessageFunction, LocaleTemplateFunction } from '../src/runtime.js';
 
 describe('runtime locale fallback', () => {
+	it('maps typed locale dictionaries to callable localizer dictionaries', () => {
+		type GlobalMessages = {
+			title: string;
+			nested: {
+				count: string;
+			};
+			format: LocaleMessageFunction<{ n: number }>;
+		};
+		type ModuleMessages = {
+			label: string;
+		};
+		type Localizer = ReturnType<typeof useLocalizer<GlobalMessages, ModuleMessages>>;
+
+		expectTypeOf<Localizer['value']['env']['title']>().toEqualTypeOf<LocaleTemplateFunction>();
+		expectTypeOf<Localizer['value']['env']['nested']['count']>().toEqualTypeOf<LocaleTemplateFunction>();
+		expectTypeOf<Localizer['value']['env']['format']>().toEqualTypeOf<LocaleMessageFunction<{ n: number }>>();
+		expectTypeOf<Localizer['value']['sfc']['label']>().toEqualTypeOf<LocaleTemplateFunction>();
+	});
+
 	it('falls back to the primary locale and then the full locale expression', async () => {
 		const internationalization = createInternationalization({
 			primaryLocale: 'ja-JP',

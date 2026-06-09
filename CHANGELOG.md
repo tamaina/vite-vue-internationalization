@@ -2,7 +2,7 @@
 
 ### Changes
 
--
+- fix: Preserve typed localizer dictionaries when using `useLocalizer()` from TypeScript modules.
 
 
 ## 1.1.1

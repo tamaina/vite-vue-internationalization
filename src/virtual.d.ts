@@ -33,7 +33,10 @@ declare module 'virtual:vite-vue-internationalization' {
 		TModule extends RuntimeLocaleDictionary = RuntimeLocaleDictionary,
 	>(moduleUrl: string): Readonly<ComputedRef<LocaleScope<TGlobal, TModule>>>;
 	/** Returns reactive localizer functions for global and SFC dictionaries. */
-	export function useLocalizer(moduleUrl: string): Readonly<ComputedRef<LocaleLocalizerScope>>;
+	export function useLocalizer<
+		TGlobal extends RuntimeLocaleDictionary = RuntimeLocaleDictionary,
+		TModule extends RuntimeLocaleDictionary = RuntimeLocaleDictionary,
+	>(moduleUrl: string): Readonly<ComputedRef<LocaleLocalizerScope<TGlobal, TModule>>>;
 	/** Creates a lazy SFC dictionary proxy for component static `$locale` access. */
 	export function createComponentLocale<TModule extends RuntimeLocaleDictionary = RuntimeLocaleDictionary>(moduleUrl: string): TModule;
 	/** Creates a lazy SFC localizer proxy for component static `$l` access. */

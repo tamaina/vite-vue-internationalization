@@ -52,15 +52,26 @@ export type LocaleNumberFormatter = (
 	format?: LocaleNumberFormatName | LocaleNumberFormatOptions,
 	options?: LocaleNumberFormatOptions,
 ) => string;
-/** Localizer functions grouped by global and SFC scopes. */
-export type LocaleLocalizerScope = {
-	env: LocaleLocalizerDictionary;
-	sfc: LocaleLocalizerDictionary;
-};
 /** Nested localizer dictionary returned by `$l` and localizer helpers. */
 export interface LocaleLocalizerDictionary {
 	[key: string]: LocaleTemplateFunction | LocaleMessageFunction | LocaleLocalizerDictionary;
 }
+/** Localizer dictionary derived from a locale dictionary type. */
+export type TypedLocaleLocalizerDictionary<TDictionary extends RuntimeLocaleDictionary> = {
+	[TKey in keyof TDictionary]: TDictionary[TKey] extends LocaleMessageFunction
+		? TDictionary[TKey]
+		: TDictionary[TKey] extends RuntimeLocaleDictionary
+			? TypedLocaleLocalizerDictionary<TDictionary[TKey]>
+			: LocaleTemplateFunction;
+};
+/** Localizer functions grouped by global and SFC scopes. */
+export type LocaleLocalizerScope<
+	TGlobal extends RuntimeLocaleDictionary = RuntimeLocaleDictionary,
+	TModule extends RuntimeLocaleDictionary = RuntimeLocaleDictionary,
+> = {
+	env: TypedLocaleLocalizerDictionary<TGlobal>;
+	sfc: TypedLocaleLocalizerDictionary<TModule>;
+};
 /** Permissive runtime localizer dictionary for large untyped global message sets. */
 export interface RuntimeLocaleLocalizerDictionary {
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -267,7 +278,10 @@ export function useLocale<
 }
 
 /** Returns reactive localizer functions for global and SFC dictionaries. */
-export function useLocalizer(moduleUrl: string): Readonly<ComputedRef<LocaleLocalizerScope>> {
+export function useLocalizer<
+	TGlobal extends RuntimeLocaleDictionary = RuntimeLocaleDictionary,
+	TModule extends RuntimeLocaleDictionary = RuntimeLocaleDictionary,
+>(moduleUrl: string): Readonly<ComputedRef<LocaleLocalizerScope<TGlobal, TModule>>> {
 	const internationalization = useInternationalization();
 	const locale = useLocale(moduleUrl);
 
@@ -279,7 +293,7 @@ export function useLocalizer(moduleUrl: string): Readonly<ComputedRef<LocaleLoca
 			env: createLocalizerDictionary(locale.value.env, ['env'], rootDictionary, state.locale, state.messageSyntax),
 			sfc: createLocalizerDictionary(locale.value.sfc, ['sfc'], rootDictionary, state.locale, state.messageSyntax),
 		};
-	});
+	}) as ComputedRef<LocaleLocalizerScope<TGlobal, TModule>>;
 }
 
 /**
