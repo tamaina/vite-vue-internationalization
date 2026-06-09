@@ -56,7 +56,7 @@ type AstReplaceOptions = {
 	localeMembers?: boolean;
 	localizerCalls?: boolean;
 	textCalls?: boolean;
-	objectCalls?: boolean;
+	objectCalls?: boolean | 'empty';
 	allowMarkerFallback?: boolean;
 };
 type InlineReplacementPlan = {
@@ -94,12 +94,14 @@ type InlineReplacementOperation =
 		start: number;
 		end: number;
 		marker: string;
+		mode: 'full' | 'empty';
 	}
 	| {
 		type: 'localizer-object-call';
 		start: number;
 		end: number;
 		marker: string;
+		mode: 'full' | 'empty';
 	}
 	| {
 		type: 'localizer-binding-call';
@@ -1296,7 +1298,7 @@ function createRequiredInlineReplacementPlan(code: string): InlineReplacementPla
 		localeMembers: true,
 		localizerCalls: true,
 		textCalls: true,
-		objectCalls: true,
+		objectCalls: 'empty',
 	}, parseRequiredInlineJavaScript(code));
 }
 
@@ -1507,12 +1509,12 @@ function getCallReplacementOperation(
 		return getInlineLookupCallReplacementOperation(code, node);
 	}
 
-	if (options.objectCalls === true && calleeName === INLINE_LOCALE_CALL) {
-		return getInlineLocaleObjectReplacementOperation(node);
+	if (options.objectCalls && calleeName === INLINE_LOCALE_CALL) {
+		return getInlineLocaleObjectReplacementOperation(node, options.objectCalls);
 	}
 
-	if (options.objectCalls === true && calleeName === INLINE_LOCALIZERS_CALL) {
-		return getInlineLocalizerObjectReplacementOperation(node);
+	if (options.objectCalls && calleeName === INLINE_LOCALIZERS_CALL) {
+		return getInlineLocalizerObjectReplacementOperation(node, options.objectCalls);
 	}
 
 	if (options.localizerCalls === true) {
@@ -1649,7 +1651,7 @@ function replaceNestedInlineMarkerExpression(expression: string, resolvePayload:
 		: expression;
 }
 
-function getInlineLocaleObjectReplacementOperation(node: AstCallExpression): InlineReplacementOperation | undefined {
+function getInlineLocaleObjectReplacementOperation(node: AstCallExpression, objectCalls: true | 'empty' = true): InlineReplacementOperation | undefined {
 	const marker = getStringArgument(node, 0);
 
 	if (!marker || !isInlineLocaleMarker(marker)) {
@@ -1661,10 +1663,11 @@ function getInlineLocaleObjectReplacementOperation(node: AstCallExpression): Inl
 		start: node.start,
 		end: node.end,
 		marker,
+		mode: objectCalls === 'empty' ? 'empty' : 'full',
 	};
 }
 
-function getInlineLocalizerObjectReplacementOperation(node: AstCallExpression): InlineReplacementOperation | undefined {
+function getInlineLocalizerObjectReplacementOperation(node: AstCallExpression, objectCalls: true | 'empty' = true): InlineReplacementOperation | undefined {
 	const marker = getStringArgument(node, 0);
 
 	if (!marker || !isInlineLocaleMarker(marker)) {
@@ -1676,6 +1679,7 @@ function getInlineLocalizerObjectReplacementOperation(node: AstCallExpression): 
 		start: node.start,
 		end: node.end,
 		marker,
+		mode: objectCalls === 'empty' ? 'empty' : 'full',
 	};
 }
 
@@ -1721,18 +1725,16 @@ function getLocaleMemberReplacementOperation(
 	localeBindings: Map<string, string>,
 ): InlineReplacementOperation | undefined {
 	const access = readMemberAccess(node);
+	const inlineCallAccess = access ? undefined : readInlineLocaleCallMemberAccess(node);
 
-	if (!access) {
+	const marker = access ? localeBindings.get(access.root) : inlineCallAccess?.marker;
+	const properties = access?.properties ?? inlineCallAccess?.properties;
+
+	if (!marker || !properties) {
 		return undefined;
 	}
 
-	const marker = localeBindings.get(access.root);
-
-	if (!marker) {
-		return undefined;
-	}
-
-	const normalized = normalizeInlineAccessPath(access.properties);
+	const normalized = normalizeInlineAccessPath(properties);
 
 	if (!normalized) {
 		return undefined;
@@ -1743,7 +1745,7 @@ function getLocaleMemberReplacementOperation(
 		start: node.start,
 		end: node.end,
 		marker,
-		properties: access.properties,
+		properties,
 	};
 }
 
@@ -1793,6 +1795,10 @@ function getPlannedReplacement(
 		}
 
 		case 'locale-object-call': {
+			if (operation.mode === 'empty') {
+				return createInlineRefAliasExpression('{}');
+			}
+
 			const payload = resolvePayload(decodeInlineLocaleMarker(operation.marker));
 			const fallbackPayload = {
 				env: createFallbackObject(payload.global, 'env'),
@@ -1803,6 +1809,10 @@ function getPlannedReplacement(
 		}
 
 		case 'localizer-object-call': {
+			if (operation.mode === 'empty') {
+				return createInlineRefAliasExpression('{}');
+			}
+
 			const payload = resolvePayload(decodeInlineLocaleMarker(operation.marker));
 			return createInlineRefAliasExpression(`{env:${createLocalizerObjectExpression(payload.global, payload, 'env')},sfc:${createLocalizerObjectExpression(payload.module, payload, 'sfc')}}`);
 		}
@@ -1835,7 +1845,8 @@ function getPlannedReplacement(
 				return undefined;
 			}
 
-			const value = getValueByPath(getPayloadScope(payload, normalized.scope), normalized.keys);
+			const scope = getPayloadScope(payload, normalized.scope);
+			const value = normalized.keys.length === 0 ? scope : getValueByPath(scope, normalized.keys);
 			return JSON.stringify(value ?? `$locale.${[normalized.scope, ...normalized.keys].join('.')}`);
 		}
 	}
@@ -1889,11 +1900,36 @@ function readMemberAccess(node: AstNode): { root: string; properties: string[] }
 	};
 }
 
+function readInlineLocaleCallMemberAccess(node: AstNode): { marker: string; properties: string[] } | undefined {
+	if (!isMemberExpression(node) || node.computed || !isIdentifier(node.property)) {
+		return undefined;
+	}
+
+	if (isCallExpression(node.object) && getCalleeName(node.object.callee) === INLINE_LOCALE_CALL) {
+		const marker = getStringArgument(node.object, 0);
+
+		return marker && isInlineLocaleMarker(marker)
+			? { marker, properties: [node.property.name] }
+			: undefined;
+	}
+
+	const parent = readInlineLocaleCallMemberAccess(node.object);
+
+	if (!parent) {
+		return undefined;
+	}
+
+	return {
+		marker: parent.marker,
+		properties: [...parent.properties, node.property.name],
+	};
+}
+
 function normalizeInlineAccessPath(properties: string[]): { scope: PublicLocaleScope; keys: string[] } | undefined {
 	const path = properties[0] === 'value' ? properties.slice(1) : properties;
 	const [scope, ...keys] = path;
 
-	if (!isPublicLocaleScope(scope) || keys.length === 0) {
+	if (!isPublicLocaleScope(scope)) {
 		return undefined;
 	}
 
