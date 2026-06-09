@@ -3,6 +3,8 @@
 
 `VVI` は `vite-vue-internationalization` の略称です。
 
+VVI は Vite 8 以降を対象にしています。ビルドは Vite の Rolldown ベースのパイプラインで動作し、Node.js `^20.19.0 || >=22.12.0` が必要です。
+
 ## 特長 / Features
 
 ### SFC カスタムブロック

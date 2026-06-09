@@ -91,6 +91,8 @@ Messages.$l.body({ source: 'messages.vue' });
 
 Use `defineInternationalization()` at the top level of a normal `<script lang="ts">` or `<script setup lang="ts">` block when you want to define dictionaries in TypeScript.
 
+Only Vue SFC `<script>` blocks are collected this way. Calling `defineInternationalization()` in an ordinary `.ts` file does not register a local dictionary. When you need a component-independent local dictionary, use a [locale-only SFC](#locale-only-sfc) instead of a `.ts` file.
+
 ```vue
 <script lang="ts">
 import { defineInternationalization } from 'vite-vue-internationalization';
@@ -113,4 +115,3 @@ Related API:
 - [`defineInternationalization()`](../api.md#defineinternationalization)
 - [`LocaleDictionary`](../api.md#localedictionary)
 - [`LocaleMessages`](../api.md#localemessages)
-

@@ -99,6 +99,8 @@ Messages.$l.body({ source: 'messages.vue' });
 
 通常の `<script lang="ts">` または `<script setup lang="ts">` のトップレベルで `defineInternationalization()` を使うと、TypeScript で辞書を定義できます。メッセージ関数を末端値として置きたい場合に便利です。
 
+この抽出対象は Vue SFC の `<script>` です。通常の `.ts` ファイルに `defineInternationalization()` を書いても、ローカル辞書としては収集されません。コンポーネントから独立したローカル辞書が必要な場合は、`.ts` ではなく [単体メッセージ SFC](#単体メッセージ-sfc) を使ってください。
+
 ```vue
 <script lang="ts">
 import { defineInternationalization } from 'vite-vue-internationalization';

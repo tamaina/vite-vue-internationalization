@@ -4,6 +4,8 @@ A Vite plugin for typed Vue SFC translations with ***SFC custom blocks*** and **
 
 `VVI` is the short name for `vite-vue-internationalization`.
 
+VVI targets Vite 8 and newer. Builds run on Vite's Rolldown-based pipeline and require Node.js `^20.19.0 || >=22.12.0`.
+
 ## Features
 
 ### SFC Custom Blocks

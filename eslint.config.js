@@ -5,6 +5,8 @@ export default [
 		ignores: [
 			'dist/**',
 			'examples/*/dist/**',
+			'examples/*/.nuxt*/**',
+			'examples/*/.output/**',
 			'docs/.vitepress/**',
 			'docs/.typedoc-api/**',
 			'.vitepress/**',

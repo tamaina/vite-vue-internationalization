@@ -1,3 +1,13 @@
+## 1.0.0
+
+### Changes
+
+- feat!: Require Vite 8 and Node.js `^20.19.0 || >=22.12.0`, making Rolldown-based builds the supported baseline.
+- perf: Use Rolldown/Oxc parsing and `oxc-walker` for inline chunk replacement planning.
+- fix: Emit localized inline chunks and loader assets through the Vite plugin context for Rolldown-safe builds.
+- docs: Document plain TypeScript usage of `virtual:vite-vue-internationalization` and recommend locale-only Vue SFCs for local dictionaries outside components.
+
+
 ## 0.9.1
 
 ### Changes

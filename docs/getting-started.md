@@ -2,6 +2,8 @@
 
 このページでは最小構成を扱います。各オプションの詳細は [設定](./configuration.md)、メッセージの置き方は [メッセージ定義](./messages.md)、メッセージの書き方は [メッセージ構文](./message-syntax.md)、公開 API の型は [API リファレンス](./api.md) を参照してください。
 
+VVI は Vite 8 以降と Node.js `^20.19.0 || >=22.12.0` を対象にしています。
+
 ## Vite プラグイン
 
 ```ts
@@ -63,6 +65,30 @@ app.mount('#app');
 ```
 
 [`createInternationalization()`](./api.md#createinternationalization) は、生成されたロケール読み込み関数を持つ実行時インスタンスを作ります。初期ロケールは `?locale=en-US` のような URL クエリから決まります。
+
+`virtual:vite-vue-internationalization` は Vue SFC だけでなく、アプリ内の `.ts` モジュールからも import できます。`createInternationalization()`、`currentLocale`、`primaryLocale` などをアプリコードで共有する場合は、この仮想モジュールを使ってください。
+
+## 通常の TypeScript モジュール
+
+通常の `.ts` モジュールには `$locale` や `$l` は暗黙には注入されません。同じ働きが必要な場合は、仮想モジュールから `useLocale()` と `useLocalizer()` を import して使います。
+
+```ts
+import { useLocale, useLocalizer } from 'virtual:vite-vue-internationalization';
+
+export function useAppMessages() {
+  const $locale = useLocale(import.meta.url);
+  const $l = useLocalizer(import.meta.url);
+
+  return {
+    appName: () => $locale.value.env.appName,
+    greeting: (name: string) => $l.value.env.greeting({ name }),
+  };
+}
+```
+
+これらの helper は `app.use(createInternationalization())` の後、たとえば Vue の setup 内や setup から呼ばれる関数内で使ってください。通常の `.ts` では、`sfc` は `useLocale()` / `useLocalizer()` に渡した module id に対応します。アプリ全体の辞書を読む場合は `env` を使うのがおすすめです。
+
+通常の `.ts` ファイルでローカル辞書を宣言して VVI に収集させる機能はありません。ローカル辞書をコンポーネントから分離したい場合は、`.ts` ではなく [単体メッセージ SFC](./messages.md#単体メッセージ-sfc) を作って import する方法をおすすめします。
 
 ## SFC メッセージ
 

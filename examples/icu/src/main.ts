@@ -1,9 +1,9 @@
 import { createApp } from 'vue';
-import { createInternationalization } from 'virtual:vite-vue-internationalization';
 import App from './App.vue';
+import { createAppInternationalization } from './app-locale.js';
 
 const app = createApp(App);
-const internationalization = createInternationalization();
+const internationalization = createAppInternationalization();
 
 app.use(internationalization);
 await internationalization.ready;

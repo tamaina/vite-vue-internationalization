@@ -19,8 +19,8 @@ defineInternationalization({
 
 <script setup lang="ts">
 import { computed, defineAsyncComponent, ref } from 'vue';
-import { currentLocale, primaryLocale } from 'virtual:vite-vue-internationalization';
 import StaticPanel from './components/StaticPanel.vue';
+import { currentLocale, primaryLocale } from './app-locale.js';
 import Messages from './messages.vue';
 
 const AsyncPanel = defineAsyncComponent(() => import('./components/AsyncPanel.vue'));

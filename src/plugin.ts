@@ -198,32 +198,37 @@ export function vueInternationalization(options?: Partial<VueInternationalizatio
 
 			return null;
 		},
-		transform(code, id) {
-			if (!id.endsWith('.vue') || !existsSync(id)) {
-				return null;
-			}
+		transform: {
+			filter: {
+				id: /\.vue$/u,
+			},
+			handler(code, id) {
+				if (!id.endsWith('.vue') || !existsSync(id)) {
+					return null;
+				}
 
-			collectVueFile(id, code);
-			const currentOptions = getResolvedOptions(resolvedOptions);
-			const transformed =
-				command === 'build' && currentOptions.buildStrategy === 'inline-chunks'
-					? transformVueSfcInline(code, id, root, currentOptions.primaryLocale, currentOptions.sfcTransform === 'all')
-					: transformVueSfc(code, id, {
-						primaryLocale: currentOptions.primaryLocale,
-						global: globalMessages[currentOptions.primaryLocale],
-						messageSyntax: currentOptions.messageSyntax,
-						transformAll: currentOptions.sfcTransform === 'all',
-						moduleExpression: JSON.stringify(toRuntimeModuleId(id, root)),
-					});
+				collectVueFile(id, code);
+				const currentOptions = getResolvedOptions(resolvedOptions);
+				const transformed =
+					command === 'build' && currentOptions.buildStrategy === 'inline-chunks'
+						? transformVueSfcInline(code, id, root, currentOptions.primaryLocale, currentOptions.sfcTransform === 'all')
+						: transformVueSfc(code, id, {
+							primaryLocale: currentOptions.primaryLocale,
+							global: globalMessages[currentOptions.primaryLocale],
+							messageSyntax: currentOptions.messageSyntax,
+							transformAll: currentOptions.sfcTransform === 'all',
+							moduleExpression: JSON.stringify(toRuntimeModuleId(id, root)),
+						});
 
-			if (!transformed) {
-				return null;
-			}
+				if (!transformed) {
+					return null;
+				}
 
-			return {
-				code: transformed,
-				map: null,
-			};
+				return {
+					code: transformed,
+					map: null,
+				};
+			},
 		},
 		handleHotUpdate(context) {
 			if (context.file.endsWith('.vue')) {
@@ -264,14 +269,13 @@ export function vueInternationalization(options?: Partial<VueInternationalizatio
 				});
 			}
 		},
-		writeBundle(outputOptions, bundle) {
+		writeBundle(outputOptions) {
 			const currentOptions = getResolvedOptions(resolvedOptions);
 
 			if (currentOptions.buildStrategy !== 'inline-chunks' || !inlineManifest) {
 				return;
 			}
 
-			inlineLocaleHtml(bundle as Record<string, unknown>, inlineManifest, { base });
 			rewriteWrittenHtml(resolve(root, outputOptions.dir ?? dirname(outputOptions.file ?? 'dist/index.js')), inlineManifest, base);
 			rewriteWrittenViteManifest(resolve(root, outputOptions.dir ?? dirname(outputOptions.file ?? 'dist/index.js')), inlineManifest);
 		},
