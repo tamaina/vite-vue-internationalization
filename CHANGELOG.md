@@ -2,7 +2,7 @@
 
 ### Changes
 
--
+- fix: Inline dynamic localizer key calls without generating invalid JavaScript.
 
 
 ## 1.1.0
