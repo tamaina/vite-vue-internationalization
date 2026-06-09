@@ -40,6 +40,17 @@ count: "one apple | {n} apples"
 </locale>
 ```
 
+In `<script setup>`, injected `$locale` and `$l` bindings are computed refs. Use `.value` in script code, while templates keep the direct `$locale.sfc.title` / `$l.sfc.count({ n })` form:
+
+```vue
+<script setup lang="ts">
+const title = $locale.value.sfc.title;
+const countText = $l.value.sfc.count({ n: 3 });
+</script>
+```
+
+For component-local messages, prefer a `<locale>` block or top-level `defineInternationalization()` in the same SFC. For app-wide messages in SFCs that do not own local messages, configure `sfcTransform: "all"` instead of adding empty dictionaries just to force injection. Plain `.ts` modules should use `useLocale()` / `useLocalizer()` from `virtual:vite-vue-internationalization`.
+
 ## Features
 
 - Write translations as YAML or JSON in Vue SFC `<locale>` blocks.

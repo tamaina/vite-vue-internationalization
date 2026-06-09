@@ -24,6 +24,17 @@ count: "{n} apples"
 
 SFC local messages are available through `$locale.sfc` and `$l.sfc`. `$locale` returns raw message values, while `$l` returns message functions.
 
+In `<script setup>`, injected `$locale` and `$l` bindings are computed refs. Templates keep the direct `$locale.sfc.title` / `$l.sfc.count({ n })` form, but script code should read through `.value`.
+
+```vue
+<script setup lang="ts">
+const title = $locale.value.sfc.title;
+const countText = $l.value.sfc.count({ n: 3 });
+</script>
+```
+
+For component-local messages, prefer a `<locale>` block or top-level `defineInternationalization()` in the same SFC. When an SFC does not own local messages and only needs `$locale.env` / `$l.env`, configure `sfcTransform: "all"` instead of adding empty dictionaries just to force the transform. Plain `.ts` modules should use `useLocale()` / `useLocalizer()` from `virtual:vite-vue-internationalization`.
+
 When a SFC contains multiple `<locale>` blocks for the same locale, dictionaries are merged recursively and later blocks override earlier values.
 
 ## Global dictionary
