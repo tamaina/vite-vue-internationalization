@@ -69,12 +69,12 @@ const plugin: VueLanguagePlugin<VueInternationalizationVolarPluginConfig> = ({ c
 				'...{} as import(\'vue\').ComponentPublicInstance,\n',
 				`...{} as { $locale: ${localeScopeType}; $l: ${localizerScopeType}; },\n`,
 			);
-			replaceFirst(
+			replaceFirstGeneratedOnly(
 				embeddedFile.content,
 				'const __VLS_ctx = {} as import(\'vue\').ComponentPublicInstance;',
 				`const __VLS_ctx = {} as import('vue').ComponentPublicInstance & { $locale: ${localeScopeType}; $l: ${localizerScopeType}; };`,
 			);
-			replaceFirst(
+			replaceFirstGeneratedOnly(
 				embeddedFile.content,
 				'export default {} as typeof __VLS_export;',
 				`export default {} as typeof __VLS_export & { $locale: ${componentLocaleType}; $l: ${componentLocalizerType}; };`,
@@ -136,61 +136,43 @@ function hasLocaleSources(content: string, customBlocks: readonly { type: string
 }
 
 function insertAfter(content: Code[], marker: string, insertion: string): void {
-	replaceFirst(content, marker, `${marker}${insertion}`);
+	replaceFirstGeneratedOnly(content, marker, `${marker}${insertion}`);
 }
 
-function replaceFirst(content: Code[], search: string, replacement: string): void {
-	const text = content.map((segment) => getSegmentText(segment) ?? '').join('');
-	const start = text.indexOf(search);
+function replaceFirstGeneratedOnly(content: Code[], search: string, replacement: string): void {
+	let runStart = 0;
 
-	if (start < 0) {
-		return;
-	}
+	while (runStart < content.length) {
+		while (runStart < content.length && typeof content[runStart] !== 'string') {
+			runStart++;
+		}
 
-	replaceGeneratedRange(content, start, start + search.length, replacement);
-}
+		let runEnd = runStart;
 
-function replaceGeneratedRange(content: Code[], start: number, end: number, replacement: string): void {
-	const next: Code[] = [];
-	let offset = 0;
-	let inserted = false;
+		while (runEnd < content.length && typeof content[runEnd] === 'string') {
+			runEnd++;
+		}
 
-	for (let index = 0; index < content.length; index++) {
-		const segment = content[index];
-		const text = getSegmentText(segment);
-
-		if (text === undefined) {
-			next.push(segment);
+		if (runStart === runEnd) {
 			continue;
 		}
 
-		const segmentStart = offset;
-		const segmentEnd = offset + text.length;
+		const text = content.slice(runStart, runEnd).join('');
+		const start = text.indexOf(search);
 
-		if (segmentEnd <= start || segmentStart >= end) {
-			next.push(segment);
-		} else {
-			const prefixEnd = Math.max(0, start - segmentStart);
-			const suffixStart = Math.min(text.length, end - segmentStart);
-
-			if (prefixEnd > 0) {
-				next.push(sliceSegment(segment, 0, prefixEnd));
-			}
-
-			if (!inserted) {
-				next.push(replacement);
-				inserted = true;
-			}
-
-			if (suffixStart < text.length) {
-				next.push(sliceSegment(segment, suffixStart, text.length));
-			}
+		if (start >= 0) {
+			content.splice(
+				runStart,
+				runEnd - runStart,
+				text.slice(0, start),
+				replacement,
+				text.slice(start + search.length),
+			);
+			return;
 		}
 
-		offset = segmentEnd;
+		runStart = runEnd + 1;
 	}
-
-	content.splice(0, content.length, ...next);
 }
 
 function insertGeneratedText(content: Code[], start: number, insertion: string): void {

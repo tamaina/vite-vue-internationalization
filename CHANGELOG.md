@@ -1,3 +1,10 @@
+## 1.1.3
+
+### Changes
+
+- fix: Preserve Vue Language Tools source maps when injecting Volar global locale types.
+
+
 ## 1.1.2
 
 ### Changes
