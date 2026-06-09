@@ -4,6 +4,9 @@
   "description": "A Vite plugin for typed Vue SFC translations with SFC custom blocks and inline locale chunks",
   "type": "module",
   "packageManager": "pnpm@11.3.0",
+  "engines": {
+    "node": "^20.19.0 || >=22.12.0"
+  },
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -61,7 +64,7 @@
   },
   "peerDependencies": {
     "@vue/language-core": "^3.3.0",
-    "vite": "^7.0.0",
+    "vite": "^8.0.0",
     "vue": "^3.5.0"
   },
   "peerDependenciesMeta": {
@@ -72,10 +75,10 @@
   "dependencies": {
     "@formatjs/icu-messageformat-parser": "^3.5.10",
     "@vue/compiler-sfc": "^3.5.24",
-    "acorn": "^8.16.0",
-    "estree-walker": "^3.0.3",
     "intl-messageformat": "^11.2.7",
     "magic-string": "^0.30.21",
+    "oxc-walker": "^1.0.0",
+    "rolldown": "^1.1.0",
     "typescript": "^5.9.3",
     "yaml": "^2.8.2"
   },
@@ -89,14 +92,14 @@
     "@types/node": "^24.10.1",
     "@typescript-eslint/eslint-plugin": "^8.59.4",
     "@typescript-eslint/parser": "^8.59.4",
-    "@vitejs/plugin-vue": "^6.0.2",
+    "@vitejs/plugin-vue": "^6.0.7",
     "@vue/language-core": "^3.3.1",
     "eslint": "^9.39.4",
     "eslint-plugin-import": "^2.32.0",
     "globals": "^17.6.0",
     "typedoc": "^0.28.19",
     "typedoc-plugin-markdown": "^4.11.0",
-    "vite": "^7.2.4",
+    "vite": "^8.0.16",
     "vitepress": "^1.6.4",
     "vitest": "^4.0.13",
     "vue": "^3.5.24"

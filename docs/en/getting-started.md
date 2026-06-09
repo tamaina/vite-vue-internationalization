@@ -2,6 +2,8 @@
 
 This page covers the minimum setup. See [Configuration](./configuration.md) for options, [Messages](./messages.md) for dictionary placement, [Message Syntax](./message-syntax.md) for message formatting, and [API Reference](../api.md) for generated API types.
 
+VVI targets Vite 8 and newer, and requires Node.js `^20.19.0 || >=22.12.0`.
+
 ## Vite plugin
 
 ```ts
@@ -63,6 +65,30 @@ app.mount('#app');
 ```
 
 [`createInternationalization()`](../api.md#createinternationalization) creates the runtime instance with generated locale loaders.
+
+You may import `virtual:vite-vue-internationalization` from app `.ts` modules as well as Vue SFCs. Use this virtual module to share `createInternationalization()`, `currentLocale`, `primaryLocale`, and other generated runtime exports across app code.
+
+## Plain TypeScript modules
+
+Plain `.ts` modules do not receive implicit `$locale` or `$l` bindings. Import `useLocale()` and `useLocalizer()` from the virtual module when you need the same runtime access:
+
+```ts
+import { useLocale, useLocalizer } from 'virtual:vite-vue-internationalization';
+
+export function useAppMessages() {
+  const $locale = useLocale(import.meta.url);
+  const $l = useLocalizer(import.meta.url);
+
+  return {
+    appName: () => $locale.value.env.appName,
+    greeting: (name: string) => $l.value.env.greeting({ name }),
+  };
+}
+```
+
+Call these helpers after `app.use(createInternationalization())`, such as inside Vue setup code or functions called from it. In plain `.ts` modules, `sfc` points at the module id passed to `useLocale()` / `useLocalizer()`; for app-wide dictionaries, prefer `env`.
+
+Plain `.ts` files cannot declare local dictionaries for VVI to collect. When you want a local dictionary that is separate from a component, prefer a [locale-only SFC](./messages.md#locale-only-sfc) and import it from app code.
 
 Next:
 

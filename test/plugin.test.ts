@@ -180,6 +180,10 @@ describe('virtual module generation', () => {
 		expect(code).not.toContain('import("virtual:vite-vue-internationalization/locale/');
 		expect(code).toContain('Promise.resolve({ global: {}, modules: {} })');
 		expect(code).toContain('export const currentLocale = resolveInitialLocale();');
+		expect(code).toContain('export const primaryLocale = "ja-JP";');
+		expect(code).toContain('export const locales = ["en-US","ja-JP"];');
+		expect(code).toContain('export function createInternationalization(options = {})');
+		expect(code).toContain('export { Internationalization, createComponentLocale, createComponentLocalizer, defineInternationalization, setActiveInternationalization, useDateTimeFormat, useInternationalization, useLocale, useLocalizer, useNumberFormat };');
 		expect(code).not.toContain('onLocaleChange');
 	});
 

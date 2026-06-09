@@ -17,6 +17,8 @@ A typed internationalization plugin for Vite that lets Vue SFCs own their transl
 
 It supports `<locale>` custom blocks, global dictionaries, Volar type completion, and optional locale-specific chunk output.
 
+VVI targets Vite 8 and newer. Builds run on Vite's Rolldown-based pipeline and require Node.js `^20.19.0 || >=22.12.0`.
+
 ```vue
 <template>
   <h1>{{ $locale.sfc.title }}</h1>
@@ -114,6 +116,28 @@ app.use(internationalization);
 await internationalization.ready;
 app.mount('#app');
 ```
+
+You may import `virtual:vite-vue-internationalization` from app `.ts` modules, not only from Vue SFCs. This is the supported way to share `createInternationalization()`, `currentLocale`, `primaryLocale`, and other generated runtime exports across app code.
+
+## Plain TypeScript Modules
+
+Plain `.ts` modules do not receive implicit `$locale` or `$l` bindings. Use `useLocale()` and `useLocalizer()` from the virtual module instead:
+
+```ts
+import { useLocale, useLocalizer } from 'virtual:vite-vue-internationalization';
+
+export function useAppMessages() {
+  const $locale = useLocale(import.meta.url);
+  const $l = useLocalizer(import.meta.url);
+
+  return {
+    appName: () => $locale.value.env.appName,
+    greeting: (name: string) => $l.value.env.greeting({ name }),
+  };
+}
+```
+
+Call these helpers after `app.use(createInternationalization())`, such as inside Vue setup code or functions called from it. In plain `.ts` modules, `sfc` points at the module id passed to `useLocale()` / `useLocalizer()`; for app-wide dictionaries, prefer `env`.
 
 ## Inline Chunks
 

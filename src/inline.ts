@@ -1,15 +1,14 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { dirname, isAbsolute, relative, resolve } from 'node:path';
-import { parse } from 'acorn';
 import { parse as parseSfc } from '@vue/compiler-sfc';
 import { parse as parseIcuMessage, TYPE } from '@formatjs/icu-messageformat-parser';
-import { walk } from 'estree-walker';
 import MagicString from 'magic-string';
+import { parseSync } from 'rolldown/utils';
+import { walk } from 'oxc-walker';
 import { compileLocaleMessage } from './message.js';
 import { hasLocaleBinding } from './parse.js';
 import { injectScriptSetup } from './scriptSetup.js';
-import type { Node as EstreeNode } from 'estree-walker';
 import type { MessageFormatElement } from '@formatjs/icu-messageformat-parser';
 import type { LocaleMessageSyntax, LocaleMessageToken } from './message.js';
 import type { LocaleDictionary } from './types.js';
@@ -136,6 +135,7 @@ type ParsedInlineJavaScript = {
 	ast: AstNode;
 	code: string;
 };
+type OxcWalkInput = Parameters<typeof walk>[0];
 type AstNode = {
 	start: number;
 	end: number;
@@ -1202,7 +1202,7 @@ function createInlineReplacementPlan(
 	const localizerBindings = new Map<string, string>();
 	const operations: InlineReplacementOperation[] = [];
 
-	walk(parsedCode.ast as unknown as EstreeNode, {
+	walk(parsedCode.ast as OxcWalkInput, {
 		enter(node, parent) {
 			const current = toAstNode(node);
 			const currentParent = parent ? toAstNode(parent) : undefined;
@@ -1281,12 +1281,16 @@ function parseInlineJavaScript(
 	options: AstReplaceOptions,
 ): ParsedInlineJavaScript | string {
 	try {
+		const parsed = parseSync('inline.js', code, {
+			sourceType: 'module',
+		});
+
+		if (parsed.errors.length > 0) {
+			throw parsed.errors[0];
+		}
+
 		return {
-			ast: parse(code, {
-				ecmaVersion: 'latest',
-				sourceType: 'module',
-				allowHashBang: true,
-			}) as unknown as AstNode,
+			ast: parsed.program as unknown as AstNode,
 			code,
 		};
 	} catch (error) {
@@ -1823,7 +1827,7 @@ function isInlineLocaleMarker(value: string): boolean {
 	return value.startsWith(INLINE_MARKER_PREFIX);
 }
 
-function toAstNode(node: EstreeNode): AstNode | undefined {
+function toAstNode(node: unknown): AstNode | undefined {
 	const maybeNode = node as Partial<AstNode>;
 
 	return typeof maybeNode.start === 'number' && typeof maybeNode.end === 'number'
