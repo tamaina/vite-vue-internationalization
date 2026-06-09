@@ -3,8 +3,64 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import { compileTemplate } from '@vue/compiler-sfc';
+import { transformSync } from 'esbuild';
 import { scanVueFiles } from '../src/files.js';
 import { internals } from '../src/plugin.js';
+
+type TestOutputChunk = {
+	type: string;
+	fileName: string;
+	code: string;
+};
+
+function inlineLocaleChunks(
+	...args: Parameters<typeof internals.inlineLocaleChunks>
+): ReturnType<typeof internals.inlineLocaleChunks> {
+	const emitted: TestOutputChunk[] = [];
+	const emitOptions = args[6] as { emitChunk?: (chunk: TestOutputChunk) => void } | undefined;
+	const originalEmitChunk = emitOptions?.emitChunk;
+	const nextArgs = [...args] as Parameters<typeof internals.inlineLocaleChunks>;
+
+	if (originalEmitChunk) {
+		nextArgs[6] = {
+			...emitOptions,
+			emitChunk: (chunk: TestOutputChunk) => {
+				emitted.push(chunk);
+				originalEmitChunk(chunk);
+			},
+		} as Parameters<typeof internals.inlineLocaleChunks>[6];
+	}
+
+	const manifest = internals.inlineLocaleChunks(...nextArgs);
+
+	assertParseableJavaScriptChunks(args[0]);
+	for (const chunk of emitted) {
+		assertParseableJavaScript(chunk.code, chunk.fileName);
+	}
+
+	return manifest;
+}
+
+function assertParseableJavaScriptChunks(bundle: Record<string, unknown>): void {
+	for (const chunk of Object.values(bundle)) {
+		if (isTestOutputChunk(chunk)) {
+			assertParseableJavaScript(chunk.code, chunk.fileName);
+		}
+	}
+}
+
+function assertParseableJavaScript(code: string, fileName: string): void {
+	try {
+		transformSync(code, { loader: 'js', format: 'esm' });
+	} catch (error) {
+		throw new Error(`Expected inline chunk ${fileName} to be parseable JavaScript.\n${String(error)}`);
+	}
+}
+
+function isTestOutputChunk(value: unknown): value is TestOutputChunk {
+	const chunk = value as Partial<TestOutputChunk>;
+	return chunk.type === 'chunk' && typeof chunk.fileName === 'string' && chunk.fileName.endsWith('.js') && typeof chunk.code === 'string';
+}
 
 describe('virtual module generation', () => {
 	it('resolves plugin options from tsconfig vueCompilerOptions', () => {
@@ -248,7 +304,7 @@ describe('virtual module generation', () => {
 			[chunk.fileName]: chunk,
 		};
 
-		internals.inlineLocaleChunks(
+		inlineLocaleChunks(
 			bundle,
 			['en-US', 'ja-JP'],
 			'ja-JP',
@@ -1011,7 +1067,7 @@ describe('virtual module generation', () => {
 			},
 		};
 
-		const manifest = internals.inlineLocaleChunks(
+		const manifest = inlineLocaleChunks(
 			bundle,
 			['ja-JP'],
 			'ja-JP',
@@ -1030,6 +1086,54 @@ describe('virtual module generation', () => {
 		expect(bundle['assets/App.ja-JP.js'].code).toContain('const l = (() => { const __locale = {}; __locale.value = __locale; return __locale; })();');
 		expect(bundle['assets/App.ja-JP.js'].code).not.toContain('nApples:(values = {}) => ((__values) =>');
 		expect(bundle['assets/App.ja-JP.js'].code).not.toContain('__VUE_INTERNATIONALIZATION_INLINE_LOCALIZERS__');
+	});
+
+	it('replaces dynamic localizer key calls with parseable object lookup expressions', () => {
+		const injected = internals.injectInlineLocaleBinding('<script setup></script>', '/src/StatusLabel.vue');
+		const marker = injected.match(/__VUE_INTERNATIONALIZATION_INLINE_LOCALIZERS__\("([^"]+)"\)/)?.[1];
+		expect(marker).toBeDefined();
+		const code = [
+			`const localizerRef = __VUE_INTERNATIONALIZATION_INLINE_LOCALIZERS__(${JSON.stringify(marker)});`,
+			'const key = status === "done" ? "completed" : status === "failed" ? "failed" : "pending";',
+			'const label = localizerRef.value.env.statusLabels[key]({ count });',
+		].join('\n');
+		const bundle: Record<string, {
+			type: string;
+			fileName: string;
+			code: string;
+			imports: string[];
+			dynamicImports: string[];
+		}> = {
+			'assets/StatusLabel.js': {
+				type: 'chunk',
+				fileName: 'assets/StatusLabel.js',
+				code,
+				imports: [],
+				dynamicImports: [],
+			},
+		};
+
+		inlineLocaleChunks(
+			bundle,
+			['ja-JP'],
+			'ja-JP',
+			{},
+			{
+				'ja-JP': {
+					statusLabels: {
+						completed: '{count} 件が完了しました',
+						failed: '{count} 件が失敗しました',
+						pending: '{count} 件を処理中です',
+					},
+				},
+			},
+		);
+
+		const localizedCode = bundle['assets/StatusLabel.ja-JP.js'].code;
+
+		expect(localizedCode).toContain('const label = (({');
+		expect(localizedCode).toContain('[String(key)])({ count })');
+		expect(localizedCode).not.toContain('=>{"completed"');
 	});
 
 	it('rewrites imports between localized chunks', () => {
@@ -1060,7 +1164,7 @@ describe('virtual module generation', () => {
 			},
 		};
 
-		internals.inlineLocaleChunks(
+		inlineLocaleChunks(
 			bundle,
 			['en-US', 'ja-JP'],
 			'ja-JP',
@@ -1111,7 +1215,7 @@ describe('virtual module generation', () => {
 			},
 		};
 
-		internals.inlineLocaleChunks(
+		inlineLocaleChunks(
 			bundle,
 			['en-US', 'ja-JP'],
 			'ja-JP',
@@ -1173,7 +1277,7 @@ describe('virtual module generation', () => {
 			},
 		};
 
-		internals.inlineLocaleChunks(
+		inlineLocaleChunks(
 			bundle,
 			['ja-JP'],
 			'ja-JP',
@@ -1226,7 +1330,7 @@ describe('virtual module generation', () => {
 			},
 		};
 
-		internals.inlineLocaleChunks(
+		inlineLocaleChunks(
 			bundle,
 			['en-US', 'ja-JP'],
 			'ja-JP',
@@ -1269,7 +1373,7 @@ describe('virtual module generation', () => {
 			},
 		};
 
-		internals.inlineLocaleChunks(
+		inlineLocaleChunks(
 			bundle,
 			['en-US', 'ja-JP'],
 			'ja-JP',
