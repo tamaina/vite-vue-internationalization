@@ -88,7 +88,7 @@ When message functions are extracted or emitted into inline chunks, their source
 ## Build Strategies
 
 - `virtual`: default strategy. Locale payloads are loaded through virtual modules and dynamic imports.
-- `inline-chunks`: build-only strategy. Localizable chunks are duplicated per locale and static `$locale` / `$l` access is replaced with locale-specific output where possible.
+- `inline-chunks`: build-only strategy. Localizable chunks are duplicated per locale and static `$locale` / `$l` access is replaced with locale-specific output where possible. Bare locale helper objects are not expanded into full dictionaries; only accessed member paths or static dynamic-lookup subtrees are emitted.
 
 In `inline-chunks`, the plugin still only starts from localizable Vue SFC modules. Ordinary `.ts` files are not rewritten as localization modules.
 

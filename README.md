@@ -154,7 +154,7 @@ Call these helpers after `app.use(createInternationalization())`, such as inside
 
 The default `virtual` strategy keeps locale payloads in virtual modules and lets Vite split them with dynamic `import()` calls.
 
-Use `buildStrategy: "inline-chunks"` when you want build-time locale-specific JavaScript chunks. This strategy duplicates localizable chunks per locale and replaces static `$locale` / `$l` references with locale-specific string literals, dictionaries, or message formatting expressions.
+Use `buildStrategy: "inline-chunks"` when you want build-time locale-specific JavaScript chunks. This strategy duplicates localizable chunks per locale and replaces static `$locale` / `$l` references with locale-specific string literals, accessed subtrees, or message formatting expressions.
 
 ```ts
 // vite.config.ts
@@ -171,7 +171,7 @@ export default defineConfig({
 
 The generated HTML entry script is replaced with a small `*.i18n-loader.js` file. Existing script attributes such as `nonce`, `crossorigin`, and `referrerpolicy` are preserved. If the original script has `integrity`, it is replaced with integrity for the generated loader, and the loader verifies the selected locale chunk with `modulepreload` and per-locale chunk integrity before importing it.
 
-Static references such as `$locale.sfc.title` and `$l.sfc.count({ n })` are fully inlined. Dynamic subtree lookups such as `$locale.env.labels[key]` keep a runtime lookup against the resolved locale-specific subtree. Missing values fall back to the primary locale, then to the key string.
+Static references such as `$locale.sfc.title` and `$l.sfc.count({ n })` are fully inlined. Dynamic subtree lookups such as `$locale.env.labels[key]` keep a runtime lookup against the resolved locale-specific subtree, but bare locale helper objects are not expanded into full dictionaries. Missing values fall back to the primary locale, then to the key string.
 
 ## Documentation Pages
 

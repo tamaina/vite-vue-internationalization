@@ -8,7 +8,7 @@ The default strategy. Locale modules are loaded through dynamic `import()` calls
 
 ## `inline-chunks`
 
-Build-time strategy that duplicates localizable chunks per locale and replaces `$locale` / `$l` references with locale-specific string literals, dictionary objects, or message formatting expressions.
+Build-time strategy that duplicates localizable chunks per locale and replaces `$locale` / `$l` references with locale-specific string literals, accessed subtrees, or message formatting expressions.
 
 Each locale, including the primary locale, is emitted as a locale-specific chunk such as `*.ja-JP.js` or `*.en-US.js`. The HTML entry script is replaced with a `*.i18n-loader.js` loader, which reads the `locale` query parameter and imports the matching locale chunk. When `locale` is missing or unsupported, the loader imports the primary locale chunk.
 
@@ -16,7 +16,7 @@ The rewritten `<script>` keeps existing attributes such as `nonce`, `crossorigin
 
 ### References That Cannot Be Fully Inlined
 
-Static references such as `$locale.sfc.title`, `$locale.env.title`, and `$l.sfc.count({ n })` are replaced with locale-specific string literals or message formatting expressions. References that become dynamic after a static prefix, such as `$locale.env.labels[key]`, embed the resolved locale-specific subtree and keep a runtime lookup expression.
+Static references such as `$locale.sfc.title`, `$locale.env.title`, and `$l.sfc.count({ n })` are replaced with locale-specific string literals or message formatting expressions. References that become dynamic after a static prefix, such as `$locale.env.labels[key]`, embed only the resolved locale-specific subtree and keep a runtime lookup expression. Bare locale helper objects are not expanded into full dictionaries.
 
 Paths that cannot be resolved at build time and `$l` calls that are too complex fall back to the primary locale value. If the primary locale is also missing the value, the expression returns a key string such as `$locale.sfc.missingKey`. JavaScript that cannot be parsed during replacement fails the build instead of being left silently unprocessed.
 

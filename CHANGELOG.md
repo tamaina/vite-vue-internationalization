@@ -1,3 +1,10 @@
+## 1.1.0
+
+### Changes
+
+- perf: Avoid expanding bare inline locale helper objects into full dictionaries.
+
+
 ## 1.0.1
 
 ### Changes

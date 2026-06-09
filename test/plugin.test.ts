@@ -225,7 +225,7 @@ describe('virtual module generation', () => {
 		const chunk = {
 			type: 'chunk',
 			fileName: 'assets/App-abc.js',
-			code: `const msg = ${code};`,
+			code: `const msg = ${code}.sfc.title; const scope = ${code}.sfc; const unused = ${code};`,
 			imports: [],
 			dynamicImports: [],
 			facadeModuleId: null,
@@ -262,8 +262,11 @@ describe('virtual module generation', () => {
 		);
 
 		expect(bundle['assets/App-abc.ja-JP.js'].type).toBe('chunk');
-		expect(bundle['assets/App-abc.ja-JP.js'].code).toContain('"title":"ほげ"');
-		expect(bundle['assets/App-abc.en-US.js'].code).toContain('"title":"foo"');
+		expect(bundle['assets/App-abc.ja-JP.js'].code).toContain('const msg = "ほげ";');
+		expect(bundle['assets/App-abc.ja-JP.js'].code).toContain('const scope = {"title":"ほげ"};');
+		expect(bundle['assets/App-abc.en-US.js'].code).toContain('const msg = "foo";');
+		expect(bundle['assets/App-abc.en-US.js'].code).toContain('const scope = {"title":"foo"};');
+		expect(bundle['assets/App-abc.ja-JP.js'].code).not.toContain('__VUE_INTERNATIONALIZATION_INLINE_LOCALE__');
 	});
 
 	it('injects inline bindings for script-defined locale messages without locale blocks', () => {
@@ -1024,7 +1027,8 @@ describe('virtual module generation', () => {
 
 		expect(manifest.entries).toHaveLength(1);
 		expect(bundle['assets/App.ja-JP.js'].code).toContain('__locale.value = __locale');
-		expect(bundle['assets/App.ja-JP.js'].code).toContain('nApples:(values = {}) => ((__values) =>');
+		expect(bundle['assets/App.ja-JP.js'].code).toContain('const l = (() => { const __locale = {}; __locale.value = __locale; return __locale; })();');
+		expect(bundle['assets/App.ja-JP.js'].code).not.toContain('nApples:(values = {}) => ((__values) =>');
 		expect(bundle['assets/App.ja-JP.js'].code).not.toContain('__VUE_INTERNATIONALIZATION_INLINE_LOCALIZERS__');
 	});
 
@@ -1259,7 +1263,7 @@ describe('virtual module generation', () => {
 			'assets/App.js': {
 				type: 'chunk',
 				fileName: 'assets/App.js',
-				code: `const msg = ${code};`,
+				code: `const msg = ${code}.sfc.title;`,
 				imports: [],
 				dynamicImports: [],
 			},
@@ -1290,7 +1294,7 @@ describe('virtual module generation', () => {
 			'assets/App.en-US.js',
 			'assets/App.ja-JP.js',
 		]);
-		expect(emitted.find(chunk => chunk.fileName.endsWith('.en-US.js'))?.code).toContain('"title":"Title"');
+		expect(emitted.find(chunk => chunk.fileName.endsWith('.en-US.js'))?.code).toContain('const msg = "Title";');
 	});
 
 	it('rewrites html entry script to an external locale loader', () => {
