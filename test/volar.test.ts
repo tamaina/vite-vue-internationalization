@@ -129,6 +129,56 @@ describe('volar plugin', () => {
 		expect(scriptCode).toContain('__VLS_ctx.$locale.env.title');
 	});
 
+	it('preserves source-mapped Vue virtual code segments when injecting global types', () => {
+		const vueCompilerOptions = getDefaultCompilerOptions();
+		vueCompilerOptions.plugins = [
+			withConfig(vueInternationalizationVolar, {
+				__moduleConfig: {
+					name: 'vite-vue-internationalization/volar',
+					primaryLocale: 'ja-JP',
+					sfcTransform: 'all',
+					global: {
+						'ja-JP': {
+							label: 'ラベル',
+						},
+					},
+				},
+			}),
+		];
+		const plugin = createVueLanguagePlugin(ts, {}, vueCompilerOptions, String);
+		const fileName = resolve('examples/vue/src/GlobalInjection.vue');
+		const source = [
+			'<template>',
+			'  <div>{{ $locale.env.label }}</div>',
+			'</template>',
+			'',
+			'<script setup lang="ts">',
+			'withDefaults(defineProps<{',
+			'  ad?: boolean;',
+			'}>(), {',
+			'  ad: true,',
+			'});',
+			'</script>',
+		].join('\n');
+		const root = plugin.createVirtualCode?.(fileName, 'vue', ts.ScriptSnapshot.fromString(source), {} as never);
+
+		if (!root) {
+			throw new Error('Expected Vue virtual code to be created.');
+		}
+
+		const scriptEmbeddedCode = [...forEachEmbeddedCode(root)]
+			.find((code) => code.id === 'script_ts');
+		const scriptCode = scriptEmbeddedCode?.snapshot.getText(0, Number.MAX_SAFE_INTEGER);
+		const diagnostics = getSemanticDiagnosticMessages(scriptCode);
+
+		expect(scriptCode).toContain('__VLS_ctx.$locale.env.label');
+		expect(scriptCode).toContain('label: "ラベル";');
+		expect(scriptCode).toContain('type __VLS_Props = {');
+		expect(scriptCode).toContain('const __VLS_props = withDefaults(defineProps<__VLS_Props>()');
+		expect(diagnostics.filter((message) => message.includes('$locale') || message.includes('$l'))).toEqual([]);
+		expect(getCorruptedMappedSegments(source, scriptCode, scriptEmbeddedCode?.mappings ?? [])).toEqual([]);
+	});
+
 	it('can skip verbose localizer documentation in generated editor types', () => {
 		const vueCompilerOptions = getDefaultCompilerOptions();
 		vueCompilerOptions.plugins = [
@@ -512,5 +562,33 @@ function getSemanticDiagnosticMessages(source: string | undefined): string[] {
 
 	return languageService.getSemanticDiagnostics(fileName).map((diagnostic) =>
 		ts.flattenDiagnosticMessageText(diagnostic.messageText, '\n'),
+	);
+}
+
+function getCorruptedMappedSegments(
+	source: string,
+	generated: string | undefined,
+	mappings: Array<{ generatedOffsets: number[]; sourceOffsets: number[]; lengths: number[] }>,
+): string[] {
+	if (!generated) {
+		return ['missing generated code'];
+	}
+
+	return mappings.flatMap((mapping) =>
+		mapping.generatedOffsets.flatMap((generatedOffset, index) => {
+			const sourceOffset = mapping.sourceOffsets[index];
+			const length = mapping.lengths[index];
+
+			if (sourceOffset === undefined || length === undefined || length <= 0) {
+				return [];
+			}
+
+			const generatedText = generated.slice(generatedOffset, generatedOffset + length);
+			const sourceText = source.slice(sourceOffset, sourceOffset + length);
+
+			return generatedText === sourceText
+				? []
+				: [`${JSON.stringify(sourceText)} -> ${JSON.stringify(generatedText)}`];
+		}),
 	);
 }
