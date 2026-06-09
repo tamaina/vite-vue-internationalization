@@ -4,6 +4,7 @@ import ts from 'typescript';
 import {
 	augmentViteManifestJson,
 	getInlineLocaleHtmlLoaders,
+	hasVueScriptLocaleAccess,
 	injectInlineLocaleBinding,
 	createInlineLocaleMarker,
 	inlineLocaleChunks,
@@ -15,6 +16,8 @@ import {
 	replaceInlineLocaleTextAccess,
 	rewriteInlineComponentLocaleAccess,
 	rewriteInlineLocaleTemplateAccess,
+	rewriteInlineRuntimeLocaleAccess,
+	rewriteVueScriptRuntimeLocaleAccess,
 	type InlineChunkManifest,
 } from './inline.js';
 import {
@@ -200,24 +203,41 @@ export function vueInternationalization(options?: Partial<VueInternationalizatio
 		},
 		transform: {
 			filter: {
-				id: /\.vue$/u,
+				id: /\.(?:vue|[cm]?[jt]sx?)(?:\?.*)?$/u,
 			},
 			handler(code, id) {
-				if (!id.endsWith('.vue') || !existsSync(id)) {
+				const cleanId = id.split('?')[0] ?? id;
+
+				if (!existsSync(cleanId)) {
 					return null;
 				}
 
-				collectVueFile(id, code);
 				const currentOptions = getResolvedOptions(resolvedOptions);
+
+				if (!cleanId.endsWith('.vue')) {
+					if (command !== 'build' || currentOptions.buildStrategy !== 'inline-chunks') {
+						return null;
+					}
+
+					const transformed = rewriteInlineRuntimeLocaleAccess(code, toRuntimeModuleId(cleanId, root), cleanId);
+					return transformed === code
+						? null
+						: {
+							code: transformed,
+							map: null,
+						};
+				}
+
+				collectVueFile(cleanId, code);
 				const transformed =
 					command === 'build' && currentOptions.buildStrategy === 'inline-chunks'
-						? transformVueSfcInline(code, id, root, currentOptions.primaryLocale, currentOptions.sfcTransform === 'all')
+						? transformVueSfcInline(code, cleanId, root, currentOptions.primaryLocale, currentOptions.sfcTransform === 'all')
 						: transformVueSfc(code, id, {
 							primaryLocale: currentOptions.primaryLocale,
 							global: globalMessages[currentOptions.primaryLocale],
 							messageSyntax: currentOptions.messageSyntax,
 							transformAll: currentOptions.sfcTransform === 'all',
-							moduleExpression: JSON.stringify(toRuntimeModuleId(id, root)),
+							moduleExpression: JSON.stringify(toRuntimeModuleId(cleanId, root)),
 						});
 
 				if (!transformed) {
@@ -300,6 +320,8 @@ export const internals = {
 	replaceInlineLocaleTextAccess,
 	rewriteInlineComponentLocaleAccess,
 	rewriteInlineLocaleTemplateAccess,
+	rewriteInlineRuntimeLocaleAccess,
+	rewriteVueScriptRuntimeLocaleAccess,
 	stripLocaleBlocks,
 	transformVueSfcInline,
 };
@@ -619,13 +641,16 @@ function transformVueSfcInline(code: string, filename: string, root: string, pri
 	const stripped = stripLocaleBlocks(code, filename);
 	const rewrittenComponentAccess = rewriteInlineComponentLocaleAccess(stripped, filename, root);
 	const rewrittenLocaleAccess = rewriteInlineLocaleTemplateAccess(rewrittenComponentAccess, moduleId);
+	const rewrittenRuntimeAccess = rewriteVueScriptRuntimeLocaleAccess(rewrittenLocaleAccess, moduleId);
 	const moduleDictionary = getPrimaryLocaleDictionary(parsed.blocks, primaryLocale, parsed.scriptMessages);
 
 	if (!hasLocaleDictionaryEntries(moduleDictionary)) {
-		return rewrittenLocaleAccess;
+		return hasVueScriptLocaleAccess(rewrittenRuntimeAccess)
+			? injectInlineLocaleBinding(rewrittenRuntimeAccess, moduleId)
+			: rewrittenRuntimeAccess;
 	}
 
-	const withSetupBinding = injectInlineLocaleBinding(rewrittenLocaleAccess, moduleId);
+	const withSetupBinding = injectInlineLocaleBinding(rewrittenRuntimeAccess, moduleId);
 
 	return injectComponentLocaleOptions(withSetupBinding, filename, {
 		module: moduleDictionary,

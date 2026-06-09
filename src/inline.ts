@@ -5,7 +5,7 @@ import { parse as parseSfc } from '@vue/compiler-sfc';
 import { parse as parseIcuMessage, TYPE } from '@formatjs/icu-messageformat-parser';
 import MagicString from 'magic-string';
 import { parseSync } from 'rolldown/utils';
-import { walk } from 'oxc-walker';
+import { ScopeTracker, walk } from 'oxc-walker';
 import { compileLocaleMessage } from './message.js';
 import { hasLocaleBinding } from './parse.js';
 import { injectScriptSetup } from './scriptSetup.js';
@@ -176,6 +176,22 @@ type AstVariableDeclarator = AstNode & {
 	id: AstNode;
 	init?: AstNode | null;
 };
+type AstImportDeclaration = AstNode & {
+	type: 'ImportDeclaration';
+	source: AstLiteral;
+	specifiers: AstNode[];
+};
+type AstImportSpecifier = AstNode & {
+	type: 'ImportSpecifier';
+	imported: AstNode;
+	local: AstNode;
+};
+type RuntimeLocaleHelperKind = 'locale' | 'localizer';
+type RuntimeLocaleHelperReplacement = {
+	start: number;
+	end: number;
+	kind: RuntimeLocaleHelperKind;
+};
 type MutableOutputChunk = {
 	type: 'chunk';
 	fileName: string;
@@ -223,6 +239,8 @@ const INLINE_TEXT_RE =
 const INLINE_LOCALIZER_RE =
 	/(?:\b[A-Za-z_$][\w$]*\.)?__VUE_INTERNATIONALIZATION_INLINE_LOCALIZER__\((?:"|&quot;)(__VUE_INTERNATIONALIZATION_INLINE__:[A-Za-z0-9+/=]+)(?:"|&quot;),(?:"|&quot;)((?:env|sfc)(?:\.[A-Za-z_$][\w$]*)+)(?:"|&quot;),(\{[^)]*\})\)/g;
 const LOCALIZER_ACCESS_PREFIX_RE = /\$l(?:\.value)?\.(env|sfc)((?:\.[A-Za-z_$][\w$]*)+)\(/g;
+const VVI_RUNTIME_MODULES = new Set(['virtual:vite-vue-internationalization', 'vite-vue-internationalization']);
+const SCRIPT_LOCALE_ACCESS_RE = /\$(?:locale|l)(?:\.value)?\.(?:env|sfc)\b/;
 const VUE_DEFAULT_IMPORT_RE = /\bimport\s+([A-Za-z_$][\w$]*)\s+from\s+(["'])([^"']+\.vue(?:\?[^"']*)?)\2/g;
 
 export function createInlineLocaleMarker(moduleId: string): string {
@@ -253,6 +271,71 @@ export function rewriteInlineLocaleTemplateAccess(code: string, moduleId: string
 	return replaceVueTemplateContent(code, (template) =>
 		rewriteTemplateLocaleAccess(rewriteTemplateLocalizerAccess(template, marker), marker),
 	);
+}
+
+export function rewriteInlineRuntimeLocaleAccess(code: string, moduleId: string, parserFilename = 'inline.ts'): string {
+	let parsed: ParsedInlineJavaScript;
+
+	try {
+		const parsedCode = parseInlineJavaScript(code, undefined, {}, parserFilename);
+
+		if (typeof parsedCode === 'string') {
+			return parsedCode;
+		}
+
+		parsed = parsedCode;
+	} catch {
+		return code;
+	}
+
+	const replacements = collectRuntimeLocaleHelperReplacements(parsed.ast);
+
+	if (replacements.length === 0) {
+		return code;
+	}
+
+	const marker = JSON.stringify(createInlineLocaleMarker(moduleId));
+	const magic = new MagicString(code);
+
+	for (const replacement of replacements) {
+		const callee = replacement.kind === 'locale'
+			? INLINE_LOCALE_CALL
+			: INLINE_LOCALIZERS_CALL;
+		magic.overwrite(replacement.start, replacement.end, `${callee}(${marker})`);
+	}
+
+	return magic.toString();
+}
+
+function collectRuntimeLocaleHelperReplacements(ast: AstNode): RuntimeLocaleHelperReplacement[] {
+	const replacements: RuntimeLocaleHelperReplacement[] = [];
+	const scopeTracker = new ScopeTracker();
+
+	walk(ast as OxcWalkInput, {
+		scopeTracker,
+		enter(node) {
+			const current = toAstNode(node);
+
+			if (!current || !isCallExpression(current) || !isIdentifier(current.callee)) {
+				return;
+			}
+
+			const kind = getRuntimeLocaleHelperImportKind(scopeTracker.getDeclaration(current.callee.name));
+
+			if (!kind || current.arguments.length !== 1 || !isImportMetaUrl(current.arguments[0])) {
+				return;
+			}
+
+			replacements.push({
+				start: current.start,
+				end: current.end,
+				kind,
+			});
+			this.skip();
+		},
+	});
+
+	return replacements;
 }
 
 export function rewriteInlineComponentLocaleAccess(code: string, filename: string, root: string): string {
@@ -377,6 +460,36 @@ function rewriteTemplateComponentLocaleAccess(code: string, imports: Map<string,
 	return replaceVueTemplateContent(code, (template) =>
 		rewriteComponentLocaleAccess(template, imports, true),
 	);
+}
+
+export function rewriteVueScriptRuntimeLocaleAccess(code: string, moduleId: string): string {
+	return replaceVueScriptContent(code, (script, parserFilename) => rewriteInlineRuntimeLocaleAccess(script, moduleId, parserFilename));
+}
+
+export function hasVueScriptLocaleAccess(code: string): boolean {
+	const descriptor = parseSfc(code).descriptor;
+
+	return [descriptor.script, descriptor.scriptSetup]
+		.some(script => script && SCRIPT_LOCALE_ACCESS_RE.test(script.content));
+}
+
+function replaceVueScriptContent(code: string, replacer: (script: string, parserFilename: string) => string): string {
+	const descriptor = parseSfc(code).descriptor;
+	const scripts = [descriptor.script, descriptor.scriptSetup]
+		.filter(script => script != null)
+		.sort((a, b) => b.loc.start.offset - a.loc.start.offset);
+	let next = code;
+
+	for (const script of scripts) {
+		const start = script.loc.start.offset;
+		const end = script.loc.end.offset;
+		const parserFilename = script.lang === 'tsx' || script.lang === 'jsx'
+			? 'inline.tsx'
+			: 'inline.ts';
+		next = next.slice(0, start) + replacer(next.slice(start, end), parserFilename) + next.slice(end);
+	}
+
+	return next;
 }
 
 function replaceVueTemplateContent(code: string, replacer: (template: string) => string): string {
@@ -1279,9 +1392,10 @@ function parseInlineJavaScript(
 	code: string,
 	resolvePayload: InlinePayloadResolver | undefined,
 	options: AstReplaceOptions,
+	parserFilename = 'inline.ts',
 ): ParsedInlineJavaScript | string {
 	try {
-		const parsed = parseSync('inline.js', code, {
+		const parsed = parseSync(parserFilename, code, {
 			sourceType: 'module',
 		});
 
@@ -1833,6 +1947,66 @@ function toAstNode(node: unknown): AstNode | undefined {
 	return typeof maybeNode.start === 'number' && typeof maybeNode.end === 'number'
 		? maybeNode as AstNode
 		: undefined;
+}
+
+function isImportDeclaration(node: AstNode): node is AstImportDeclaration {
+	return node.type === 'ImportDeclaration';
+}
+
+function isImportSpecifier(node: AstNode): node is AstImportSpecifier {
+	return node.type === 'ImportSpecifier';
+}
+
+function isVviRuntimeImport(node: AstImportDeclaration): boolean {
+	return typeof node.source.value === 'string' && VVI_RUNTIME_MODULES.has(node.source.value);
+}
+
+function getRuntimeLocaleHelperImportKind(declaration: ReturnType<ScopeTracker['getDeclaration']>): RuntimeLocaleHelperKind | undefined {
+	if (!declaration || declaration.type !== 'Import') {
+		return undefined;
+	}
+
+	const importNode = toAstNode(declaration.importNode);
+	const specifier = toAstNode(declaration.node);
+
+	if (!importNode || !isImportDeclaration(importNode) || !isVviRuntimeImport(importNode) ||
+		!specifier || !isImportSpecifier(specifier) || !isIdentifier(specifier.imported)) {
+		return undefined;
+	}
+
+	if (specifier.imported.name === 'useLocale') {
+		return 'locale';
+	}
+
+	return specifier.imported.name === 'useLocalizer'
+		? 'localizer'
+		: undefined;
+}
+
+function isImportMetaUrl(node: AstNode): boolean {
+	return isMemberExpression(node) &&
+		!node.computed &&
+		isIdentifier(node.property) &&
+		node.property.name === 'url' &&
+		isMetaProperty(node.object, 'import', 'meta');
+}
+
+function isMetaProperty(node: AstNode, metaName: string, propertyName: string): boolean {
+	if (node.type !== 'MetaProperty') {
+		return false;
+	}
+
+	const meta = toAstNode((node as { meta?: unknown }).meta);
+	const property = toAstNode((node as { property?: unknown }).property);
+
+	return Boolean(
+		meta &&
+		property &&
+		isIdentifier(meta) &&
+		isIdentifier(property) &&
+		meta.name === metaName &&
+		property.name === propertyName,
+	);
 }
 
 function isIdentifier(node: AstNode): node is AstIdentifier {
