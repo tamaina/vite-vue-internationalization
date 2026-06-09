@@ -113,6 +113,17 @@ type InlineReplacementOperation =
 		pluralExpression?: string;
 	}
 	| {
+		type: 'localizer-lookup-call';
+		start: number;
+		end: number;
+		marker: string;
+		properties: string[];
+		keyExpression: string;
+		suffixKeys: string[];
+		valuesExpression: string;
+		pluralExpression?: string;
+	}
+	| {
 		type: 'locale-member';
 		start: number;
 		end: number;
@@ -1613,6 +1624,34 @@ function createInlineLookupExpression(
 	return `(({${entries}})[String(${keyExpression})])`;
 }
 
+function createInlineLocalizerLookupCallExpression(
+	dictionary: LocaleDictionary,
+	keyExpression: string,
+	suffixKeys: string[],
+	valuesExpression: string,
+	pluralExpression: string | undefined,
+	payload: InlineLocalePayload,
+	scope: PublicLocaleScope,
+): string {
+	const entries = Object.entries(dictionary)
+		.map(([key, value]) => {
+			const selected = suffixKeys.length > 0 && isDictionary(value)
+				? getValueByPath(value, suffixKeys)
+				: value;
+
+			if (selected === undefined) {
+				return undefined;
+			}
+
+			return `${JSON.stringify(key)}:${serializeInlineLocalizerLookupValue(selected, payload, scope)}`;
+		})
+		.filter((entry): entry is string => entry !== undefined)
+		.join(',');
+	const pluralArgument = pluralExpression ? `, ${pluralExpression}` : '';
+
+	return `(({${entries}})[String(${keyExpression})])(${valuesExpression}${pluralArgument})`;
+}
+
 function serializeInlineLookupValue(value: unknown, payload: InlineLocalePayload, scope: PublicLocaleScope): string {
 	if (isDictionary(value)) {
 		return `{${Object.entries(value)
@@ -1629,6 +1668,18 @@ function serializeInlineLookupValue(value: unknown, payload: InlineLocalePayload
 	}
 
 	return JSON.stringify(value);
+}
+
+function serializeInlineLocalizerLookupValue(value: unknown, payload: InlineLocalePayload, scope: PublicLocaleScope): string {
+	if (isDictionary(value)) {
+		return createLocalizerObjectExpression(value, payload, scope);
+	}
+
+	if (typeof value === 'function') {
+		return `(${value.toString()})`;
+	}
+
+	return `(values = {}) => ${createInlineTemplateExpression(typeof value === 'string' ? value : String(value), 'values', payload, scope)}`;
 }
 
 function replaceNestedInlineMarkerExpression(expression: string, resolvePayload: InlinePayloadResolver): string {
@@ -1688,6 +1739,12 @@ function getLocalizerBindingCallReplacementOperation(
 	node: AstCallExpression,
 	localizerBindings: Map<string, string>,
 ): InlineReplacementOperation | undefined {
+	const lookup = getLocalizerLookupCallReplacementOperation(code, node, localizerBindings);
+
+	if (lookup) {
+		return lookup;
+	}
+
 	const access = readMemberAccess(node.callee);
 	const values = node.arguments.at(0);
 
@@ -1715,6 +1772,61 @@ function getLocalizerBindingCallReplacementOperation(
 		end: node.end,
 		marker,
 		properties: access.properties,
+		valuesExpression: values ? code.slice(values.start, values.end) : '{}',
+		pluralExpression: plural ? code.slice(plural.start, plural.end) : undefined,
+	};
+}
+
+function getLocalizerLookupCallReplacementOperation(
+	code: string,
+	node: AstCallExpression,
+	localizerBindings: Map<string, string>,
+): InlineReplacementOperation | undefined {
+	const access = readDynamicMemberAccess(code, node.callee);
+	const values = node.arguments.at(0);
+
+	if (!access) {
+		return undefined;
+	}
+
+	const dynamicIndex = access.segments.findIndex((segment) => segment.type === 'dynamic');
+
+	if (
+		dynamicIndex <= 0 ||
+		access.segments.findIndex((segment, index) => index > dynamicIndex && segment.type === 'dynamic') !== -1
+	) {
+		return undefined;
+	}
+
+	const marker = localizerBindings.get(access.root);
+
+	if (!marker) {
+		return undefined;
+	}
+
+	const properties = access.segments.slice(0, dynamicIndex).map((segment) =>
+		segment.type === 'static' ? segment.value : '',
+	);
+	const suffixKeys = access.segments.slice(dynamicIndex + 1).map((segment) =>
+		segment.type === 'static' ? segment.value : '',
+	);
+	const normalized = normalizeInlineAccessPath(properties);
+	const dynamic = access.segments[dynamicIndex];
+
+	if (!normalized || dynamic.type !== 'dynamic') {
+		return undefined;
+	}
+
+	const plural = node.arguments.at(1);
+
+	return {
+		type: 'localizer-lookup-call',
+		start: node.start,
+		end: node.end,
+		marker,
+		properties,
+		keyExpression: dynamic.expression,
+		suffixKeys,
 		valuesExpression: values ? code.slice(values.start, values.end) : '{}',
 		pluralExpression: plural ? code.slice(plural.start, plural.end) : undefined,
 	};
@@ -1837,6 +1949,31 @@ function getPlannedReplacement(
 			return createInlineTemplateExpression(template, valuesExpression, payload, normalized.scope);
 		}
 
+		case 'localizer-lookup-call': {
+			const payload = resolvePayload(decodeInlineLocaleMarker(operation.marker));
+			const normalized = normalizeInlineAccessPath(operation.properties);
+
+			if (!normalized) {
+				return undefined;
+			}
+
+			const value = getValueByPath(getPayloadScope(payload, normalized.scope), normalized.keys);
+
+			if (!isDictionary(value)) {
+				return 'undefined';
+			}
+
+			return createInlineLocalizerLookupCallExpression(
+				value,
+				operation.keyExpression,
+				operation.suffixKeys,
+				replaceNestedInlineMarkerExpression(operation.valuesExpression, resolvePayload),
+				operation.pluralExpression,
+				payload,
+				normalized.scope,
+			);
+		}
+
 		case 'locale-member': {
 			const payload = resolvePayload(decodeInlineLocaleMarker(operation.marker));
 			const normalized = normalizeInlineAccessPath(operation.properties);
@@ -1897,6 +2034,53 @@ function readMemberAccess(node: AstNode): { root: string; properties: string[] }
 	return {
 		root: parent.root,
 		properties: [...parent.properties, node.property.name],
+	};
+}
+
+function readDynamicMemberAccess(code: string, node: AstNode): { root: string; segments: LocaleAccessSegment[] } | undefined {
+	if (isIdentifier(node)) {
+		return {
+			root: node.name,
+			segments: [],
+		};
+	}
+
+	if (!isMemberExpression(node)) {
+		return undefined;
+	}
+
+	const parent = readDynamicMemberAccess(code, node.object);
+
+	if (!parent) {
+		return undefined;
+	}
+
+	if (node.computed) {
+		return {
+			root: parent.root,
+			segments: [
+				...parent.segments,
+				{
+					type: 'dynamic',
+					expression: code.slice(node.property.start, node.property.end),
+				},
+			],
+		};
+	}
+
+	if (!isIdentifier(node.property)) {
+		return undefined;
+	}
+
+	return {
+		root: parent.root,
+		segments: [
+			...parent.segments,
+			{
+				type: 'static',
+				value: node.property.name,
+			},
+		],
 	};
 }
 

@@ -70,6 +70,9 @@ importers:
       '@vue/language-core':
         specifier: ^3.3.1
         version: 3.3.1
+      esbuild:
+        specifier: ^0.28.0
+        version: 0.28.0
       eslint:
         specifier: ^9.39.4
         version: 9.39.4(jiti@2.7.0)
