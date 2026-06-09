@@ -1,3 +1,11 @@
+## 1.0.1
+
+### Changes
+
+- fix: Rewrite runtime `useLocale(import.meta.url)` and `useLocalizer(import.meta.url)` calls for inline chunk builds.
+- docs: Document TypeScript module usage of runtime locale helpers.
+
+
 ## 1.0.0
 
 ### Changes

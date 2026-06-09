@@ -284,7 +284,7 @@ describe('virtual module generation', () => {
 		expect(output).toContain('$l: __VUE_INTERNATIONALIZATION_INLINE_LOCALIZERS__');
 	});
 
-	it('injects inline bindings for SFCs without locale sources when enabled', () => {
+	it('rewrites template locale access for SFCs without locale sources when enabled', () => {
 		const output = internals.transformVueSfcInline([
 			'<template>{{ $locale.env.title }}</template>',
 			'<script setup lang="ts">',
@@ -295,6 +295,104 @@ describe('virtual module generation', () => {
 		expect(output).toContain('__VUE_INTERNATIONALIZATION_INLINE_TEXT__');
 		expect(output).not.toContain('$locale: __VUE_INTERNATIONALIZATION_INLINE_LOCALE__');
 		expect(output).not.toContain('const $locale = __VUE_INTERNATIONALIZATION_INLINE_LOCALE__');
+	});
+
+	it('injects inline bindings for script locale access without locale sources when enabled', () => {
+		const output = internals.transformVueSfcInline([
+			'<template><div></div></template>',
+			'<script setup lang="ts">',
+			'const title = $locale.value.env.title;',
+			'const label = $l.value.env.count({ n: 1 });',
+			'</script>',
+		].join('\n'), '/repo/src/App.vue', '/repo', 'ja-JP', true);
+
+		expect(output).toContain('const $locale = __VUE_INTERNATIONALIZATION_INLINE_LOCALE__');
+		expect(output).toContain('const $l = __VUE_INTERNATIONALIZATION_INLINE_LOCALIZERS__');
+	});
+
+	it('rewrites explicit runtime locale helpers in SFC scripts for inline chunks', () => {
+		const output = internals.transformVueSfcInline([
+			'<template><div></div></template>',
+			'<script setup lang="ts">',
+			'import { useLocale, useLocalizer } from "virtual:vite-vue-internationalization";',
+			'const localeRef = useLocale(import.meta.url);',
+			'const localizerRef = useLocalizer(import.meta.url);',
+			'const title = localeRef.value.env.title;',
+			'const label = localizerRef.value.env.count({ n: 1 });',
+			'</script>',
+		].join('\n'), '/repo/src/App.vue', '/repo', 'ja-JP', true);
+
+		expect(output).toContain('const localeRef = __VUE_INTERNATIONALIZATION_INLINE_LOCALE__');
+		expect(output).toContain('const localizerRef = __VUE_INTERNATIONALIZATION_INLINE_LOCALIZERS__');
+		expect(output).not.toContain('useLocale(import.meta.url)');
+		expect(output).not.toContain('useLocalizer(import.meta.url)');
+	});
+
+	it('rewrites explicit runtime locale helpers in TypeScript modules for inline chunks', () => {
+		const output = internals.rewriteInlineRuntimeLocaleAccess([
+			'import { useLocale, useLocalizer } from "virtual:vite-vue-internationalization";',
+			'const localeRef = useLocale(import.meta.url);',
+			'const localizerRef = useLocalizer(import.meta.url);',
+		].join('\n'), '/src/messages.ts');
+
+		expect(output).toContain('const localeRef = __VUE_INTERNATIONALIZATION_INLINE_LOCALE__');
+		expect(output).toContain('const localizerRef = __VUE_INTERNATIONALIZATION_INLINE_LOCALIZERS__');
+		expect(output).not.toContain('useLocale(import.meta.url)');
+		expect(output).not.toContain('useLocalizer(import.meta.url)');
+	});
+
+	it('rewrites aliased explicit runtime locale helpers in TypeScript modules for inline chunks', () => {
+		const output = internals.rewriteInlineRuntimeLocaleAccess([
+			'import { useLocale as useVviLocale, useLocalizer as useVviLocalizer } from "virtual:vite-vue-internationalization";',
+			'const localeRef = useVviLocale(import.meta.url);',
+			'const localizerRef = useVviLocalizer(import.meta.url);',
+		].join('\n'), '/src/messages.ts');
+
+		expect(output).toContain('const localeRef = __VUE_INTERNATIONALIZATION_INLINE_LOCALE__');
+		expect(output).toContain('const localizerRef = __VUE_INTERNATIONALIZATION_INLINE_LOCALIZERS__');
+		expect(output).not.toContain('useVviLocale(import.meta.url)');
+		expect(output).not.toContain('useVviLocalizer(import.meta.url)');
+	});
+
+	it('does not rewrite unrelated runtime helper-like calls in TypeScript modules', () => {
+		const output = internals.rewriteInlineRuntimeLocaleAccess([
+			'import { primaryLocale, useLocalizer } from "virtual:vite-vue-internationalization";',
+			'function useLocale(moduleUrl: string) { return moduleUrl; }',
+			'const message = "useLocalizer(import.meta.url)";',
+			'const localeRef = useLocale(import.meta.url);',
+			'const localizerRef = useLocalizer("/src/messages.ts");',
+		].join('\n'), '/src/messages.ts');
+
+		expect(output).toContain('const message = "useLocalizer(import.meta.url)"');
+		expect(output).toContain('const localeRef = useLocale(import.meta.url);');
+		expect(output).toContain('const localizerRef = useLocalizer("/src/messages.ts");');
+		expect(output).not.toContain('__VUE_INTERNATIONALIZATION_INLINE_LOCALE__');
+		expect(output).not.toContain('__VUE_INTERNATIONALIZATION_INLINE_LOCALIZERS__');
+	});
+
+	it('does not rewrite shadowed runtime helper imports in TypeScript modules', () => {
+		const output = internals.rewriteInlineRuntimeLocaleAccess([
+			'import { useLocale } from "virtual:vite-vue-internationalization";',
+			'export function useMessages(useLocale: (moduleUrl: string) => unknown) {',
+			'  return useLocale(import.meta.url);',
+			'}',
+		].join('\n'), '/src/messages.ts');
+
+		expect(output).toContain('return useLocale(import.meta.url);');
+		expect(output).not.toContain('__VUE_INTERNATIONALIZATION_INLINE_LOCALE__');
+	});
+
+	it('rewrites runtime helper calls outside a shadowed function scope', () => {
+		const output = internals.rewriteInlineRuntimeLocaleAccess([
+			'import { useLocale } from "virtual:vite-vue-internationalization";',
+			'const localeRef = useLocale(import.meta.url);',
+			'export function useMessages(useLocale: (moduleUrl: string) => unknown) {',
+			'  return useLocale(import.meta.url);',
+			'}',
+		].join('\n'), '/src/messages.ts');
+
+		expect(output).toContain('const localeRef = __VUE_INTERNATIONALIZATION_INLINE_LOCALE__');
+		expect(output).toContain('return useLocale(import.meta.url);');
 	});
 
 	it('does not inject inline bindings twice', () => {

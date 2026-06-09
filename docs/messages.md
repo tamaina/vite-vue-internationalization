@@ -29,6 +29,17 @@ count: "{n} apples"
 
 SFC 内のメッセージは `$locale.sfc` と `$l.sfc` から参照します。`$locale` は翻訳値をそのまま返し、`$l` はメッセージ関数を返します。
 
+`<script setup>` 内で使う場合、注入される `$locale` と `$l` は computed ref です。template では `$locale.sfc.title` / `$l.sfc.count({ n })` のまま使い、script では `.value` を経由してください。
+
+```vue
+<script setup lang="ts">
+const title = $locale.value.sfc.title;
+const countText = $l.value.sfc.count({ n: 3 });
+</script>
+```
+
+コンポーネント固有のメッセージは、同じ SFC の `<locale>` ブロック、またはトップレベルの `defineInternationalization()` に置くのがおすすめです。ローカルメッセージを持たない SFC で `$locale.env` / `$l.env` だけを使いたい場合は、空の辞書を追加して変換対象にするのではなく、`sfcTransform: "all"` を設定してください。通常の `.ts` モジュールに処理を分離する場合は、仮想モジュールの `useLocale()` / `useLocalizer()` を使います。
+
 同じ SFC に同一ロケールの `<locale>` ブロックが複数ある場合は再帰的に統合され、後のブロックの値が優先されます。
 
 ## グローバル辞書
