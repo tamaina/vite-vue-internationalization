@@ -60,4 +60,5 @@ export type {
 	LocaleTemplateFunction,
 	LocaleTemplateValue,
 	LocaleTemplateValues,
+	TypedLocaleLocalizerDictionary,
 } from './runtime.js';
