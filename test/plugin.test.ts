@@ -1599,7 +1599,7 @@ describe('virtual module generation', () => {
 		expect(html).not.toContain('AsyncPanel-abc.i18n-loader.js');
 	});
 
-	it('injects fallback locale loader and css with a relative base', () => {
+	it.each([['index.html', './'], ['nested/index.html', '../']])('injects fallback assets relative to %s', (htmlFileName, prefix) => {
 		const html = internals.replaceInlineLocaleHtml(
 			'<div id="app"></div>',
 			{
@@ -1618,12 +1618,12 @@ describe('virtual module generation', () => {
 					},
 				],
 			},
-			undefined,
+			htmlFileName,
 			'./',
 		);
 
-		expect(html).toContain('href="./assets/App-abc.css"');
-		expect(html).toContain('src="./assets/App-abc.i18n-loader.js"');
+		expect(html).toContain(`href="${prefix}assets/App-abc.css"`);
+		expect(html).toContain(`src="${prefix}assets/App-abc.i18n-loader.js"`);
 	});
 
 	it('injects only the matching html entry loader when Vite removes multiple html entry scripts', () => {

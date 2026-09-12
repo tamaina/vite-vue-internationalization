@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { resolveLocaleAssets } from '../src/ssr.js';
+import { augmentSsrManifest, finalizeAssetIntegrity } from '../src/assetManifest.js';
 import type { LocaleAssetManifest, LocaleAssetChunk } from '../src/ssr.js';
 
 function fixture(): LocaleAssetManifest {
@@ -36,6 +37,23 @@ describe('SSR client asset resolution', () => {
 		const assets = resolveLocaleAssets(fixture(), { locale: 'en', entry: 'src/client.ts', modules: ['virtual:route'], ssrManifest: { 'virtual:route': ['/app/assets/lazy.js', '/app/assets/lazy.css'] } });
 		expect(assets.modulepreload.map(asset => asset.file)).toContain('assets/lazy.en.js');
 		expect(assets.stylesheets.map(asset => asset.file)).toContain('assets/lazy.css');
+	});
+	it('includes CSS-only modules without preloading their removed JS placeholders', () => {
+		const manifest = fixture();
+		manifest.chunks.theme = { file: 'assets/theme.js', cssOnly: true, imports: [], dynamicImports: [], css: ['assets/theme.css'] };
+		manifest.modules['theme.css'] = ['theme'];
+		expect(JSON.parse(augmentSsrManifest('{}', manifest))['theme.css']).toEqual(['/app/assets/theme.css']);
+		const assets = resolveLocaleAssets(manifest, { locale: 'en', entry: 'src/client.ts', modules: ['theme.css'] });
+		expect(assets.stylesheets.map(asset => asset.file)).toContain('assets/theme.css');
+		expect(assets.modulepreload.map(asset => asset.file)).not.toContain('assets/theme.js');
+		manifest.entries['theme.css'] = 'theme';
+		expect(() => resolveLocaleAssets(manifest, { locale: 'en', entry: 'theme.css' })).toThrow('CSS-only');
+	});
+	it('rejects missing final JS and CSS outputs instead of silently leaving stale mappings', () => {
+		expect(() => finalizeAssetIntegrity(fixture(), '/unwritten-output', {})).toThrow('Missing client JS output');
+		const manifest = fixture();
+		manifest.chunks = { theme: { file: 'theme.js', cssOnly: true, imports: [], dynamicImports: [], css: ['theme.css'] } };
+		expect(() => finalizeAssetIntegrity(manifest, '/unwritten-output', {})).toThrow('Missing CSS output');
 	});
 	it('rejects unsupported locales and incomplete mappings instead of choosing another locale', () => {
 		for (const options of [{ locale: 'bad', entry: 'src/client.ts' }, { locale: 'en', entry: 'bad' }, { locale: 'en', entry: 'src/client.ts', modules: ['bad'] }]) {

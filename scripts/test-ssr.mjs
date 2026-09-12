@@ -1,7 +1,7 @@
 /* global document, window, getComputedStyle, console, process, URL */
 import assert from 'node:assert/strict';
 import { createServer as createHttpServer } from 'node:http';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { createBuilder } from 'vite';
@@ -34,6 +34,10 @@ try {
 	await builder.build(builder.environments.edge);
 	if (customManifest) assert.equal(readFileSync(`${output}/unrelated-manifest.json`, 'utf8'), 'Unrelated asset, intentionally not JSON.');
 	const manifest = JSON.parse(readFileSync(`${output}/.vite/internationalization-manifest.json`, 'utf8'));
+	for (const chunk of Object.values(manifest.chunks)) {
+		if (chunk.cssOnly) continue;
+		for (const asset of chunk.locales ? Object.values(chunk.locales) : [chunk]) assert.ok(existsSync(`${output}/${asset.file}`), `Manifest references missing JS: ${JSON.stringify(chunk)}`);
+	}
 	const ssrManifest = JSON.parse(readFileSync(`${output}/${ssrManifestFile}`, 'utf8'));
 	const viteManifest = JSON.parse(readFileSync(`${output}/${viteManifestFile}`, 'utf8'));
 	if (inline) assert.ok(viteManifest['client.ts'].internationalization?.locales['en-US'], 'Configured Vite manifest must include locale entries.');
@@ -72,6 +76,7 @@ try {
 		assert.equal(await page.locator('#lazy').textContent(), locale === 'en-US' ? 'Lazy English' : '遅延日本語', JSON.stringify({ errors, manifest, html: await page.content() }));
 		assert.equal(await page.locator('#global').textContent(), locale === 'en-US' ? 'Global English' : '共通辞書');
 		assert.equal(await page.locator('#fallback').textContent(), '共通fallback');
+		assert.equal(await page.locator('body').evaluate(element => getComputedStyle(element).borderTopColor), 'rgb(90, 80, 70)');
 		assert.equal(await page.locator('#literal-text').textContent(), '$locale.sfc.title');
 		assert.equal(await page.locator('#literal-expression').textContent(), '$locale.sfc.title');
 		if (!icu) {

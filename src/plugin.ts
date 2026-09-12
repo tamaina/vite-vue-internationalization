@@ -405,7 +405,7 @@ export function vueInternationalization(options?: Partial<VueInternationalizatio
 				this.emitFile({ type: 'asset', fileName: '.vite/internationalization-manifest.json', source: JSON.stringify(assetManifest, null, 2) + '\n' });
 			}
 		},
-		writeBundle(outputOptions) {
+		writeBundle(outputOptions, bundle) {
 			const state = getState(this);
 			const outputDir = resolve(root, outputOptions.dir ?? dirname(outputOptions.file ?? 'dist/index.js'));
 			if (state.inlineManifest) {
@@ -414,7 +414,7 @@ export function vueInternationalization(options?: Partial<VueInternationalizatio
 				if (manifestOption) rewriteWrittenViteManifest(outputDir, state.inlineManifest, typeof manifestOption === 'string' ? manifestOption : '.vite/manifest.json');
 			}
 			if (state.assetManifest) {
-				finalizeAssetIntegrity(state.assetManifest, outputDir);
+				finalizeAssetIntegrity(state.assetManifest, outputDir, bundle);
 				writeFileSync(resolve(outputDir, '.vite/internationalization-manifest.json'), JSON.stringify(state.assetManifest, null, 2) + '\n');
 			}
 			const ssrManifestOption = this.environment.config.build.ssrManifest;

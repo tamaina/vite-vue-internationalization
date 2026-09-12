@@ -1,6 +1,8 @@
 /** A client chunk and its locale-specific output files. */
 export type LocaleAssetChunk = {
 	file: string;
+	/** Vite removed this empty JS placeholder; only its CSS dependencies remain. */
+	cssOnly?: boolean;
 	integrity?: string;
 	locales?: Record<string, { file: string; integrity?: string }>;
 	imports: string[];
@@ -55,6 +57,7 @@ export function resolveLocaleAssets(manifest: LocaleAssetManifest, options: Reso
 	if (!manifest.locales.includes(options.locale)) throw new Error(`Unsupported locale "${options.locale}".`);
 	const entryKey = own(manifest.entries, normalizeModule(options.entry)) ?? (Object.hasOwn(manifest.chunks, options.entry) ? options.entry : undefined);
 	if (!entryKey) throw new Error(`Client entry "${options.entry}" is not in the VVI asset manifest.`);
+	if (own(manifest.chunks, entryKey)?.cssOnly) throw new Error('A CSS-only asset cannot be used as the hydration entry.');
 	const base = options.base ?? manifest.base;
 
 	function asset(file: string, integrity?: string): LocaleAsset {
@@ -87,7 +90,7 @@ export function resolveLocaleAssets(manifest: LocaleAssetManifest, options: Reso
 		if (visited.has(key)) return;
 		visited.add(key);
 		const result = selected(key);
-		if (key !== entryKey) preloads.set(result.asset.file, result.asset);
+		if (key !== entryKey && !result.chunk.cssOnly) preloads.set(result.asset.file, result.asset);
 		for (const css of result.chunk.css) styles.set(css, asset(css));
 		for (const dependency of result.chunk.imports) visit(dependency);
 	}

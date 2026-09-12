@@ -532,3 +532,26 @@ inline asset URLs must not be reused; the output salt change covers these bytes.
 Remaining full-goal acceptance still includes the original #39 symptom, #46 exact
 nested expression provenance/scope audit, SSR assets/framework cases, and remote
 CI/review. Do not infer completion of the entire roadmap from these passing tests.
+
+## CSS-only outputs and nested HTML assets (#44 / #53)
+
+A real SSR fixture now dynamically imports a CSS-only theme and declares that
+used theme module in the server render context. Before the fix the emitted VVI
+manifest referenced assets/theme-*.js after Vite had removed it, causing a failed
+preload request. The fixture now validates all referenced JS files exist.
+
+The asset graph identifies extracted style-only placeholders and, after final
+output, retains only their CSS dependencies when Vite removes the JS. The resolver
+and native SSR manifest augmentation omit removed JS preloads; CSS-only hydration
+entries are rejected. Finalization rejects missing actual JS/CSS rather than
+silently retaining stale mappings. Both Vue strategy pairs and ICU mixed relative
+custom-manifest hydration pass with the theme and its computed style verified.
+
+The hash fixture now places its second HTML entry at nested/other.html. It
+reproduced a request to nested/assets/*.i18n-loader.js instead of assets/*.js.
+HTML loader/CSS URLs and entry-script matching now resolve relative to the HTML
+file itself. Focused SSR asset tests cover CSS-only mapping and missing outputs;
+HTML tests cover root and nested fallback asset injection. The final nested browser
+hash/SRI fixture passes: 10 new JS URLs, deterministic repeat, 4 SRI checks,
+two entries and lazy CSS with old assets retained. Typecheck and 75 focused tests
+pass; lint reports no errors (2 existing warnings).

@@ -1126,9 +1126,9 @@ export function replaceInlineLocaleHtml(
 	const fallbackEntries = findFallbackHtmlLocaleEntries(html, manifest, htmlFileName, base);
 
 	for (const entry of manifest.entries) {
-		const replaced = replaceEntryScript(next, entry, manifest.primaryLocale, base);
+		const replaced = replaceEntryScript(next, entry, manifest.primaryLocale, base, htmlFileName);
 		next = replaced === next && fallbackEntries.includes(entry)
-			? injectLocaleLoaderScript(next, entry, manifest.primaryLocale, base)
+			? injectLocaleLoaderScript(next, entry, manifest.primaryLocale, base, htmlFileName)
 			: replaced;
 	}
 
@@ -2628,14 +2628,15 @@ function replaceEntryScript(
 	entry: InlineChunkManifest['entries'][number],
 	primaryLocale: string,
 	base: string,
+	htmlFileName?: string,
 ): string {
-	return html.replace(createEntryScriptRegExp(entry.locales, primaryLocale, base), (_match, beforeSrc: string, afterSrc: string) => {
+	return html.replace(createEntryScriptRegExp(entry.locales, primaryLocale, base, htmlFileName), (_match, beforeSrc: string, afterSrc: string) => {
 		const primaryFile = entry.locales[primaryLocale];
 		const loaderFileName = createLocaleLoaderFileName(originalFileNameFromLocaleFile(primaryFile, primaryLocale));
 		const loaderSource = createLocaleLoaderSource(entry.locales, primaryLocale, base, entry.integrity);
 		const loaderIntegrity = createSubresourceIntegrity(loaderSource);
 
-		return `<script${createLoaderScriptAttributes(beforeSrc, afterSrc, loaderFileName, base, loaderIntegrity)}></script>`;
+		return `<script${createLoaderScriptAttributes(beforeSrc, afterSrc, loaderFileName, base, loaderIntegrity, htmlFileName)}></script>`;
 	});
 }
 
@@ -2645,7 +2646,7 @@ function findHtmlLocaleEntries(
 	htmlFileName?: string,
 	base = '/',
 ): InlineChunkManifest['entries'] {
-	const scriptEntries = manifest.entries.filter((entry) => createEntryScriptRegExp(entry.locales, manifest.primaryLocale, base).test(html));
+	const scriptEntries = manifest.entries.filter((entry) => createEntryScriptRegExp(entry.locales, manifest.primaryLocale, base, htmlFileName).test(html));
 
 	return scriptEntries.length > 0 ? scriptEntries : findFallbackHtmlLocaleEntries(html, manifest, htmlFileName, base);
 }
@@ -2656,7 +2657,7 @@ function findFallbackHtmlLocaleEntries(
 	htmlFileName?: string,
 	base = '/',
 ): InlineChunkManifest['entries'] {
-	if (manifest.entries.some((entry) => createEntryScriptRegExp(entry.locales, manifest.primaryLocale, base).test(html))) {
+	if (manifest.entries.some((entry) => createEntryScriptRegExp(entry.locales, manifest.primaryLocale, base, htmlFileName).test(html))) {
 		return [];
 	}
 
@@ -2675,13 +2676,13 @@ function findFallbackHtmlLocaleEntries(
 	return htmlEntries.length === 1 ? htmlEntries : [];
 }
 
-function createEntryScriptRegExp(localeFiles: Record<string, string>, primaryLocale: string, base: string): RegExp {
+function createEntryScriptRegExp(localeFiles: Record<string, string>, primaryLocale: string, base: string, htmlFileName?: string): RegExp {
 	const primaryFile = localeFiles[primaryLocale];
 	const candidates = new Set(
 		[
 			originalFileNameFromLocaleFile(primaryFile, primaryLocale),
 			...Object.values(localeFiles),
-		].flatMap((fileName) => createPublicPathCandidates(fileName, base)),
+		].flatMap((fileName) => createPublicPathCandidates(fileName, base, htmlFileName)),
 	);
 
 	return new RegExp(
@@ -2739,6 +2740,7 @@ function createLoaderScriptAttributes(
 	loaderFileName: string,
 	base: string,
 	loaderIntegrity?: string,
+	htmlFileName?: string,
 ): string {
 	const attributes = removeScriptAttribute(`${beforeSrc}${afterSrc}`, 'src');
 	const hadIntegrity = hasScriptAttribute(attributes, 'integrity');
@@ -2750,7 +2752,7 @@ function createLoaderScriptAttributes(
 		console.warn('[vite-vue-internationalization] Removed integrity from an inline-chunks HTML entry script because the script is replaced by a locale loader and per-locale chunks need their own SRI metadata.');
 	}
 
-	return `${withoutIntegrity}${typeAttribute}${integrityAttribute} src="${toPublicPath(loaderFileName, base)}"`;
+	return `${withoutIntegrity}${typeAttribute}${integrityAttribute} src="${toPublicPath(loaderFileName, base, htmlFileName)}"`;
 }
 
 function injectLocaleLoaderScript(
@@ -2758,13 +2760,14 @@ function injectLocaleLoaderScript(
 	entry: InlineChunkManifest['entries'][number],
 	primaryLocale: string,
 	base: string,
+	htmlFileName?: string,
 ): string {
 	const primaryFile = entry.locales[primaryLocale];
 	const loaderFileName = createLocaleLoaderFileName(originalFileNameFromLocaleFile(primaryFile, primaryLocale));
 	const cssLinks = (entry.css ?? [])
-		.map((fileName) => `<link rel="stylesheet" href="${toPublicPath(fileName, base)}">`)
+		.map((fileName) => `<link rel="stylesheet" href="${toPublicPath(fileName, base, htmlFileName)}">`)
 		.join('');
-	const loaderPath = toPublicPath(loaderFileName, base);
+	const loaderPath = toPublicPath(loaderFileName, base, htmlFileName);
 	const script = `<script type="module" src="${loaderPath}"></script>`;
 	const injection = `${cssLinks}${script}`;
 
@@ -2804,25 +2807,27 @@ function toPublicLocaleFiles(localeFiles: Record<string, string>, base: string):
 	return Object.fromEntries(Object.entries(localeFiles).map(([locale, fileName]) => [locale, toPublicPath(fileName, base)]));
 }
 
-function toPublicPath(fileName: string, base: string): string {
+function toPublicPath(fileName: string, base: string, htmlFileName?: string): string {
 	if (/^[a-z][a-z\d+\-.]*:/iu.test(base) || base.startsWith('//')) {
 		return new URL(fileName, base).toString();
 	}
 
 	if (base === '' || base === './') {
-		return `${base}${fileName}`;
+		const path = htmlFileName ? relative(dirname(htmlFileName), fileName).replaceAll('\\', '/') : fileName;
+		return path.startsWith('.') ? path : `${base}${path}`;
 	}
 
 	return `${base.endsWith('/') ? base : `${base}/`}${fileName}`;
 }
 
-function createPublicPathCandidates(fileName: string, base: string): string[] {
-	const publicPath = toPublicPath(fileName, base);
+function createPublicPathCandidates(fileName: string, base: string, htmlFileName?: string): string[] {
+	const publicPath = toPublicPath(fileName, base, htmlFileName);
 	const candidates = new Set([publicPath]);
 
 	if (base === '' || base === './') {
-		candidates.add(fileName);
-		candidates.add(`./${fileName}`);
+		const path = htmlFileName ? relative(dirname(htmlFileName), fileName).replaceAll('\\', '/') : fileName;
+		candidates.add(path);
+		candidates.add(`./${path}`);
 	}
 
 	return [...candidates];

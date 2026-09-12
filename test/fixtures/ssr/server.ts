@@ -9,7 +9,8 @@ export async function render(locale: string) {
 	const internationalization = createInternationalization({ initialLocale: locale });
 	app.use(internationalization);
 	await internationalization.ready;
-	const context: SSRContext = {};
+	// The application tracks this route's asynchronously selected theme for preload.
+	const context: SSRContext = { modules: new Set(['theme.css']) };
 	const html = await renderToString(app, context);
 	return { html, modules: context.modules as Set<string> };
 }

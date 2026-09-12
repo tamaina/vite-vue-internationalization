@@ -16,6 +16,8 @@ export function createAssetManifest(bundle: OutputBundle, root: string, base: st
 			file: chunk.fileName,
 			imports: [...chunk.imports], dynamicImports: [...chunk.dynamicImports], css: [...(metadata.viteMetadata?.importedCss ?? [])],
 		};
+		const moduleIds = Object.keys(chunk.modules);
+		if (manifest.chunks[chunk.fileName].css.length && chunk.exports.length === 0 && moduleIds.length && moduleIds.every(id => /\.(?:css|less|sass|scss|styl|stylus|pcss|postcss)(?:$|\?)/iu.test(id) || /[?&]type=style(?:&|$)/u.test(id))) manifest.chunks[chunk.fileName].cssOnly = true;
 		if (chunk.isEntry && chunk.facadeModuleId) manifest.entries[moduleId(chunk.facadeModuleId)] = chunk.fileName;
 		for (const id of Object.keys(chunk.modules)) (manifest.modules[moduleId(id)] ??= []).push(chunk.fileName);
 	}
@@ -45,7 +47,7 @@ export function augmentSsrManifest(source: string, manifest: LocaleAssetManifest
 			visited.add(key);
 			const chunk = manifest.chunks[key];
 			const selected = chunk.locales?.[manifest.primaryLocale] ?? chunk;
-			files.add(selected.file);
+			if (!chunk.cssOnly) files.add(selected.file);
 			for (const css of chunk.css) files.add(css);
 			for (const dependency of chunk.imports) visit(dependency);
 		}
@@ -57,11 +59,19 @@ export function augmentSsrManifest(source: string, manifest: LocaleAssetManifest
 }
 
 /** Hashes final written bytes, after Vite's remaining output hooks. */
-export function finalizeAssetIntegrity(manifest: LocaleAssetManifest, outputDir: string): void {
+export function finalizeAssetIntegrity(manifest: LocaleAssetManifest, outputDir: string, bundle: OutputBundle): void {
 	for (const chunk of Object.values(manifest.chunks)) {
+		if (chunk.cssOnly) {
+			if (Object.hasOwn(bundle, chunk.file)) delete chunk.cssOnly;
+			else {
+				for (const css of chunk.css) if (!Object.hasOwn(bundle, css)) throw new Error(`Missing CSS output "${css}".`);
+				continue;
+			}
+		}
 		for (const asset of chunk.locales ? Object.values(chunk.locales) : [chunk]) {
 			const filename = resolve(outputDir, asset.file);
-			if (existsSync(filename)) asset.integrity = `sha384-${createHash('sha384').update(readFileSync(filename)).digest('base64')}`;
+			if (!Object.hasOwn(bundle, asset.file) || !existsSync(filename)) throw new Error(`Missing client JS output "${asset.file}".`);
+			asset.integrity = `sha384-${createHash('sha384').update(readFileSync(filename)).digest('base64')}`;
 		}
 	}
 }

@@ -22,14 +22,15 @@ try {
 	mkdirSync(`${root}/node_modules`);
 	symlinkSync(resolve('.'), `${root}/node_modules/vite-vue-internationalization`, 'dir');
 	writeFileSync(`${root}/index.html`, '<div id="app"></div><script type="module" src="/client.ts"></script>');
-	writeFileSync(`${root}/other.html`, '<div id="app"></div><script type="module" src="/client.ts"></script>');
+	mkdirSync(`${root}/nested`);
+	writeFileSync(`${root}/nested/other.html`, '<div id="app"></div><script type="module" src="/client.ts"></script>');
 	writeFileSync(`${root}/client.ts`, 'import {createApp} from \'vue\'; import App from \'./App.vue\'; createApp(App).mount(\'#app\');');
 	const source = (title) => `<script setup>import {defineAsyncComponent} from 'vue';const Lazy=defineAsyncComponent(()=>import('./Lazy.vue'));</script><template><h1>{{ $locale.sfc.title }}</h1><Lazy/></template><locale locale="ja" lang="json">{"title":"日本語"}</locale><locale locale="en" lang="json">${JSON.stringify({ title })}</locale>`;
 	writeFileSync(`${root}/Lazy.vue`, '<template><p class="lazy">{{ $locale.sfc.title }}</p></template><locale locale="ja" lang="json">{"title":"遅延"}</locale><locale locale="en" lang="json">{"title":"Lazy English"}</locale><style scoped>.lazy {color: rgb(10, 20, 30)}</style>');
 
 	async function compile(name, title) {
 		writeFileSync(`${root}/App.vue`, source(title));
-		await build({ root, configFile: false, base: './', logLevel: 'silent', plugins: [vueInternationalization({ primaryLocale: 'ja', buildStrategy: 'inline-chunks' }), vue()], build: { outDir: `${root}/${name}`, manifest: true, rolldownOptions: { input: [resolve(root, 'index.html'), resolve(root, 'other.html')] } } });
+		await build({ root, configFile: false, base: './', logLevel: 'silent', plugins: [vueInternationalization({ primaryLocale: 'ja', buildStrategy: 'inline-chunks' }), vue()], build: { outDir: `${root}/${name}`, manifest: true, rolldownOptions: { input: [resolve(root, 'index.html'), resolve(root, 'nested/other.html')] } } });
 		return files(`${root}/${name}`);
 	}
 
@@ -68,7 +69,7 @@ try {
 	});
 	await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
 	browser = await chromium.launch({ headless: true });
-	for (const entry of ['index.html', 'other.html']) {
+	for (const entry of ['index.html', 'nested/other.html']) {
 		const page = await browser.newPage();
 		const errors = [];
 		page.on('pageerror', error => errors.push(String(error)));
