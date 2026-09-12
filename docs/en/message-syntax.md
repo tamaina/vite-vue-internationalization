@@ -48,3 +48,13 @@ ICU uses the same IntlMessageFormat formatter in both strategies, including numb
 date/time styles and skeletons. Invalid ICU messages or missing required ICU
 arguments throw; they are not silently treated as raw values. Inline ICU bundles
 include a shared formatter chunk. Static Vue text remains inlined.
+
+## VS Code syntax highlighting
+
+The separate **Vite Vue Internationalization Tools** extension colors interpolation,
+literals, plural separators and linked messages in YAML / JSON values inside
+`<locale>` blocks. Keys, comments and other Vue blocks are excluded. Disable it
+with `vvi.messageHighlighting: false`. Projects configured with VVI
+`messageSyntax: "icu"` in Volar do not receive these Vue message decorations.
+See [editor diagnostics](./getting-started.md#editor-diagnostics-for-external-dictionaries)
+for installation.

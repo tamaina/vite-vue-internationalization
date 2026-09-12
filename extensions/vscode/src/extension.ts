@@ -1,7 +1,8 @@
 import { readFileSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
+import { dirname, relative, resolve, isAbsolute } from 'node:path';
 import * as vscode from 'vscode';
 import { collectEditorDiagnostics } from '../../../src/editorDiagnostics.js';
+import { registerMessageHighlighting } from './highlighting.js';
 
 export async function activate(context: vscode.ExtensionContext) {
 	const collection = vscode.languages.createDiagnosticCollection('vvi');
@@ -10,6 +11,11 @@ export async function activate(context: vscode.ExtensionContext) {
 	let timer: ReturnType<typeof setTimeout> | undefined;
 	let generation = 0;
 	let disposed = false;
+	let icuRoots: string[] = [];
+	const highlighting = registerMessageHighlighting(context, file => !icuRoots.some(root => {
+		const path = relative(root, file);
+		return !path.startsWith('..') && !isAbsolute(path);
+	}));
 	const schedule = () => {
 		generation++;
 		if (timer) clearTimeout(timer);
@@ -29,8 +35,10 @@ export async function activate(context: vscode.ExtensionContext) {
 		const read = (file: string) => buffers.get(resolve(file)) ?? readFileSync(file, 'utf8');
 		const next = new Map<string, vscode.Diagnostic[]>();
 		const roots = new Set<string>();
+		const nextIcuRoots: string[] = [];
 		for (const config of configs) {
 			const result = collectEditorDiagnostics(config.fsPath, read);
+			if (result.configured && result.messageSyntax === 'icu') nextIcuRoots.push(dirname(config.fsPath));
 			for (const root of [...result.watchRoots, ...result.dependencies.map(dirname)]) roots.add(root);
 			for (const diagnostic of result.diagnostics) {
 				const file = diagnostic.fileName ?? config.fsPath;
@@ -45,6 +53,8 @@ export async function activate(context: vscode.ExtensionContext) {
 			}
 		}
 		if (disposed || token !== generation) return;
+		icuRoots = nextIcuRoots;
+		highlighting.update();
 		collection.clear();
 		collection.set([...next].map(([file, diagnostics]) => [vscode.Uri.file(file), diagnostics]));
 		for (const [root, watcher] of watchers) if (!roots.has(root)) { watcher.dispose(); watchers.delete(root); }
@@ -62,5 +72,5 @@ export async function activate(context: vscode.ExtensionContext) {
 		vscode.workspace.onDidSaveTextDocument(schedule), vscode.workspace.onDidCloseTextDocument(schedule), vscode.workspace.onDidChangeWorkspaceFolders(schedule),
 		{ dispose() { disposed = true; generation++; if (timer) clearTimeout(timer); for (const watcher of watchers.values()) watcher.dispose(); } });
 	await refreshSafely();
-	return { refresh: refreshSafely };
+	return { refresh: refreshSafely, getHighlights: highlighting.getHighlights };
 }

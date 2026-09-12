@@ -11,7 +11,7 @@ exports.run = async function () {
 	const uri = vscode.Uri.file(external);
 	const extension = vscode.extensions.getExtension('tamaina.vite-vue-internationalization-tools');
 	assert.ok(extension);
-	await extension.activate();
+	const api = await extension.activate();
 	const own = uri => vscode.languages.getDiagnostics(uri).filter(item => item.source === 'VVI');
 
 	async function expectDiagnostics(uri, count, change = async () => {}) {
@@ -50,4 +50,26 @@ exports.run = async function () {
 	await expectDiagnostics(uri, 1, () => fs.writeFile(path.join(root, 'tsconfig.json'), '{"extends":"../external/base.json"}'));
 	await expectDiagnostics(uri, 0, () => fs.writeFile(inherited, '{"vueCompilerOptions":{"plugins":[]}}'));
 	assert.equal(own(vscode.Uri.file(path.join(root, 'App.vue'))).length, 0);
+	const vue = await vscode.workspace.openTextDocument(vscode.Uri.file(path.join(root, 'App.vue')));
+	await vscode.window.showTextDocument(vue);
+	const messageSource = '<template>{outside}</template>\n<locale locale="en" lang="yaml">title: "{name} | @:target"</locale>';
+
+	async function replaceVue(text) {
+		const edit = new vscode.WorkspaceEdit();
+		edit.replace(vue.uri, new vscode.Range(vue.positionAt(0), vue.positionAt(vue.getText().length)), text);
+		assert.equal(await vscode.workspace.applyEdit(edit), true);
+	}
+
+	await replaceVue(messageSource);
+	assert.deepEqual(api.getHighlights(vue.uri).map(span => vue.getText().slice(span.start, span.end)), ['{name}', '|', '@:target']);
+	await vscode.workspace.getConfiguration('vvi', vue.uri).update('messageHighlighting', false, vscode.ConfigurationTarget.Workspace);
+	assert.deepEqual(api.getHighlights(vue.uri), [], 'Disabling highlighting must clear decorations.');
+	await vscode.workspace.getConfiguration('vvi', vue.uri).update('messageHighlighting', true, vscode.ConfigurationTarget.Workspace);
+	assert.equal(api.getHighlights(vue.uri).length, 3);
+	await replaceVue('<template>Locale removed</template>');
+	assert.deepEqual(api.getHighlights(vue.uri), [], 'Removing the locale block must clear existing decorations.');
+	await replaceVue(messageSource);
+	await fs.writeFile(path.join(root, 'tsconfig.json'), JSON.stringify({ vueCompilerOptions: { plugins: [{ name: 'vite-vue-internationalization/volar', messageSyntax: 'icu' }] } }));
+	await api.refresh();
+	assert.deepEqual(api.getHighlights(vue.uri), [], 'ICU projects must not receive Vue message decorations.');
 };

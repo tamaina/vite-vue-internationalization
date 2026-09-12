@@ -11,6 +11,7 @@ export function collectEditorDiagnostics(configFile: string, readText = (file: s
 	const diagnostics: LocaleEnvFileDiagnostic[] = [];
 	const configDiagnostics: LocaleEnvFileDiagnostic[] = [];
 	let configured = false;
+	let messageSyntax: 'vue' | 'icu' = 'vue';
 	const readFile = (file: string) => {
 		dependencies.add(resolve(file));
 		try { return readText(resolve(file)); } catch { return undefined; }
@@ -27,6 +28,7 @@ export function collectEditorDiagnostics(configFile: string, readText = (file: s
 		for (const plugin of raw.vueCompilerOptions.plugins) {
 			if (!record(plugin) || plugin.name !== 'vite-vue-internationalization/volar') continue;
 			configured = true;
+			messageSyntax = plugin.messageSyntax === 'icu' ? 'icu' : 'vue';
 			if (plugin.global === undefined) continue;
 			if (!record(plugin.global)) {
 				diagnostics.push({ fileName: file, start: 0, end: 1, message: 'VVI global must be an object keyed by locale.' });
@@ -44,7 +46,7 @@ export function collectEditorDiagnostics(configFile: string, readText = (file: s
 			}
 		}
 	}
-	return { diagnostics: configured ? [...configDiagnostics, ...diagnostics] : [], dependencies: [...dependencies], watchRoots: [...roots] };
+	return { diagnostics: configured ? [...configDiagnostics, ...diagnostics] : [], dependencies: [...dependencies], watchRoots: [...roots], messageSyntax, configured };
 }
 
 function record(value: unknown): value is Record<string, unknown> {

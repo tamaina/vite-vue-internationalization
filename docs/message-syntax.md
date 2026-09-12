@@ -63,3 +63,11 @@ inlineもこのruntimeの規則へ統一しました。objectのフィールド�
 ICUは両戦略で同じIntlMessageFormatを使い、number・date/time・style・skeletonを扱います。
 不正なICUメッセージや必須引数欠落は例外です。inline ICUには共有formatter chunkが含まれます。
 静的なVue文字列のインライン化は維持します。
+
+## VS Code の構文ハイライト
+
+別拡張 **Vite Vue Internationalization Tools** は `<locale>` 内の YAML / JSON の値に
+補間・リテラル・複数形の区切り・リンクメッセージの色を付けます。キー、コメント、
+他の Vue ブロックは対象外です。`vvi.messageHighlighting: false` で無効にできます。
+Volar 設定が `messageSyntax: "icu"` のプロジェクトでは無効になります。
+導入方法は [外部辞書のエディター診断](./getting-started.md#外部辞書のエディター診断) を参照してください。

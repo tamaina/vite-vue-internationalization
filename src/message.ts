@@ -281,9 +281,8 @@ function selectPluralCase(length: number, plural: number | undefined): number {
 	return Math.min(index, length - 1);
 }
 
-function splitPluralCases(message: string): string[] {
-	const cases: string[] = [];
-	let cursor = 0;
+function pluralSeparatorIndexes(message: string): number[] {
+	const separators: number[] = [];
 	let braceDepth = 0;
 	let quote: string | undefined;
 
@@ -314,13 +313,39 @@ function splitPluralCases(message: string): string[] {
 		}
 
 		if (char === '|' && braceDepth === 0) {
-			cases.push(message.slice(cursor, index).trim());
-			cursor = index + 1;
+			separators.push(index);
 		}
 	}
 
-	cases.push(message.slice(cursor).trim());
-	return cases;
+	return separators;
+}
+
+function splitPluralCases(message: string): string[] {
+	let cursor = 0;
+	return [...pluralSeparatorIndexes(message), message.length].map(end => {
+		const value = message.slice(cursor, end).trim();
+		cursor = end + 1;
+		return value;
+	});
+}
+
+/** Exact Vue message syntax spans for editor decorations, using the runtime lexer. */
+export function getVueMessageSyntaxRanges(message: string) {
+	const spans: { start: number; end: number; kind: Exclude<LocaleMessageToken['type'], 'text'> | 'plural' }[] = [];
+	let start = 0;
+	for (const end of [...pluralSeparatorIndexes(message), message.length]) {
+		const part = message.slice(start, end);
+		let cursor = 0;
+		while (cursor < part.length) {
+			const next = pickEarlier(findNextInterpolation(part, cursor), findNextLinked(part, cursor));
+			if (!next) break;
+			if (next.token.type !== 'text') spans.push({ start: start + next.start, end: start + next.end, kind: next.token.type });
+			cursor = next.end;
+		}
+		if (end < message.length) spans.push({ start: end, end: end + 1, kind: 'plural' });
+		start = end + 1;
+	}
+	return spans;
 }
 
 function parseMessageCase(message: string): LocaleMessageToken[] {

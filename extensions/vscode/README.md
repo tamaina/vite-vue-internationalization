@@ -31,6 +31,24 @@ output channel. A trusted local or remote filesystem workspace is required;
 virtual web workspaces are not supported. Configurations solely in Vite config
 JavaScript are not discovered: configure the Volar plugin in tsconfig as well.
 
+## Message highlighting
+
+Inside `<locale>` blocks, YAML/yml/JSON message values highlight named and list
+interpolation (`{name}`, `{0}`), literals (`{'@'}`), plural separators (`|`) and
+linked messages (`@:target`, `@.lower:target`, `@.upper:target`,
+`@.capitalize:target`). Quoted, plain and block scalars are supported. Keys,
+comments and other Vue blocks retain their usual highlighting.
+
+Set `vvi.messageHighlighting` to `false` to disable this feature. It is disabled
+under configurations declaring VVI `messageSyntax: "icu"`; if projects in the same
+directory disagree about syntax, ICU disables it conservatively. For a Vite-only
+ICU configuration, set the Volar option too or disable highlighting explicitly.
+Colors follow the theme and can be overridden via `workbench.colorCustomizations`
+using `vvi.message.named`, `.list`, `.literal`, `.linked` and `.plural`.
+
+Decorations add these colors without replacing Vue - Official's semantic token
+provider. Editing or removing a block immediately replaces the visible ranges.
+
 ## Build and install
 
 From the repository root:

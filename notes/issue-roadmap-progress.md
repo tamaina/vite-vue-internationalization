@@ -382,3 +382,34 @@ for global path resolution when available; nearest tsconfig remains the fallback
 for older/unconfigured hosts. A real language-core fixture uses tsconfig.app.json
 with a nested, unrelated tsconfig and malformed -> valid dictionaries, asserting
 SFC types survive and the correct external root is selected.
+
+## Locale-only editor highlighting (#14)
+
+- The separate VS Code extension now decorates named/list/literal/plural/linked
+  Vue message syntax in scalar values inside locale custom blocks. SFC parsing
+  restricts the feature to locale; YAML syntax trees exclude keys/comments and
+  other custom blocks. JSON/YAML escapes retain original UTF-16 source positions.
+- Runtime message lexing exposes syntax ranges; plural separator discovery is
+  shared with compilation, so literal pipes are not incorrectly colored as
+  separators. No replacement semantic-token provider competes with Vue tooling.
+- Theme colors and an enable setting are contributed. ICU-configured project
+  roots disable Vue decorations; conflicting same-root configs conservatively
+  disable highlighting. Edits, removal, visible-editor and config changes refresh
+  the decoration ranges.
+- Five focused source-span tests cover all requested tokens, quoted/plain/block
+  values, non-locale exclusions, JSON escapes, doubled YAML quotes, Unicode escape
+  offsets, astral text and incomplete edits. The first four plus the full root
+  suite passed together (193 tests); the added Unicode case is checked separately.
+- Actual VS Code host verifies displayed source ranges, removing/re-adding a locale
+  block and switching to ICU. Setting toggle coverage and final VSIX rebuild are
+  being verified. Japanese/English message syntax docs and addon README describe
+  installation, opt-out and ICU behavior.
+
+Remaining roadmap acceptance is still open, especially #50 comparative delivery
+benchmark/prototype/decision, the original #39 symptom, remaining #46 expression
+provenance, full SSR framework/assets edge cases and final remote CI/review.
+No Issues have been closed and no changes pushed or published.
+
+Final #14 checks: all five span tests pass; extension typecheck/build and packaging
+pass (VSIX about 1.89 MB). The expanded actual host test also passes setting
+on/off, block removal/re-addition and ICU disabling. Targeted lint is clean.
