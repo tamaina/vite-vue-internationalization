@@ -62,7 +62,8 @@
     "test": "vitest run",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test:types": "pnpm build && node scripts/test-types.mjs",
-    "test:ssr": "pnpm build && node scripts/test-ssr.mjs"
+    "test:ssr": "pnpm build && node scripts/test-ssr.mjs && node scripts/test-ssr.mjs --icu && node scripts/test-ssr.mjs --inline && node scripts/test-ssr.mjs --icu --inline",
+    "test:inline-hash": "pnpm build && node scripts/test-inline-hash.mjs"
   },
   "peerDependencies": {
     "@vue/language-core": "^3.3.0",

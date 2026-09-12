@@ -235,8 +235,8 @@ type InlineChunkSnapshot = {
 };
 type InlineChunkReferenceMap = {
 	localizeFileName(fileName: string, locale: string): string;
-	localizeCodeReferences(code: string, locale: string): string;
-	replacePreloadMarkers(code: string, locale: string): string;
+	localizeCodeReferences(code: string, locale: string, importer: string): string;
+	replacePreloadMarkers(code: string, locale: string, importer: string, relativeBase: boolean): string;
 };
 
 const INLINE_MARKER_PREFIX = '__VUE_INTERNATIONALIZATION_INLINE__:';
@@ -764,6 +764,7 @@ export function inlineLocaleChunks(
 	options: {
 		emitChunk?: InlineLocaleChunkEmitter;
 		icuFormatterFile?: string;
+		base?: string;
 	} = {},
 ): InlineChunkManifest {
 	const manifest: InlineChunkManifest = {
@@ -811,8 +812,11 @@ export function inlineLocaleChunks(
 				referenceMap.localizeCodeReferences(
 					applyInlineReplacementPlan(originalCode, plan, payloadCache.resolve(locale)),
 					locale,
+					originalFileName,
 				),
 				locale,
+				originalFileName,
+				options.base === '' || options.base === './',
 			);
 
 			if (localizedChunk.code.includes('__VVI_FORMAT_ICU__') && options.icuFormatterFile) {
@@ -1091,6 +1095,30 @@ export function addLocaleToFileName(fileName: string, locale: string): string {
 	return fileName.replace(/(\.m?js)$/u, `.${sanitizeLocale(locale)}$1`);
 }
 
+function getChunkImportSources(code: string): Array<{ node: AstNode; preload: boolean }> {
+	const sources: Array<{ node: AstNode; preload: boolean }> = [];
+	const parsed = parseRequiredInlineJavaScript(code);
+	walk(parsed.ast as OxcWalkInput, {
+		enter(node) {
+			if (['ImportDeclaration', 'ExportNamedDeclaration', 'ExportAllDeclaration', 'ImportExpression'].includes(node.type)) {
+				const rawSource = (node as unknown as { source?: unknown }).source;
+				const source = rawSource ? toAstNode(rawSource) : undefined;
+				if (source && getStringNodeValue(source) !== undefined) sources.push({ node: source, preload: false });
+			}
+			const current = toAstNode(node);
+			if (current && isCallExpression(current) && ['preload', '__vitePreload'].includes(getCalleeName(current.callee) ?? '')) {
+				const dependencies = current.arguments.at(1);
+				if (dependencies?.type === 'ArrayExpression') {
+					for (const element of (dependencies as AstNode & { elements: Array<AstNode | null> }).elements) {
+						if (element && getStringNodeValue(element) !== undefined) sources.push({ node: element, preload: true });
+					}
+				}
+			}
+		},
+	});
+	return sources;
+}
+
 function getLocalizableChunkReferences(
 	code: string,
 	imports: string[],
@@ -1103,12 +1131,10 @@ function getLocalizableChunkReferences(
 	);
 	const localizableFilesByBaseName = new Map([...localizableFiles].map((fileName) => [baseName(fileName), fileName]));
 
-	for (const match of code.matchAll(/[A-Za-z0-9._-]+\.m?js/gu)) {
-		const fileName = localizableFilesByBaseName.get(match[0]);
-
-		if (fileName) {
-			references.add(fileName);
-		}
+	for (const { node: source } of getChunkImportSources(code)) {
+		const specifier = getStringNodeValue(source);
+		const fileName = specifier && localizableFilesByBaseName.get(baseName(specifier));
+		if (fileName) references.add(fileName);
 	}
 
 	return references;
@@ -1143,17 +1169,16 @@ function createInlineChunkReferenceMap(
 		return undefined;
 	}
 
-	function localizeCodeReferences(code: string, locale: string): string {
-		let next = code;
-
-		for (const fileName of localizableFiles) {
-			const localizedFileName = addLocaleToFileName(fileName, locale);
-
-			next = next.replaceAll(fileName, localizedFileName);
-			next = next.replaceAll(baseName(fileName), baseName(localizedFileName));
+	function localizeCodeReferences(code: string, locale: string, importer: string): string {
+		const magic = new MagicString(code);
+		for (const { node: source, preload } of getChunkImportSources(code)) {
+			const specifier = getStringNodeValue(source);
+			if (!specifier || (!preload && !specifier.startsWith('.'))) continue;
+			const target = resolve(dirname(importer), specifier);
+			const original = [...localizableFiles].find(file => resolve(file) === target);
+			if (original) magic.overwrite(source.start, source.end, JSON.stringify(addLocaleToFileName(specifier, locale)));
 		}
-
-		return next;
+		return magic.toString();
 	}
 
 	function collectPreloadDependencies(fileName: string, locale: string, seen = new Set<string>()): string[] {
@@ -1193,7 +1218,7 @@ function createInlineChunkReferenceMap(
 		return [...dependencies];
 	}
 
-	function replacePreloadMarkers(code: string, locale: string): string {
+	function replacePreloadMarkers(code: string, locale: string, importer: string, relativeBase: boolean): string {
 		return code
 			.replace(/(import\(\s*(["'`])\.\/([^"'`]+)\2\s*\)(?:(?!,\s*__VITE_PRELOAD__)[\s\S])*?)(\s*,\s*)__VITE_PRELOAD__/gu, (
 				_match,
@@ -1208,7 +1233,8 @@ function createInlineChunkReferenceMap(
 					? 'Promise.resolve({})'
 					: importExpression;
 
-				return `${preloadTarget}${separator}${JSON.stringify(dependencies)}`;
+				const paths = relativeBase ? dependencies.map(file => relative(dirname(importer), file).replaceAll('\\', '/')) : dependencies;
+				return `${preloadTarget}${separator}${JSON.stringify(paths)}`;
 			})
 			.replaceAll('__VITE_PRELOAD__', '[]');
 	}
@@ -2142,6 +2168,10 @@ function getStringArgument(node: AstCallExpression, index: number): string | und
 		return undefined;
 	}
 
+	return getStringNodeValue(argument);
+}
+
+function getStringNodeValue(argument: AstNode): string | undefined {
 	if (isLiteral(argument) && typeof argument.value === 'string') {
 		return argument.value;
 	}
@@ -2595,11 +2625,18 @@ function createLocaleLoaderSource(
 	base: string,
 	integrity?: Record<string, string>,
 ): string {
+	const loaderDirectory = dirname(localeFiles[primaryLocale]);
+	const files = base === '' || base === './'
+		? Object.fromEntries(Object.entries(localeFiles).map(([locale, file]) => {
+			const specifier = relative(loaderDirectory, file).replaceAll('\\', '/');
+			return [locale, specifier.startsWith('.') ? specifier : `./${specifier}`];
+		}))
+		: toPublicLocaleFiles(localeFiles, base);
 	return [
 		`const __vueInternationalizationLocale = new URL(window.location.href).searchParams.get("locale") || ${JSON.stringify(primaryLocale)};`,
-		`const __vueInternationalizationEntries = ${JSON.stringify(toPublicLocaleFiles(localeFiles, base))};`,
+		`const __vueInternationalizationEntries = ${JSON.stringify(files)};`,
 		`const __vueInternationalizationIntegrity = ${JSON.stringify(integrity ?? {})};`,
-		`const __vueInternationalizationFile = __vueInternationalizationEntries[__vueInternationalizationLocale] || __vueInternationalizationEntries[${JSON.stringify(primaryLocale)}];`,
+		`const __vueInternationalizationFile = new URL(__vueInternationalizationEntries[__vueInternationalizationLocale] || __vueInternationalizationEntries[${JSON.stringify(primaryLocale)}], import.meta.url).href;`,
 		`const __vueInternationalizationExpectedIntegrity = __vueInternationalizationIntegrity[__vueInternationalizationLocale] || __vueInternationalizationIntegrity[${JSON.stringify(primaryLocale)}];`,
 		'const __vueInternationalizationImport = () => import(__vueInternationalizationFile);',
 		'if (__vueInternationalizationExpectedIntegrity && typeof document !== "undefined") {',

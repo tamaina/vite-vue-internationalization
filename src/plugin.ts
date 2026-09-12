@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, relative, resolve } from 'node:path';
 import ts from 'typescript';
@@ -99,6 +100,7 @@ export function vueInternationalization(options?: Partial<VueInternationalizatio
 	let base = '/';
 	let scanned = false;
 	let icuFormatterReference: string | undefined;
+	let localeHash: string | undefined;
 
 	function collectVueFile(filename: string, code: string): void {
 		const parsed = parseVueLocales(code, filename);
@@ -171,6 +173,7 @@ export function vueInternationalization(options?: Partial<VueInternationalizatio
 			resolvedOptions = resolveOptions(root, options);
 		},
 		buildStart() {
+			localeHash = undefined;
 			scan();
 			const currentOptions = getResolvedOptions(resolvedOptions);
 			if (command === 'build' && currentOptions.buildStrategy === 'inline-chunks' && currentOptions.messageSyntax === 'icu') {
@@ -269,6 +272,21 @@ export function vueInternationalization(options?: Partial<VueInternationalizatio
 				collectVueFile(context.file, readTextFile(context.file));
 			}
 		},
+		augmentChunkHash() {
+			const currentOptions = getResolvedOptions(resolvedOptions);
+			if (currentOptions.buildStrategy !== 'inline-chunks') return;
+			localeHash ??= createHash('sha256').update(JSON.stringify(
+				[modules, globalMessages, currentOptions.primaryLocale, currentOptions.messageSyntax],
+				(_key, value: unknown) => {
+					if (typeof value === 'function') return { source: value.toString() };
+					if (value && typeof value === 'object' && !Array.isArray(value)) {
+						return Object.fromEntries(Object.entries(value).sort(([a], [b]) => a.localeCompare(b, 'en')));
+					}
+					return value;
+				},
+			)).digest('hex');
+			return localeHash;
+		},
 		generateBundle(_outputOptions, bundle) {
 			ensureScanned();
 			const currentOptions = getResolvedOptions(resolvedOptions);
@@ -282,6 +300,7 @@ export function vueInternationalization(options?: Partial<VueInternationalizatio
 					globalMessages,
 					currentOptions.messageSyntax,
 					{
+						base,
 						icuFormatterFile: icuFormatterReference ? this.getFileName(icuFormatterReference) : undefined,
 						emitChunk: chunk => {
 							this.emitFile({

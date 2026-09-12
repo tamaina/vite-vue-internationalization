@@ -80,3 +80,26 @@ linked locale formatting and broader real-build negative cases before closing.
 and lacks translation digest in augmentChunkHash. No hash correctness claim yet.
 Remote CI/framework examples, full Core acceptance and remaining roadmap issues
 continue to be outstanding. No issues closed and no push/PR yet.
+
+## Third increment: output hashes and relative delivery
+
+- #44: augmentChunkHash includes a deterministic digest of all collected locale
+  payloads, primary locale and syntax, including function sources. This is a
+  conservative all-chunk invalidation policy, not a minimal per-locale hash claim.
+- Import/export/dynamic-import rewriting uses AST source nodes. Ordinary filenames
+  in strings/arrays remain unchanged, and an unrelated chunk containing a filename
+  is no longer unnecessarily localized. Recognized preload dependency arrays are
+  rewritten as references. Regression tests execute the generated code.
+- New `pnpm test:inline-hash` fixture builds A, changes only non-primary translation
+  for B, repeats B for C. It requires no same-URL/different-JS output, byte-identical
+  B/C, valid manifest paths and SRI, and runs two entries + lazy JS/scoped CSS on
+  Chromium with A assets retained alongside B. It uses relative base './'.
+- The browser fixture caught two pre-existing relative URL bugs: entry loader
+  imported assets/assets/...; then the Vite lazy preload did the same for JS/CSS.
+  Loader URLs now resolve relative to import.meta.url and lazy preload paths are
+  relative to the importing chunk for relative-base builds.
+- Passing fixture reports 10 new JS URLs and 4 validated SRI values. Baseline with
+  hash augmentation disabled is tested separately to establish sensitivity.
+- CI includes the new fixture. More Phase B work remains: environment isolation,
+  general locale asset resolver, SSR manifest/module mapping, nested HTML paths,
+  preload metadata for the emitted ICU helper and framework validation.
