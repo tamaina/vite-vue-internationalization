@@ -74,7 +74,15 @@ try {
 		assert.equal(await page.locator('#fallback').textContent(), '共通fallback');
 		assert.equal(await page.locator('#literal-text').textContent(), '$locale.sfc.title');
 		assert.equal(await page.locator('#literal-expression').textContent(), '$locale.sfc.title');
-		if (!icu) assert.equal(await page.locator('#computed-key').textContent(), 'computed');
+		if (!icu) {
+			assert.equal(await page.locator('#computed-key').textContent(), 'computed');
+			assert.equal(await page.locator('#missing-raw').textContent(), '$locale.sfc.missing');
+			assert.equal(await page.locator('#missing-localizer').textContent(), '$locale.sfc.items.a.missing');
+			assert.equal(await page.locator('#scalar-localizer').textContent(), '$locale.sfc.scalar');
+			assert.equal(await page.locator('#linked-repeat').textContent(), 'Nested Nested');
+			assert.equal(await page.locator('#raw-null').textContent(), '[null]');
+			assert.equal(await page.locator('#raw-shape').textContent(), locale === 'en-US' ? '4' : '{"nested":"Primary"}');
+		}
 		assert.equal(await page.evaluate(() => window.ssrContent === document.querySelector('#app').textContent), true);
 		assert.equal(await page.locator('#lazy').evaluate(element => getComputedStyle(element).color), 'rgb(60, 40, 20)');
 		assert.equal(await page.locator('button').textContent(), locale === 'en-US' ? 'English: 1 items' : '日本語: 1 件');

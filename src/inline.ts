@@ -1778,25 +1778,9 @@ function createInlineLookupExpression(
 	dictionary: LocaleDictionary,
 	keyExpression: string,
 	suffixKeys: string[],
-	payload: InlineLocalePayload,
-	scope: PublicLocaleScope,
+	path: string,
 ): string {
-	const entries = Object.entries(dictionary)
-		.map(([key, value]) => {
-			const selected = suffixKeys.length > 0 && isDictionary(value)
-				? getValueByPath(value, suffixKeys)
-				: value;
-
-			if (selected === undefined) {
-				return undefined;
-			}
-
-			return `${JSON.stringify(key)}:${serializeInlineLookupValue(selected, payload, scope)}`;
-		})
-		.filter((entry): entry is string => entry !== undefined)
-		.join(',');
-
-	return `(({${entries}})[String(${keyExpression})])`;
+	return `(${createRawLocaleObjectExpression(dictionary, path)})[String(${keyExpression})]${suffixKeys.map(key => `[${JSON.stringify(key)}]`).join('')}`;
 }
 
 function createInlineLocalizerLookupCallExpression(
@@ -1809,57 +1793,12 @@ function createInlineLocalizerLookupCallExpression(
 	scope: PublicLocaleScope,
 	path: string[],
 ): string {
-	const entries = Object.entries(dictionary)
-		.map(([key, value]) => {
-			const selected = suffixKeys.length > 0 && isDictionary(value)
-				? getValueByPath(value, suffixKeys)
-				: value;
-
-			if (selected === undefined) {
-				return undefined;
-			}
-
-			return `${JSON.stringify(key)}:${serializeInlineLocalizerLookupValue(selected, payload, scope)}`;
-		})
-		.filter((entry): entry is string => entry !== undefined)
-		.join(',');
-	const pluralArgument = pluralExpression ? `, ${pluralExpression}` : '';
-
-	const fallbackPrefix = JSON.stringify(`$locale.${[scope, ...path].join('.')}.`);
-	const lookup = suffixKeys.length === 0
-		? `((__key) => { const __entries = {${entries}}; return Object.hasOwn(__entries, __key) ? __entries[__key] : () => ${fallbackPrefix} + __key; })(String(${keyExpression}))`
-		: `(({${entries}})[String(${keyExpression})])`;
-	return `${lookup}(${valuesExpression}${pluralArgument})`;
-}
-
-function serializeInlineLookupValue(value: unknown, payload: InlineLocalePayload, scope: PublicLocaleScope): string {
-	if (isDictionary(value)) {
-		return `{${Object.entries(value)
-			.map(([key, child]) => `${toObjectPropertyName(key)}:${serializeInlineLookupValue(child, payload, scope)}`)
-			.join(',')}}`;
-	}
-
-	if (typeof value === 'function') {
-		return `(${value.toString()})`;
-	}
-
-	return JSON.stringify(value);
+	const lookup = `(${createLocalizerObjectExpression(dictionary, payload, scope, path)})[String(${keyExpression})]${suffixKeys.map(key => `[${JSON.stringify(key)}]`).join('')}`;
+	return `${lookup}(${valuesExpression}${pluralExpression ? `, ${pluralExpression}` : ''})`;
 }
 
 function createInlineMessageFunction(value: { toString(): string }): string {
 	return `(__values, __plural) => (${value.toString()})(typeof __values === "number" ? {count:__values,n:__values} : __values, typeof __values === "number" ? __values : __plural)`;
-}
-
-function serializeInlineLocalizerLookupValue(value: unknown, payload: InlineLocalePayload, scope: PublicLocaleScope): string {
-	if (isDictionary(value)) {
-		return createLocalizerObjectExpression(value, payload, scope);
-	}
-
-	if (typeof value === 'function') {
-		return createInlineMessageFunction(value);
-	}
-
-	return `(values, plural) => ${createInlineTemplateExpression(typeof value === 'string' ? value : String(value), 'values', payload, scope, undefined, 'plural')}`;
 }
 
 function replaceNestedInlineMarkerExpression(expression: string, resolvePayload: InlinePayloadResolver): string {
@@ -2048,7 +1987,7 @@ function getPlannedReplacement(
 	switch (operation.type) {
 		case 'text-call': {
 			const resolved = resolveInlinePath(operation.marker, operation.path, resolvePayload);
-			return resolved ? JSON.stringify(resolved.value ?? `$locale.${operation.path}`) : undefined;
+			return resolved ? serializeRawLocaleValue(resolved.value, operation.path) : undefined;
 		}
 
 		case 'localizer-call': {
@@ -2062,11 +2001,12 @@ function getPlannedReplacement(
 			const valuesExpression = replaceNestedInlineMarkerExpression(operation.valuesExpression, resolvePayload);
 
 			if (typeof resolved.value === 'function') {
-				const pluralExpression = operation.pluralExpression ? `, ${operation.pluralExpression}` : '';
+				const pluralExpression = operation.pluralExpression ? `, ${replaceNestedInlineMarkerExpression(operation.pluralExpression, resolvePayload)}` : '';
 				return `(${createInlineMessageFunction(resolved.value)})(${valuesExpression}${pluralExpression})`;
 			}
 
-			const template = typeof resolved.value === 'string' ? resolved.value : `$locale.${operation.path}`;
+			if (typeof resolved.value !== 'string') return createInlineFallbackCall(operation.path, valuesExpression, operation.pluralExpression ? replaceNestedInlineMarkerExpression(operation.pluralExpression, resolvePayload) : 'undefined');
+			const template = resolved.value;
 			return createInlineTemplateExpression(template, valuesExpression, payload, resolved.scope, undefined, operation.pluralExpression ? replaceNestedInlineMarkerExpression(operation.pluralExpression, resolvePayload) : undefined);
 		}
 
@@ -2079,10 +2019,9 @@ function getPlannedReplacement(
 
 			return createInlineLookupExpression(
 				resolved.value,
-				operation.keyExpression,
+				replaceNestedInlineMarkerExpression(operation.keyExpression, resolvePayload),
 				operation.suffixKeys,
-				resolvePayload(decodeInlineLocaleMarker(operation.marker)),
-				resolved.scope,
+				operation.path,
 			);
 		}
 
@@ -2116,11 +2055,12 @@ function getPlannedReplacement(
 			const valuesExpression = replaceNestedInlineMarkerExpression(operation.valuesExpression, resolvePayload);
 
 			if (typeof value === 'function') {
-				const pluralExpression = operation.pluralExpression ? `, ${operation.pluralExpression}` : '';
+				const pluralExpression = operation.pluralExpression ? `, ${replaceNestedInlineMarkerExpression(operation.pluralExpression, resolvePayload)}` : '';
 				return `(${createInlineMessageFunction(value)})(${valuesExpression}${pluralExpression})`;
 			}
 
-			const template = typeof value === 'string' ? value : `$locale.${[normalized.scope, ...normalized.keys].join('.')}`;
+			if (typeof value !== 'string') return createInlineFallbackCall([normalized.scope, ...normalized.keys].join('.'), valuesExpression, operation.pluralExpression ? replaceNestedInlineMarkerExpression(operation.pluralExpression, resolvePayload) : 'undefined');
+			const template = value;
 			return createInlineTemplateExpression(template, valuesExpression, payload, normalized.scope, undefined, operation.pluralExpression ? replaceNestedInlineMarkerExpression(operation.pluralExpression, resolvePayload) : undefined);
 		}
 
@@ -2140,10 +2080,10 @@ function getPlannedReplacement(
 
 			return createInlineLocalizerLookupCallExpression(
 				value,
-				operation.keyExpression,
+				replaceNestedInlineMarkerExpression(operation.keyExpression, resolvePayload),
 				operation.suffixKeys,
 				replaceNestedInlineMarkerExpression(operation.valuesExpression, resolvePayload),
-				operation.pluralExpression,
+				operation.pluralExpression ? replaceNestedInlineMarkerExpression(operation.pluralExpression, resolvePayload) : undefined,
 				payload,
 				normalized.scope,
 				normalized.keys,
@@ -2160,7 +2100,7 @@ function getPlannedReplacement(
 
 			const scope = getPayloadScope(payload, normalized.scope);
 			const value = normalized.keys.length === 0 ? scope : getValueByPath(scope, normalized.keys);
-			return JSON.stringify(value ?? `$locale.${[normalized.scope, ...normalized.keys].join('.')}`);
+			return serializeRawLocaleValue(value, [normalized.scope, ...normalized.keys].join('.'));
 		}
 	}
 }
@@ -2176,7 +2116,7 @@ function resolveInlinePath(
 
 	const [scope, ...keys] = path.split('.') as [PublicLocaleScope, ...string[]];
 
-	if (!isPublicLocaleScope(scope) || keys.length === 0) {
+	if (!isPublicLocaleScope(scope)) {
 		return undefined;
 	}
 
@@ -2570,27 +2510,25 @@ function createLocalizerObjectExpression(
 	dictionary: LocaleDictionary,
 	payload?: InlineLocalePayload,
 	scope?: PublicLocaleScope,
+	path: string[] = [],
 ): string {
 	const entries = Object.entries(dictionary).map(([key, value]) => {
 		const property = /^[$A-Z_a-z][$\w]*$/.test(key) ? key : JSON.stringify(key);
+		const nextPath = [...path, key];
 		const expression = isDictionary(value)
-			? createLocalizerObjectExpression(value, payload, scope)
+			? createLocalizerObjectExpression(value, payload, scope, nextPath)
 			: typeof value === 'function'
 				? createInlineMessageFunction(value)
-				: `(values, plural) => ${createInlineTemplateExpression(typeof value === 'string' ? value : String(value), 'values', payload, scope, undefined, 'plural')}`;
-
+				: typeof value === 'string'
+					? `(values, plural) => ${createInlineTemplateExpression(value, 'values', payload, scope, undefined, 'plural')}`
+					: `() => ${JSON.stringify(`$locale.${[scope, ...nextPath].join('.')}`)}`;
 		return `${property}:${expression}`;
 	});
-
-	return `{${entries.join(',')}}`;
+	return `new Proxy({${entries.join(',')}},{get(target,key){if(typeof key!=="string")return undefined;return Object.hasOwn(target,key)?target[key]:()=>${JSON.stringify(`$locale.${[scope, ...path].join('.')}.`)}+key;}})`;
 }
 
 function createInlineRefAliasExpression(expression: string): string {
 	return `(() => { const __locale = ${expression}; __locale.value = __locale; return __locale; })()`;
-}
-
-function toObjectPropertyName(key: string): string {
-	return /^[$A-Z_a-z][$\w]*$/.test(key) ? key : JSON.stringify(key);
 }
 
 function getPayloadScope(payload: InlineLocalePayload, scope: PublicLocaleScope): LocaleDictionary {
@@ -2616,8 +2554,24 @@ function deepMerge(fallback: LocaleDictionary, current: LocaleDictionary): Local
 	return merged;
 }
 
+function createInlineFallbackCall(path: string, values: string, plural: string): string {
+	return `((__values,__plural)=>${JSON.stringify(`$locale.${path}`)})(${values},${plural})`;
+}
+
+function serializeRawLiteral(value: unknown): string {
+	if (typeof value === 'function') return `(${value.toString()})`;
+	if (Array.isArray(value)) return `[${value.map(serializeRawLiteral).join(',')}]`;
+	if (isDictionary(value)) return `{${Object.entries(value).map(([key, child]) => `${JSON.stringify(key)}:${serializeRawLiteral(child)}`).join(',')}}`;
+	return JSON.stringify(value);
+}
+
+function serializeRawLocaleValue(value: unknown, path: string): string {
+	if (value === undefined) return JSON.stringify(`$locale.${path}`);
+	return isDictionary(value) ? createRawLocaleObjectExpression(value, path) : serializeRawLiteral(value);
+}
+
 function createRawLocaleObjectExpression(dictionary: LocaleDictionary, path: string): string {
-	const entries = Object.entries(dictionary).map(([key, value]) => `${JSON.stringify(key)}:${isDictionary(value) ? createRawLocaleObjectExpression(value, `${path}.${key}`) : typeof value === 'function' ? `(${value.toString()})` : JSON.stringify(value)}`);
+	const entries = Object.entries(dictionary).map(([key, value]) => `${JSON.stringify(key)}:${serializeRawLocaleValue(value, `${path}.${key}`)}`);
 	return `new Proxy({${entries.join(',')}},{get(target,key){return typeof key!=="string"||Object.hasOwn(target,key)?Reflect.get(target,key):${JSON.stringify(`$locale.${path}.`)}+key;}})`;
 }
 

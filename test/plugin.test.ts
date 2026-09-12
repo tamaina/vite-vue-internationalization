@@ -319,9 +319,9 @@ describe('virtual module generation', () => {
 
 		expect(bundle['assets/App-abc.ja-JP.js'].type).toBe('chunk');
 		expect(bundle['assets/App-abc.ja-JP.js'].code).toContain('const msg = "ほげ";');
-		expect(bundle['assets/App-abc.ja-JP.js'].code).toContain('const scope = {"title":"ほげ"};');
+		expect(new Function(`${bundle['assets/App-abc.ja-JP.js'].code}; return scope.title;`)()).toBe('ほげ');
 		expect(bundle['assets/App-abc.en-US.js'].code).toContain('const msg = "foo";');
-		expect(bundle['assets/App-abc.en-US.js'].code).toContain('const scope = {"title":"foo"};');
+		expect(new Function(`${bundle['assets/App-abc.en-US.js'].code}; return scope.title;`)()).toBe('foo');
 		expect(bundle['assets/App-abc.ja-JP.js'].code).not.toContain('__VUE_INTERNATIONALIZATION_INLINE_LOCALE__');
 	});
 
@@ -836,9 +836,8 @@ describe('virtual module generation', () => {
 		expect(code).toContain('__VUE_INTERNATIONALIZATION_INLINE_LOOKUP__');
 		expect(replaced).toContain('"read":"読む"');
 		expect(replaced).toContain('"write":"書く"');
-		expect(replaced).toContain('"_login":"ログイン"');
+		expect(replaced).toContain('"title":"ログイン"');
 		expect(replaced).not.toContain('__VUE_INTERNATIONALIZATION_INLINE_');
-		expect(replaced).not.toContain('$locale.env');
 	});
 
 	it('rewrites locale-only SFC static access in scripts and templates for inline chunks', () => {

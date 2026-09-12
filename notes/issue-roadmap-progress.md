@@ -498,3 +498,37 @@ Next #43 audit targets identified from current code (not yet repaired):
   unlike the runtime dictionary fallback; suffix paths need corresponding checks.
 Use the shared corpus in test/message-parity.test.ts plus production output/browser
 fixtures to establish and fix these cases before claiming #43 complete.
+
+## Message parity follow-up (#43)
+
+Reproduced and corrected the remaining concrete parity cases from the previous
+notes. Nested runtime linked formatting now carries locale (Turkish dotted-I
+case) and copies the visited path so repeated sibling links are not mistaken for
+cycles. Bare/dynamic localizer objects return the key fallback for non-string
+scalars and missing keys. Raw lookups preserve missing-key paths, null, function
+values and functions nested in arrays instead of dropping them through JSON.
+Explicit raw scalar/null values override primary dictionary shapes in runtime as
+they already do in inline merging. Missing localizer keys are returned literally,
+including names containing message syntax characters.
+
+The production SSR Vue fixture now hydrates missing raw/localizer keys, scalar
+localizers, repeated links, raw null and primary-object/target-scalar overrides.
+Both virtual/virtual and virtual/inline pass, including node/content preservation,
+events and CSS. ICU mixed relative/custom-manifest SSR also passes. Hash fixture
+passes (10 new JS URLs, deterministic repeat, 4 SRI) and external production source
+maps pass for both strategies. Output salt advances to v6.
+
+Full suite: 210 tests passed; typecheck and lint passed (9 existing warnings).
+Additional nested message-function plural/computed-key expressions then exposed
+unreplaced child markers; those now use the same nested replacement path. The
+focused regression was observed failing before the fix and is checked afterward.
+Japanese/English docs describe scalar/null, missing-key and linked-message changes.
+
+Release policy: include these behavior corrections and migration notes in the next
+stabilization release only after the full CI/browser matrix is green. No version
+bump or publication is performed in this issue-solving branch. Previously deployed
+inline asset URLs must not be reused; the output salt change covers these bytes.
+
+Remaining full-goal acceptance still includes the original #39 symptom, #46 exact
+nested expression provenance/scope audit, SSR assets/framework cases, and remote
+CI/review. Do not infer completion of the entire roadmap from these passing tests.

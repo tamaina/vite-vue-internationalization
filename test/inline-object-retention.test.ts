@@ -6,7 +6,7 @@ function compile(source: string) {
 	const bundle: Record<string, { type: string; fileName: string; code: string; imports: string[]; dynamicImports: string[] }> = {
 		'assets/app.js': { type: 'chunk', fileName: 'assets/app.js', code, imports: [], dynamicImports: [] },
 	};
-	inlineLocaleChunks(bundle, ['en'], 'en', { '/App.vue': { en: { title: 'Title', nested: { value: 'Nested' }, fn: (value: unknown) => typeof value } } }, { en: { globalTitle: 'Global' } });
+	inlineLocaleChunks(bundle, ['en'], 'en', { '/App.vue': { en: { title: 'Title', nullable: null, list: [(value: unknown) => typeof value, { x: null }], nested: { value: 'Nested' }, fn: (value: unknown) => typeof value } } }, { en: { globalTitle: 'Global' } });
 	return bundle['assets/app.en.js'].code;
 }
 
@@ -24,6 +24,13 @@ describe('inline object references surviving static replacement', () => {
 			new Function('globalThis', output)(scope);
 			expect(scope).toEqual({ result: 'Title', observed: 'Global' });
 		}
+	});
+
+	it('preserves null and function values in statically selected raw data', () => {
+		const output = compile('const locale=__VUE_INTERNATIONALIZATION_INLINE_LOCALE__(MARKER); const f=locale.sfc.fn; const items=locale.sfc.list; globalThis.result=[locale.sfc.nullable,f(1),items[0](1),items[1].x];');
+		const scope: { result?: unknown } = {};
+		new Function('globalThis', output)(scope);
+		expect(scope.result).toEqual([null, 'number', 'number', null]);
 	});
 
 	it('still removes dictionary data for a binding whose uses are all statically replaced', () => {

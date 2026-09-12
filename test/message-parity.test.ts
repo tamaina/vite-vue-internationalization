@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { internals } from '../src/plugin.js';
 import { createInlineLocaleMarker } from '../src/inline.js';
-import { createInternationalization, formatLocaleMessage, useLocalizer } from '../src/runtime.js';
+import { createInternationalization, formatLocaleMessage, useLocale, useLocalizer } from '../src/runtime.js';
 
 const icuCases = [
 	['{a}{b}', { a: 1, b: 2 }],
@@ -58,13 +58,15 @@ const vueCases: Array<[string, unknown, number | undefined]> = [
 	['one | {n} many', undefined, 3],
 	['{missing}', {}, undefined],
 	['@.upper:name', {}, undefined],
+	['@:nestedUpper', {}, undefined],
+	['@:twice', {}, undefined],
 	['@:plural', { n: 3 }, 3],
 	['@:cycle', {}, undefined],
 	['{\'literal\'} {n}', { n: null }, undefined],
 ];
 
 it.each(vueCases)('matches Vue %s / %j / %j', async (message, values, plural) => {
-	const messages = { message, name: 'istanbul', plural: 'one | {n} many', cycle: '@:cycle' };
+	const messages = { message, name: 'istanbul', plural: 'one | {n} many', cycle: '@:cycle', nestedUpper: '@.upper:name', twice: '@:name @:name' };
 	const instance = createInternationalization({ primaryLocale: 'tr', loaders: {
 		tr: async () => ({ modules: { '/App.vue': messages } }),
 	} });
@@ -130,4 +132,48 @@ it('returns raw ICU message strings for dynamic dictionary access', () => {
 	const replaced = internals.replaceInlineLocaleMarkers(code, 'en', 'en', 'icu', { '/App.vue': { en: { number: '{n, number}' } } }, {});
 	const result = new Function('key', `${replaced}; return result;`)('number');
 	expect(result).toBe('{n, number}');
+});
+
+it.each(['sfc.count()', 'sfc.flag()', 'sfc.missing()', 'sfc.nested.missing()', 'sfc["{name}|other"]()'])('matches bare localizer access %s', async path => {
+	const messages = { count: 4, flag: false, nested: { known: 'Known' } };
+	const instance = createInternationalization({ primaryLocale: 'en', loaders: { en: async () => ({ modules: { '/App.vue': messages } }) } });
+	await instance.ready;
+	const expression = internals.replaceInlineLocaleMarkers(`__VUE_INTERNATIONALIZATION_INLINE_LOCALIZERS__(${JSON.stringify(createInlineLocaleMarker('/App.vue'))})`, 'en', 'en', 'vue', { '/App.vue': { en: messages } }, {});
+	const evaluate = new Function('l', `return l.${path};`);
+	expect(outcome(() => evaluate(new Function(`return ${expression};`)()))).toEqual(outcome(() => evaluate(useLocalizer('/App.vue', instance).value)));
+});
+
+it.each([['missing', ''], ['nested', 'missing']])('preserves raw lookup fallback for %s / %s', (key, suffix) => {
+	const expression = internals.replaceInlineLocaleMarkers(`__VUE_INTERNATIONALIZATION_INLINE_LOOKUP__(${JSON.stringify(createInlineLocaleMarker('/App.vue'))},"sfc",key,${JSON.stringify(suffix)})`, 'en', 'en', 'vue', { '/App.vue': { en: { nested: { known: 'Known' } } } }, {});
+	expect(new Function('key', `return ${expression};`)(key)).toBe(`$locale.sfc.${[key, suffix].filter(Boolean).join('.')}`);
+});
+
+it('preserves explicit raw null and scalar overrides over primary dictionary shapes', async () => {
+	const primary = { nullable: 'Primary', scalar: { nested: 'Primary' }, fallback: 'Fallback' };
+	const current = { nullable: null, scalar: 4 };
+	const instance = createInternationalization({ primaryLocale: 'ja', initialLocale: 'en', loaders: {
+		ja: async () => ({ modules: { '/App.vue': primary } }), en: async () => ({ modules: { '/App.vue': current } }),
+	} });
+	await instance.ready;
+	await instance.loadLocale('ja');
+	const runtime = useLocale('/App.vue', instance).value.sfc;
+	const expression = internals.replaceInlineLocaleMarkers(`__VUE_INTERNATIONALIZATION_INLINE_LOCALE__(${JSON.stringify(createInlineLocaleMarker('/App.vue'))})`, 'en', 'ja', 'vue', { '/App.vue': { ja: primary, en: current } }, {});
+	const inline = new Function(`return ${expression};`)().sfc;
+	for (const key of ['nullable', 'scalar', 'fallback']) expect(inline[key]).toBe(runtime[key]);
+	expect(runtime.nullable).toBeNull();
+	expect(runtime.scalar).toBe(4);
+});
+
+it('resolves nested inline calls in message-function plural and computed-key arguments', () => {
+	const marker = JSON.stringify(createInlineLocaleMarker('/App.vue'));
+	const inner = `__VUE_INTERNATIONALIZATION_INLINE_LOCALIZER__(${marker},"sfc.n",{})`;
+	const key = `__VUE_INTERNATIONALIZATION_INLINE_LOCALIZER__(${marker},"sfc.which",{})`;
+	const expressions = [
+		`__VUE_INTERNATIONALIZATION_INLINE_LOCALIZER__(${marker},"sfc.fn",{},Number(${inner}))`,
+		`__VUE_INTERNATIONALIZATION_INLINE_LOOKUP__(${marker},"sfc",${key},"")`,
+	];
+	for (const expression of expressions) {
+		const replaced = internals.replaceInlineLocaleMarkers(expression, 'en', 'en', 'vue', { '/App.vue': { en: { n: '3', which: 'n', fn: (_values?: unknown, plural?: number) => String(plural) } } }, {});
+		expect(new Function(`return ${replaced};`)()).toBe('3');
+	}
 });

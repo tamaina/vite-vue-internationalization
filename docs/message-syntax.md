@@ -71,3 +71,14 @@ ICUは両戦略で同じIntlMessageFormatを使い、number・date/time・style�
 他の Vue ブロックは対象外です。`vvi.messageHighlighting: false` で無効にできます。
 Volar 設定が `messageSyntax: "icu"` のプロジェクトでは無効になります。
 導入方法は [外部辞書のエディター診断](./getting-started.md#外部辞書のエディター診断) を参照してください。
+
+欠落キーの fallback は静的参照・動的 lookup・別名経由の参照で共通です。
+`$locale.sfc[key]` は該当する `$locale.sfc.key` 文字列を返し、`$l.sfc[key]()` も
+同じ文字列を返します。数値・真偽値などを raw 値として使う場合は `$locale` を使います。
+それらを `$l` で呼ぶとメッセージ文字列としては扱わず、キーの fallback を返します。
+リンク解決はネスト先にも locale を引き継ぎ、同じメッセージの複数回参照を循環参照とは判定しません。
+これらは戦略間の不一致の修正であり、以前の誤った数値文字列化やリンク結果に依存した場合は表示が変わります。
+
+raw 辞書では、明示した `null` や scalar 値は主要言語の値を上書きします。
+未定義のキーだけが主要言語へ fallback します。欠落キー名に `{}` や `|` が含まれていても、
+fallback 文字列を補間・複数形として再解釈しません。

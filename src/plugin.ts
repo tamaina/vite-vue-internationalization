@@ -356,7 +356,7 @@ export function vueInternationalization(options?: Partial<VueInternationalizatio
 			const { modules, globalMessages } = state;
 			const currentOptions = environmentOptions(this);
 			if (currentOptions.buildStrategy !== 'inline-chunks') return;
-			state.localeHash ??= createLocaleHash(['vvi-inline-output-v5', modules, globalMessages, currentOptions.primaryLocale, currentOptions.messageSyntax, this.environment.config.build.sourcemap]);
+			state.localeHash ??= createLocaleHash(['vvi-inline-output-v6', modules, globalMessages, currentOptions.primaryLocale, currentOptions.messageSyntax, this.environment.config.build.sourcemap]);
 			return state.localeHash;
 		},
 		generateBundle(_outputOptions, bundle) {

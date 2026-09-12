@@ -512,7 +512,8 @@ function resolveInternationalizationLinkedMessage(
 		return undefined;
 	}
 
-	seen.add(resolvedKey);
+	const nextSeen = new Set(seen);
+	nextSeen.add(resolvedKey);
 	return formatLocaleMessage(value, {
 		values,
 		plural,
@@ -628,11 +629,14 @@ function createDictionaryProxy(
 			const fallbackValue = getOwnValue(fallback, property);
 			const nextPath = [...path, property];
 
-			if (isDictionary(value) || isDictionary(fallbackValue)) {
+			if (isDictionary(value) || value === undefined && isDictionary(fallbackValue)) {
 				return createDictionaryProxy(asDictionary(value), asDictionary(fallbackValue), nextPath);
 			}
 
-			return value ?? fallbackValue ?? `$locale.${nextPath.join('.')}`;
+			return value !== undefined ? value : fallbackValue !== undefined ? fallbackValue : `$locale.${nextPath.join('.')}`;
+		},
+		has(target, property) {
+			return Object.hasOwn(target, property) || Object.hasOwn(fallback, property);
 		},
 	}) as RuntimeLocaleDictionary;
 
@@ -661,7 +665,7 @@ function createLocalizerDictionary(
 				return undefined;
 			}
 
-			const value = Reflect.get(dictionary, property) as unknown;
+			const value = property in dictionary ? Reflect.get(dictionary, property) as unknown : undefined;
 			const nextPath = [...path, property];
 
 			if (isDictionary(value)) {
@@ -676,14 +680,15 @@ function createLocalizerDictionary(
 					return value(normalizedValues, normalizedPlural);
 				}
 
-				const message = typeof value === 'string' ? value : `$locale.${nextPath.join('.')}`;
+				if (typeof value !== 'string') return `$locale.${nextPath.join('.')}`;
+				const message = value;
 
 				return formatLocaleMessage(message, {
 					locale,
 					syntax: messageSyntax,
 					values: normalizedValues,
 					plural: normalizedPlural,
-					resolveLinked: (key) => resolveLinkedMessage(rootDictionary, key, normalizedValues, normalizedPlural, messageSyntax, undefined, path[0]),
+					resolveLinked: (key) => resolveLinkedMessage(rootDictionary, key, normalizedValues, normalizedPlural, messageSyntax, undefined, path[0], locale),
 				});
 			};
 		},
@@ -757,6 +762,7 @@ function resolveLinkedMessage(
 	messageSyntax: LocaleMessageSyntax,
 	seen: Set<string> = new Set(),
 	scope: string | undefined = undefined,
+	locale?: string,
 ): string {
 	const path = resolveLinkedPath(key, scope);
 	const resolvedKey = path.join('.');
@@ -770,12 +776,14 @@ function resolveLinkedMessage(
 		return `@:${key}`;
 	}
 
-	seen.add(resolvedKey);
+	const nextSeen = new Set(seen);
+	nextSeen.add(resolvedKey);
 	return formatLocaleMessage(value, {
+		locale,
 		syntax: messageSyntax,
 		values,
 		plural,
-		resolveLinked: (linkedKey) => resolveLinkedMessage(dictionary, linkedKey, values, plural, messageSyntax, seen, path[0]),
+		resolveLinked: (linkedKey) => resolveLinkedMessage(dictionary, linkedKey, values, plural, messageSyntax, nextSeen, path[0], locale),
 	});
 }
 
