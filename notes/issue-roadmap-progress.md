@@ -323,3 +323,20 @@ do not infer a specific diagnostic or confirmed cause from this screenshot.
 - Original screenshot symptom/version information remains unknown; logging an
   adapter failure is not an editor diagnostic or proof that the original report
   is fixed. #39 still needs that evidence, plus the wider acceptance audit.
+
+## Twelfth increment: external diagnostic provenance (#13)
+
+- External dictionary diagnostics now carry the originating fileName instead of
+  losing that association when multiple files/globs are merged. A readText hook
+  lets the editor validate its unsaved document buffer through the same parser.
+- Two tests verify malformed -> corrected unsaved content, per-file JSON/YAML
+  error association, glob refresh after deletion and clearing corrected errors.
+  Targeted tests, typecheck and lint pass.
+- This is the shared computation layer only, not completed editor diagnostics.
+  Next is a separate VS Code DiagnosticCollection integration and real extension
+  host tests for external-only edits, add/unlink/config changes and recovery.
+  Do not reintroduce global YAML as virtual Vue files or duplicate errors in SFCs.
+- Official VS Code programmatic-language-features documentation confirms the
+  separate DiagnosticCollection update path. Local code CLI reports 1.137.0;
+  DISPLAY=:0 and Xorg are present for extension-host validation. No extension has
+  been installed into the user's profile or published.

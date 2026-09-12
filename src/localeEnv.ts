@@ -5,9 +5,10 @@ import type { LocaleDictionary } from './types.js';
 
 export type LocaleEnvSource = LocaleDictionary | string | string[];
 export type LocaleEnvSources = Partial<Record<string, LocaleEnvSource>>;
+export type LocaleEnvFileDiagnostic = LocaleDictionaryDiagnostic & { fileName?: string };
 export type LocaleEnvDictionaryDiagnosticsResult = {
 	dictionary: LocaleDictionary;
-	diagnostics: LocaleDictionaryDiagnostic[];
+	diagnostics: LocaleEnvFileDiagnostic[];
 };
 
 export function loadLocaleEnvDictionary(root: string, locale: string, source: string | string[]): LocaleDictionary {
@@ -31,6 +32,7 @@ export function loadLocaleEnvDictionaryWithDiagnostics(
 	root: string,
 	locale: string,
 	source: string | string[],
+	options: { readText?: (fileName: string) => string } = {},
 ): LocaleEnvDictionaryDiagnosticsResult {
 	let files: string[];
 
@@ -48,16 +50,17 @@ export function loadLocaleEnvDictionaryWithDiagnostics(
 	}
 
 	const merged = createLocaleDictionary();
-	const diagnostics: LocaleDictionaryDiagnostic[] = [];
+	const diagnostics: LocaleEnvFileDiagnostic[] = [];
 
 	for (const file of files) {
 		const lang = file.endsWith('.json') ? 'json' : 'yaml';
 		let content: string;
 
 		try {
-			content = readFileSync(file, 'utf8');
+			content = options.readText ? options.readText(file) : readFileSync(file, 'utf8');
 		} catch (error) {
 			diagnostics.push({
+				fileName: file,
 				message: `Failed to read ${file}: ${error instanceof Error ? error.message : String(error)}`,
 				start: 0,
 				end: 1,
@@ -68,7 +71,7 @@ export function loadLocaleEnvDictionaryWithDiagnostics(
 		const result = parseLocaleDictionaryForDiagnostics(content, lang, file);
 		const dictionary = result.dictionary;
 
-		diagnostics.push(...result.diagnostics);
+		diagnostics.push(...result.diagnostics.map(diagnostic => ({ ...diagnostic, fileName: file })));
 		mergeLocaleEnvDictionaryForDiagnostics(merged, dictionary);
 	}
 
