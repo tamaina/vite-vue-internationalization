@@ -106,6 +106,8 @@ Messages.$locale.title;
 Messages.$l.body({ source: 'messages.vue' });
 ```
 
+Volar プラグインを設定すると、import した SFC の `Messages.$locale.title` などの文字列メンバーを VSCode でホバーした際に、メイン言語の翻訳本文が JSDoc として表示されます。ネストしたキーにも対応し、値の型は `string` のままです。
+
 ## スクリプト定義メッセージ
 
 通常の `<script lang="ts">` または `<script setup lang="ts">` のトップレベルで `defineInternationalization()` を使うと、TypeScript で辞書を定義できます。メッセージ関数を末端値として置きたい場合に便利です。

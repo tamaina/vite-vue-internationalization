@@ -387,7 +387,7 @@ function getGeneratedTypes(
 			}, globalTypeOptions),
 		componentLocaleType: createComponentLocaleType({
 			module: moduleDictionary,
-		}),
+		}, true),
 		componentLocalizerType: createComponentLocalizerType({
 			module: moduleDictionary,
 			messageSyntax: config.messageSyntax ?? 'vue',

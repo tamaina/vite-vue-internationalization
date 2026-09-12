@@ -98,6 +98,8 @@ Messages.$locale.title;
 Messages.$l.body({ source: 'messages.vue' });
 ```
 
+With the Volar plugin configured, hovering over string members such as `Messages.$locale.title` on an imported SFC in VSCode shows the primary locale text as JSDoc. Nested keys are supported, and the value type remains `string`.
+
 ## Script-defined messages
 
 Use `defineInternationalization()` at the top level of a normal `<script lang="ts">` or `<script setup lang="ts">` block when you want to define dictionaries in TypeScript.
