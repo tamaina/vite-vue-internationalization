@@ -57,6 +57,7 @@ type AstReplaceOptions = {
 	localizerCalls?: boolean;
 	textCalls?: boolean;
 	objectCalls?: boolean | 'empty';
+	pruneUnusedObjects?: boolean;
 	allowMarkerFallback?: boolean;
 };
 type InlineReplacementPlan = {
@@ -1452,7 +1453,8 @@ function createRequiredInlineReplacementPlan(code: string): InlineReplacementPla
 		localeMembers: true,
 		localizerCalls: true,
 		textCalls: true,
-		objectCalls: 'empty',
+		objectCalls: true,
+		pruneUnusedObjects: true,
 	}, parseRequiredInlineJavaScript(code));
 }
 
@@ -1470,6 +1472,8 @@ function createInlineReplacementPlan(
 	const localeBindings = new Map<string, string>();
 	const localizerBindings = new Map<string, string>();
 	const operations: InlineReplacementOperation[] = [];
+	const objectBindings = new Map<number, string>();
+	const remainingNames = new Set<string>();
 
 	walk(parsedCode.ast as OxcWalkInput, {
 		enter(node, parent) {
@@ -1482,8 +1486,11 @@ function createInlineReplacementPlan(
 
 			if (isVariableDeclarator(current)) {
 				collectInlineBindingMarker(current, localeBindings, localizerBindings);
+				if (isIdentifier(current.id) && current.init) objectBindings.set(current.init.start, current.id.name);
 				return;
 			}
+
+			if (isIdentifier(current) && !(currentParent && isVariableDeclarator(currentParent) && currentParent.id === current)) remainingNames.add(current.name);
 
 			if (isCallExpression(current)) {
 				const operation = getCallReplacementOperation(code, current, localizerBindings, options);
@@ -1510,6 +1517,30 @@ function createInlineReplacementPlan(
 			}
 		},
 	});
+
+	if (options.pruneUnusedObjects) {
+		// Call/lookup replacements retain their argument expressions. The main walk
+		// skips those subtrees, so account for their identifier references separately.
+		for (const operation of operations) for (const key of ['valuesExpression', 'pluralExpression', 'keyExpression']) {
+			const expression = (operation as unknown as Record<string, unknown>)[key];
+			if (typeof expression !== 'string') continue;
+			try {
+				const argument = parseRequiredInlineJavaScript(`(${expression})`);
+				walk(argument.ast as OxcWalkInput, { enter(node) {
+					const current = toAstNode(node);
+					if (current && isIdentifier(current)) remainingNames.add(current.name);
+				} });
+			} catch {
+				// Unknown expression forms must retain data rather than erase it.
+				for (const name of objectBindings.values()) remainingNames.add(name);
+			}
+		}
+		for (const operation of operations) {
+			if (operation.type !== 'locale-object-call' && operation.type !== 'localizer-object-call') continue;
+			const name = objectBindings.get(operation.start);
+			if (name && !remainingNames.has(name)) operation.mode = 'empty';
+		}
+	}
 
 	return {
 		code,
@@ -2061,12 +2092,7 @@ function getPlannedReplacement(
 			}
 
 			const payload = resolvePayload(decodeInlineLocaleMarker(operation.marker));
-			const fallbackPayload = {
-				env: createFallbackObject(payload.global, 'env'),
-				sfc: createFallbackObject(payload.module, 'sfc'),
-			};
-
-			return createInlineRefAliasExpression(JSON.stringify(fallbackPayload));
+			return createInlineRefAliasExpression(`{env:${createRawLocaleObjectExpression(payload.global, 'env')},sfc:${createRawLocaleObjectExpression(payload.module, 'sfc')}}`);
 		}
 
 		case 'localizer-object-call': {
@@ -2590,26 +2616,9 @@ function deepMerge(fallback: LocaleDictionary, current: LocaleDictionary): Local
 	return merged;
 }
 
-function createFallbackObject(dictionary: LocaleDictionary, path: string): LocaleDictionary {
-	const result = createLocaleDictionary();
-
-	for (const [key, value] of Object.entries(dictionary)) {
-		result[key] = isDictionary(value) ? createFallbackObject(value, `${path}.${key}`) : value;
-	}
-
-	return new Proxy(result, {
-		get(target, property) {
-			if (typeof property !== 'string') {
-				return Reflect.get(target, property);
-			}
-
-			if (Object.prototype.hasOwnProperty.call(target, property)) {
-				return target[property];
-			}
-
-			return `$locale.${path}.${property}`;
-		},
-	});
+function createRawLocaleObjectExpression(dictionary: LocaleDictionary, path: string): string {
+	const entries = Object.entries(dictionary).map(([key, value]) => `${JSON.stringify(key)}:${isDictionary(value) ? createRawLocaleObjectExpression(value, `${path}.${key}`) : typeof value === 'function' ? `(${value.toString()})` : JSON.stringify(value)}`);
+	return `new Proxy({${entries.join(',')}},{get(target,key){return typeof key!=="string"||Object.hasOwn(target,key)?Reflect.get(target,key):${JSON.stringify(`$locale.${path}.`)}+key;}})`;
 }
 
 function createLocaleDictionary(): LocaleDictionary {

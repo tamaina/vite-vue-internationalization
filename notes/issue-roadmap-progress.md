@@ -434,3 +434,25 @@ on/off, block removal/re-addition and ICU disabling. Targeted lint is clean.
 - Typecheck/build and targeted tests/lint pass. Remaining SSR asset edge cases
   (especially removed CSS-only chunks and nested HTML) and framework acceptance
   still need final audit. #50 measurement/prototype/decision has not started yet.
+
+## Dynamic inline object retention found by #50 fixture (#43 / #46)
+
+The first delivery comparison reproduced an actual production render failure in
+inline-chunks: Vue compiled dynamic template accesses to unref(locale).sfc[key],
+but the output planner replaced the retained locale initializer with an empty
+object. Virtual rendered correctly. The failed browser run reported a TypeError
+reading k0 and an empty app despite the route completion callback.
+
+The planner now preserves object payloads when references survive static rewrites.
+Unreferenced initializers can still be empty. Arguments retained by call/lookup
+rewrites are analyzed with the JavaScript AST too, including escaped identifier
+spellings. Raw object output retains functions and nested missing-key fallback
+proxies; JSON serialization previously dropped those functions.
+
+Three focused executable-output tests cover Vue-style unref/escaped aliases,
+function values, missing nested keys, retained localizer arguments (including
+Unicode-escaped identifiers), and removal of fully statically replaced data.
+All 199 tests and root typecheck passed before the final AST refinement; the
+focused tests pass after that refinement. Real hash/SRI A/B/C and custom-manifest
+ICU mixed SSR passed during the fix. Output salt advances to v5 to invalidate
+previous emitted bytes. Full #43/#46 parity/provenance audit is still outstanding.
