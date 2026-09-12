@@ -31,3 +31,6 @@ jobs:
       - run: pnpm exec playwright install --with-deps chromium
       - run: node scripts/test-types.mjs
       - run: node scripts/test-ssr.mjs
+      - run: node scripts/test-ssr.mjs --icu
+      - run: node scripts/test-ssr.mjs --inline
+      - run: node scripts/test-ssr.mjs --icu --inline

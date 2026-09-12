@@ -47,3 +47,36 @@ when its requirements are actually met. No benchmark winner selected.
 Issue bodies retrieved with gh into /tmp/vvi-issues/all.json (local scratch),
 #53 fetched separately. All source links refer to base commit; inspect actual
 implementation and issue acceptance conditions before closing anything.
+
+## Second increment: message parity and mixed hydration
+
+- #43: inline ICU now uses the runtime formatter via a bundled emitted formatter
+  entry. Unit corpus compares returned value/type and errors for adjacent numeric
+  arguments, number/currency skeleton, date/time styles and skeletons, select,
+  ordinal, plural offset/pound, missing arguments and invalid messages.
+- Vue inline follows numeric-first/explicit-second plural selection, stringifies
+  interpolation pieces, evaluates only the selected plural branch, and preserves
+  values/plural evaluation order (including static messages). Message functions
+  normalize numeric arguments like runtime. Dynamic missing localizer keys use
+  the same fallback path; raw dynamic dictionary access does not format ICU.
+- String-shape assertions affected by the new generator were replaced with
+  executable output assertions. There are 31 additional parity tests.
+- #53 B early fixture: production server virtual + client inline hydrates ICU
+  number/currency/date/ordinal/offset/select examples with unchanged server text.
+  Vue and ICU each pass virtual/virtual and virtual/inline browser runs.
+- Mixed scoped CSS initially failed (computed button color black). Vue's
+  production default scope ID includes transformed source. Official mixed
+  integration now documents vue features.componentIdGenerator='filepath' and a
+  common root. The fixture uses this and verifies scoped CSS, existing DOM node,
+  text and click behavior in all four configurations. Custom generators must
+  also be identical between builds. This is not yet full Phase B acceptance.
+- CI adds the other three SSR combinations. The inline fixture selects an entry
+  through the current Vite manifest extension; the general asset resolver and
+  environment-isolation work remain.
+
+Still audit #43 bare/localizer object and scalar dictionary behavior, nested
+linked locale formatting and broader real-build negative cases before closing.
+#44 next: current inline reference-map code still globally replaceAlls filenames
+and lacks translation digest in augmentChunkHash. No hash correctness claim yet.
+Remote CI/framework examples, full Core acceptance and remaining roadmap issues
+continue to be outstanding. No issues closed and no push/PR yet.

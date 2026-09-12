@@ -75,6 +75,7 @@ type TsconfigVueCompilerPlugin = {
 
 type ModuleMessages = Partial<Record<string, LocaleMessages>>;
 
+const ICU_FORMATTER_ID = '\0vvi-icu-formatter';
 const VIRTUAL_ID = 'virtual:vite-vue-internationalization';
 const RESOLVED_VIRTUAL_ID = `\0${VIRTUAL_ID}`;
 const LOCALE_PREFIX = 'virtual:vite-vue-internationalization/locale/';
@@ -97,6 +98,7 @@ export function vueInternationalization(options?: Partial<VueInternationalizatio
 	let resolvedOptions: ResolvedVueInternationalizationOptions | undefined;
 	let base = '/';
 	let scanned = false;
+	let icuFormatterReference: string | undefined;
 
 	function collectVueFile(filename: string, code: string): void {
 		const parsed = parseVueLocales(code, filename);
@@ -170,8 +172,13 @@ export function vueInternationalization(options?: Partial<VueInternationalizatio
 		},
 		buildStart() {
 			scan();
+			const currentOptions = getResolvedOptions(resolvedOptions);
+			if (command === 'build' && currentOptions.buildStrategy === 'inline-chunks' && currentOptions.messageSyntax === 'icu') {
+				icuFormatterReference = this.emitFile({ type: 'chunk', id: ICU_FORMATTER_ID, name: 'vvi-icu-formatter', preserveSignature: 'strict' });
+			}
 		},
 		resolveId(id) {
+			if (id === ICU_FORMATTER_ID) return id;
 			if (id === VIRTUAL_ID) {
 				return RESOLVED_VIRTUAL_ID;
 			}
@@ -183,6 +190,7 @@ export function vueInternationalization(options?: Partial<VueInternationalizatio
 			return null;
 		},
 		load(id) {
+			if (id === ICU_FORMATTER_ID) return 'export { formatLocaleMessage as format } from "vite-vue-internationalization/runtime";';
 			ensureScanned();
 			const currentOptions = getResolvedOptions(resolvedOptions);
 
@@ -274,6 +282,7 @@ export function vueInternationalization(options?: Partial<VueInternationalizatio
 					globalMessages,
 					currentOptions.messageSyntax,
 					{
+						icuFormatterFile: icuFormatterReference ? this.getFileName(icuFormatterReference) : undefined,
 						emitChunk: chunk => {
 							this.emitFile({
 								type: 'asset',

@@ -2,14 +2,12 @@ import { existsSync, readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { dirname, isAbsolute, relative, resolve } from 'node:path';
 import { parse as parseSfc } from '@vue/compiler-sfc';
-import { parse as parseIcuMessage, TYPE } from '@formatjs/icu-messageformat-parser';
 import MagicString from 'magic-string';
 import { parseSync } from 'rolldown/utils';
 import { ScopeTracker, walk } from 'oxc-walker';
 import { compileLocaleMessage } from './message.js';
 import { hasLocaleBinding } from './parse.js';
 import { injectScriptSetup } from './scriptSetup.js';
-import type { MessageFormatElement } from '@formatjs/icu-messageformat-parser';
 import type { LocaleMessageSyntax, LocaleMessageToken } from './message.js';
 import type { LocaleDictionary } from './types.js';
 
@@ -765,6 +763,7 @@ export function inlineLocaleChunks(
 	messageSyntax: LocaleMessageSyntax = 'vue',
 	options: {
 		emitChunk?: InlineLocaleChunkEmitter;
+		icuFormatterFile?: string;
 	} = {},
 ): InlineChunkManifest {
 	const manifest: InlineChunkManifest = {
@@ -815,6 +814,13 @@ export function inlineLocaleChunks(
 				),
 				locale,
 			);
+
+			if (localizedChunk.code.includes('__VVI_FORMAT_ICU__') && options.icuFormatterFile) {
+				let specifier = relative(dirname(localizedChunk.fileName), options.icuFormatterFile).replaceAll('\\', '/');
+				if (!specifier.startsWith('.')) specifier = `./${specifier}`;
+				localizedChunk.code = `import { format as __VVI_FORMAT_ICU__ } from ${JSON.stringify(specifier)};\n${localizedChunk.code}`;
+				localizedChunk.imports.push(options.icuFormatterFile);
+			}
 
 			if (options.emitChunk) {
 				options.emitChunk(localizedChunk);
@@ -1462,7 +1468,7 @@ function parseLegacyInlineMarkerFallback(
 			}
 
 			if (typeof resolved.value === 'function') {
-				return `((${resolved.value.toString()})(${valuesExpression}))`;
+				return `(${createInlineMessageFunction(resolved.value)})(${valuesExpression})`;
 			}
 
 			const template = typeof resolved.value === 'string' ? resolved.value : `$locale.${path}`;
@@ -1632,6 +1638,7 @@ function createInlineLocalizerLookupCallExpression(
 	pluralExpression: string | undefined,
 	payload: InlineLocalePayload,
 	scope: PublicLocaleScope,
+	path: string[],
 ): string {
 	const entries = Object.entries(dictionary)
 		.map(([key, value]) => {
@@ -1649,7 +1656,11 @@ function createInlineLocalizerLookupCallExpression(
 		.join(',');
 	const pluralArgument = pluralExpression ? `, ${pluralExpression}` : '';
 
-	return `(({${entries}})[String(${keyExpression})])(${valuesExpression}${pluralArgument})`;
+	const fallbackPrefix = JSON.stringify(`$locale.${[scope, ...path].join('.')}.`);
+	const lookup = suffixKeys.length === 0
+		? `((__key) => { const __entries = {${entries}}; return Object.hasOwn(__entries, __key) ? __entries[__key] : () => ${fallbackPrefix} + __key; })(String(${keyExpression}))`
+		: `(({${entries}})[String(${keyExpression})])`;
+	return `${lookup}(${valuesExpression}${pluralArgument})`;
 }
 
 function serializeInlineLookupValue(value: unknown, payload: InlineLocalePayload, scope: PublicLocaleScope): string {
@@ -1663,11 +1674,11 @@ function serializeInlineLookupValue(value: unknown, payload: InlineLocalePayload
 		return `(${value.toString()})`;
 	}
 
-	if (typeof value === 'string') {
-		return createInlineTemplateExpression(value, '{}', payload, scope);
-	}
-
 	return JSON.stringify(value);
+}
+
+function createInlineMessageFunction(value: { toString(): string }): string {
+	return `(__values, __plural) => (${value.toString()})(typeof __values === "number" ? {count:__values,n:__values} : __values, typeof __values === "number" ? __values : __plural)`;
 }
 
 function serializeInlineLocalizerLookupValue(value: unknown, payload: InlineLocalePayload, scope: PublicLocaleScope): string {
@@ -1676,10 +1687,10 @@ function serializeInlineLocalizerLookupValue(value: unknown, payload: InlineLoca
 	}
 
 	if (typeof value === 'function') {
-		return `(${value.toString()})`;
+		return createInlineMessageFunction(value);
 	}
 
-	return `(values = {}) => ${createInlineTemplateExpression(typeof value === 'string' ? value : String(value), 'values', payload, scope)}`;
+	return `(values, plural) => ${createInlineTemplateExpression(typeof value === 'string' ? value : String(value), 'values', payload, scope, undefined, 'plural')}`;
 }
 
 function replaceNestedInlineMarkerExpression(expression: string, resolvePayload: InlinePayloadResolver): string {
@@ -1883,11 +1894,11 @@ function getPlannedReplacement(
 
 			if (typeof resolved.value === 'function') {
 				const pluralExpression = operation.pluralExpression ? `, ${operation.pluralExpression}` : '';
-				return `((${resolved.value.toString()})(${valuesExpression}${pluralExpression}))`;
+				return `(${createInlineMessageFunction(resolved.value)})(${valuesExpression}${pluralExpression})`;
 			}
 
 			const template = typeof resolved.value === 'string' ? resolved.value : `$locale.${operation.path}`;
-			return createInlineTemplateExpression(template, valuesExpression, payload, resolved.scope);
+			return createInlineTemplateExpression(template, valuesExpression, payload, resolved.scope, undefined, operation.pluralExpression ? replaceNestedInlineMarkerExpression(operation.pluralExpression, resolvePayload) : undefined);
 		}
 
 		case 'lookup-call': {
@@ -1942,11 +1953,11 @@ function getPlannedReplacement(
 
 			if (typeof value === 'function') {
 				const pluralExpression = operation.pluralExpression ? `, ${operation.pluralExpression}` : '';
-				return `((${value.toString()})(${valuesExpression}${pluralExpression}))`;
+				return `(${createInlineMessageFunction(value)})(${valuesExpression}${pluralExpression})`;
 			}
 
 			const template = typeof value === 'string' ? value : `$locale.${[normalized.scope, ...normalized.keys].join('.')}`;
-			return createInlineTemplateExpression(template, valuesExpression, payload, normalized.scope);
+			return createInlineTemplateExpression(template, valuesExpression, payload, normalized.scope, undefined, operation.pluralExpression ? replaceNestedInlineMarkerExpression(operation.pluralExpression, resolvePayload) : undefined);
 		}
 
 		case 'localizer-lookup-call': {
@@ -1971,6 +1982,7 @@ function getPlannedReplacement(
 				operation.pluralExpression,
 				payload,
 				normalized.scope,
+				normalized.keys,
 			);
 		}
 
@@ -2259,23 +2271,25 @@ function createInlineTemplateExpression(
 	payload?: InlineLocalePayload,
 	scope?: PublicLocaleScope,
 	seen: Set<string> = new Set(),
+	pluralExpression = 'undefined',
 ): string {
 	if (payload?.messageSyntax === 'icu') {
-		return createInlineIcuMessageExpression(template, valuesExpression, payload.locale);
+		return `((__input, __plural) => ${createInlineIcuMessageExpression(template, '__input', payload.locale)})(${valuesExpression}, ${pluralExpression})`;
 	}
 
 	const cases = compileLocaleMessage(template).cases;
 	const caseExpressions = cases.map((tokens) => createInlineTokenExpression(tokens, payload, scope, seen));
 
 	if (cases.length > 1) {
-		return `((__values) => { const __plural = typeof __values === "number" ? __values : Number(__values?.count ?? __values?.n ?? 1); const __index = ${createInlinePluralIndexExpression('Math.abs(Math.trunc(__plural))', cases.length)}; return [${caseExpressions.join(',')}][__index]; })(${valuesExpression})`;
+		return `((__values, __explicitPlural) => { const __plural = typeof __values === "number" ? __values : (__explicitPlural ?? 1); const __index = ${createInlinePluralIndexExpression('Math.abs(Math.trunc(__plural))', cases.length)}; return [${caseExpressions.map(expression => `()=>${expression}`).join(',')}][__index](); })(${valuesExpression}, ${pluralExpression})`;
 	}
 
 	if (caseExpressions.length === 1 && cases[0]?.length === 1 && cases[0][0]?.type === 'text') {
-		return JSON.stringify(template);
+		if (valuesExpression === '{}' && pluralExpression === 'undefined') return JSON.stringify(template);
+		return `((__values, __explicitPlural) => ${JSON.stringify(template)})(${valuesExpression}, ${pluralExpression})`;
 	}
 
-	return `((__values) => ${caseExpressions[0] ?? '""'})(${valuesExpression})`;
+	return `((__values, __explicitPlural) => ${caseExpressions[0] ?? '""'})(${valuesExpression}, ${pluralExpression})`;
 }
 
 function createInlineIcuMessageExpression(
@@ -2283,75 +2297,7 @@ function createInlineIcuMessageExpression(
 	valuesExpression: string,
 	locale: string | undefined,
 ): string {
-	const body = createInlineIcuElementsExpression(parseIcuMessage(template), '__values', JSON.stringify(locale));
-	return `((__values) => ${body})(${valuesExpression})`;
-}
-
-function createInlineIcuElementsExpression(
-	elements: MessageFormatElement[],
-	valuesExpression: string,
-	localeExpression: string,
-	pluralValueExpression?: string,
-): string {
-	const parts = elements.map((element) => createInlineIcuElementExpression(element, valuesExpression, localeExpression, pluralValueExpression));
-	return parts.length === 0 ? '""' : parts.join(' + ');
-}
-
-function createInlineIcuElementExpression(
-	element: MessageFormatElement,
-	valuesExpression: string,
-	localeExpression: string,
-	pluralValueExpression: string | undefined,
-): string {
-	switch (element.type) {
-		case TYPE.literal:
-			return JSON.stringify(element.value);
-		case TYPE.argument:
-		case TYPE.number:
-		case TYPE.date:
-		case TYPE.time:
-			return `(${valuesExpression}?.[${JSON.stringify(element.value)}] ?? ${JSON.stringify(`{${element.value}}`)})`;
-		case TYPE.pound:
-			return `((${pluralValueExpression ?? 'undefined'}) ?? "#")`;
-		case TYPE.select:
-			return createInlineIcuSelectExpression(element, valuesExpression, localeExpression, pluralValueExpression);
-		case TYPE.plural:
-			return createInlineIcuPluralExpression(element, valuesExpression, localeExpression);
-		case TYPE.tag:
-			return createInlineIcuElementsExpression(element.children, valuesExpression, localeExpression, pluralValueExpression);
-	}
-}
-
-function createInlineIcuSelectExpression(
-	element: Extract<MessageFormatElement, { type: TYPE.select }>,
-	valuesExpression: string,
-	localeExpression: string,
-	pluralValueExpression: string | undefined,
-): string {
-	const entries = Object.entries(element.options)
-		.map(([key, option]) =>
-			`${JSON.stringify(key)}:()=>${createInlineIcuElementsExpression(option.value, valuesExpression, localeExpression, pluralValueExpression)}`)
-		.join(',');
-
-	return `((__value)=>((({${entries}})[String(__value)] ?? ({${entries}}).other ?? (()=>${JSON.stringify(`{${element.value}}`)}))()))(${valuesExpression}?.[${JSON.stringify(element.value)}])`;
-}
-
-function createInlineIcuPluralExpression(
-	element: Extract<MessageFormatElement, { type: TYPE.plural }>,
-	valuesExpression: string,
-	localeExpression: string,
-): string {
-	const choiceExpression = `Number(__value) - ${element.offset}`;
-	const entries = Object.entries(element.options)
-		.map(([key, option]) =>
-			`${JSON.stringify(key)}:()=>${createInlineIcuElementsExpression(option.value, valuesExpression, localeExpression, choiceExpression)}`)
-		.join(',');
-	const exactEntries = Object.keys(element.options)
-		.filter((key) => key.startsWith('='))
-		.map((key) => `${JSON.stringify(key.slice(1))}:${JSON.stringify(key)}`)
-		.join(',');
-
-	return `((__value)=>{const __options={${entries}};const __exact=({${exactEntries}})[String(__value)];const __rule=__exact ?? new Intl.PluralRules(${localeExpression},{type:${JSON.stringify(element.pluralType)}}).select(${choiceExpression});return (__options[__rule] ?? __options.other ?? (()=>${JSON.stringify(`{${element.value}}`)}))();})(${valuesExpression}?.[${JSON.stringify(element.value)}])`;
+	return `__VVI_FORMAT_ICU__(${JSON.stringify(template)}, {syntax:"icu",locale:${JSON.stringify(locale)},values:((values)=>typeof values === "number" ? {count:values,n:values} : values)(${valuesExpression})})`;
 }
 
 function createInlineTokenExpression(
@@ -2366,7 +2312,7 @@ function createInlineTokenExpression(
 			case 'literal':
 				return JSON.stringify(token.value);
 			case 'named':
-				return `((typeof __values === "number" ? (${token.key === 'count' || token.key === 'n' ? '__values' : 'undefined'}) : __values?.[${JSON.stringify(token.key)}]) ?? ${JSON.stringify(`{${token.key}}`)})`;
+				return `((typeof __values === "number" ? (${token.key === 'count' || token.key === 'n' ? '__values' : 'undefined'}) : (Array.isArray(__values) ? undefined : __values?.[${JSON.stringify(token.key)}])) ?? ${JSON.stringify(`{${token.key}}`)})`;
 			case 'list':
 				return `(Array.isArray(__values) && __values[${token.index}] != null ? __values[${token.index}] : ${JSON.stringify(`{${token.index}}`)})`;
 			case 'linked':
@@ -2374,7 +2320,7 @@ function createInlineTokenExpression(
 		}
 	});
 
-	return parts.length === 0 ? '""' : parts.join(' + ');
+	return parts.length === 0 ? '""' : parts.map(part => `String(${part})`).join(' + ');
 }
 
 function createInlinePluralIndexExpression(choiceExpression: string, choicesLength: number): string {
@@ -2397,7 +2343,7 @@ function createInlineLinkedExpression(
 		return JSON.stringify(`@:${token.key}`);
 	}
 
-	const expression = createInlineTemplateExpression(resolved.value, '__values', payload, resolved.scope, resolved.seen);
+	const expression = createInlineTemplateExpression(resolved.value, '__values', payload, resolved.scope, resolved.seen, '__explicitPlural');
 
 	if (!token.modifier) {
 		return expression;
@@ -2405,11 +2351,11 @@ function createInlineLinkedExpression(
 
 	switch (token.modifier) {
 		case 'upper':
-			return `((${expression}).toLocaleUpperCase())`;
+			return `((${expression}).toLocaleUpperCase(${JSON.stringify(payload?.locale)}))`;
 		case 'lower':
-			return `((${expression}).toLocaleLowerCase())`;
+			return `((${expression}).toLocaleLowerCase(${JSON.stringify(payload?.locale)}))`;
 		case 'capitalize':
-			return `((__linked) => __linked.charAt(0).toLocaleUpperCase() + __linked.slice(1))(${expression})`;
+			return `((__linked) => __linked.charAt(0).toLocaleUpperCase(${JSON.stringify(payload?.locale)}) + __linked.slice(1))(${expression})`;
 		default:
 			return expression;
 	}
@@ -2462,8 +2408,8 @@ function createLocalizerObjectExpression(
 		const expression = isDictionary(value)
 			? createLocalizerObjectExpression(value, payload, scope)
 			: typeof value === 'function'
-				? `(${value.toString()})`
-				: `(values = {}) => ${createInlineTemplateExpression(typeof value === 'string' ? value : String(value), 'values', payload, scope)}`;
+				? createInlineMessageFunction(value)
+				: `(values, plural) => ${createInlineTemplateExpression(typeof value === 'string' ? value : String(value), 'values', payload, scope, undefined, 'plural')}`;
 
 		return `${property}:${expression}`;
 	});

@@ -88,3 +88,11 @@ fallbackやformat設定も両側で揃えてください。属性がない場合
 
 `pnpm test:ssr`は`test/fixtures/ssr`の本番client/serverビルドとChromiumでhydrationを検証します。
 上記Workers exampleはHTML生成専用の例です。
+
+### mixed strategyとscoped CSS
+
+server/clientで同じプロジェクトrootを使い、両方の`@vitejs/plugin-vue`を
+`vue({ features: { componentIdGenerator: 'filepath' } })`で設定してください。
+Vueの本番時の既定値は変換後SFCソースをscope IDへ含めるため、VVIのvirtualとinlineで
+異なるIDになり、サーバーHTMLへclient CSSが適用されなくなります。
+filepath設定なら両側で一致します。独自ID生成を使う場合も両側で同じ値を返してください。

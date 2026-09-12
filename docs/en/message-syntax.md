@@ -30,3 +30,21 @@ Related API:
 - [`getLocaleMessageListIndexes()`](../api.md#getlocalemessagelistindexes)
 - [`hasLocaleMessagePlural()`](../api.md#haslocalemessageplural)
 - [`LocaleMessageSyntax`](../api.md#localemessagesyntax)
+
+## Build-strategy consistency
+
+For Vue-style localizers, a numeric first argument supplies both `count` and `n`
+and selects the plural case, taking priority over the second argument. With an
+object or list first argument, only the explicit second argument selects plural;
+`values.n` and `values.count` do not implicitly select it. Without a selection the
+choice is 1. Inline builds now follow this runtime rule (a behavior correction
+for inline callers relying on implicit object-field selection).
+
+Both strategies return strings for interpolations, including adjacent numeric
+values, and preserve value/plural argument evaluation order. Message functions
+receive the same normalized numeric arguments. Missing Vue placeholders remain
+`{name}` / `{0}`; missing localizer keys use `$locale.sfc.key` or `$locale.env.key`.
+ICU uses the same IntlMessageFormat formatter in both strategies, including number,
+date/time styles and skeletons. Invalid ICU messages or missing required ICU
+arguments throw; they are not silently treated as raw values. Inline ICU bundles
+include a shared formatter chunk. Static Vue text remains inlined.

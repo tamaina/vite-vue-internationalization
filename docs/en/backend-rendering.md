@@ -95,3 +95,12 @@ servers must continue passing `initialLocale` explicitly.
 The framework-independent `test/fixtures/ssr` fixture is exercised by
 `pnpm test:ssr` with a production client and server build and Chromium hydration.
 The Workers example above remains an HTML-only example.
+
+### Scoped CSS with mixed strategies
+
+Use the same project root and configure `@vitejs/plugin-vue` in both builds with
+`vue({ features: { componentIdGenerator: 'filepath' } })`. Its production default
+includes transformed SFC source in the scope ID. VVI's virtual and inline transforms
+produce different source, so the default can give server HTML and client CSS
+different IDs. The filepath setting keeps scoped CSS IDs consistent across both
+strategies. Custom ID generators must likewise produce the same ID on both sides.

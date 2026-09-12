@@ -568,10 +568,8 @@ describe('virtual module generation', () => {
 			{},
 		);
 
-		expect(replaced).toContain('const apples = ((__values) => ((typeof __values === "number" ? (__values) : __values?.["n"]) ?? "{n}") + " apples")({ n });');
-		expect(replaced).toContain('const refApples = ((__values) => ((typeof __values === "number" ? (__values) : __values?.["n"]) ?? "{n}") + " apples")({ n: count });');
-		expect(replaced).toContain('const computedApples = ((__values) => ((typeof __values === "number" ? (__values) : __values?.["n"]) ?? "{n}") + " apples")({ n: Math.max(count, 1) });');
-		expect(replaced).toContain('const missing = "$locale.sfc.missing";');
+		const execute = new Function('n', 'count', `${replaced.replace(/^const l = [^;]+;/, '')}; return [apples, refApples, computedApples, missing];`);
+		expect(execute(2, 3)).toEqual(['2 apples', '3 apples', '3 apples', '$locale.sfc.missing']);
 	});
 
 	it('preserves message functions in virtual and inline localizer output', () => {
@@ -604,8 +602,8 @@ describe('virtual module generation', () => {
 			},
 		);
 
-		expect(replaced).toContain('const value = (((values');
-		expect(replaced).toContain(')({ name }));');
+		const execute = new Function('name', `${replaced.replace(/^const l = [^;]+;/, '')}; return value;`);
+		expect(execute('Fixture')).toBe('Hello Fixture');
 	});
 
 	it('resolves linked messages in inline localizer calls', () => {
@@ -641,10 +639,8 @@ describe('virtual module generation', () => {
 			},
 		);
 
-		expect(replaced).toContain('const relative = ((__values) => "Hello " + ((((__values) => "World " + ((typeof __values === "number" ? (__values) : __values?.["count"]) ?? "{count}"))(__values)).toLocaleLowerCase()))({ count });');
-		expect(replaced).toContain('const env = ((__values) => "From " + ((__values) => "Example " + ((typeof __values === "number" ? (__values) : __values?.["count"]) ?? "{count}"))(__values))({ count });');
-		expect(replaced).toContain('const sfc = ((__values) => "From " + ((__values) => "World " + ((typeof __values === "number" ? (__values) : __values?.["count"]) ?? "{count}"))(__values))({ count });');
-		expect(replaced).toContain('const recursive = ((__values) => ((__values) => "@:recursive")(__values))({ count });');
+		const execute = new Function('count', `${replaced.replace(/^const l = [^;]+;/, '')}; return [relative, env, sfc, recursive];`);
+		expect(execute(3)).toEqual(['Hello world 3', 'From Example 3', 'From World 3', '@:recursive']);
 	});
 
 	it('replaces ICU messageformat inline localizer calls', () => {
@@ -672,9 +668,9 @@ describe('virtual module generation', () => {
 			'icu',
 		);
 
-		expect(replaced).toContain('new Intl.PluralRules("en-US"');
-		expect(replaced).toContain('"female":()=>');
-		expect(replaced).not.toContain('one {one apple}');
+		expect(replaced).toContain('__VVI_FORMAT_ICU__');
+		expect(replaced).toContain('syntax:"icu",locale:"en-US"');
+		expect(replaced).not.toContain('new Intl.PluralRules');
 	});
 
 	it('rewrites template locale access to inline text markers', () => {
@@ -872,7 +868,8 @@ describe('virtual module generation', () => {
 
 		expect(replaced).toContain('const title = "Title";');
 		expect(replaced).toContain('const titleText = "Title";');
-		expect(replaced).toContain('const body = ((__values) => "From " + ((typeof __values === "number" ? (undefined) : __values?.["source"]) ?? "{source}"))({ source });');
+		const execute = new Function('source', `${replaced.replace(/^import[^;]+;/, '')}; return [title, titleText, body];`);
+		expect(execute('fixture')).toEqual(['Title', 'Title', 'From fixture']);
 		expect(replaced).not.toContain('Messages.$locale');
 		expect(replaced).not.toContain('Messages.$l');
 	});
@@ -1131,9 +1128,10 @@ describe('virtual module generation', () => {
 
 		const localizedCode = bundle['assets/StatusLabel.ja-JP.js'].code;
 
-		expect(localizedCode).toContain('const label = (({');
-		expect(localizedCode).toContain('[String(key)])({ count })');
-		expect(localizedCode).not.toContain('=>{"completed"');
+		const execute = new Function('status', 'count', `${localizedCode}; return label;`);
+		expect(execute('done', 3)).toBe('3 件が完了しました');
+		expect(execute('failed', 2)).toBe('2 件が失敗しました');
+		expect(execute('pending', 1)).toBe('1 件を処理中です');
 	});
 
 	it('rewrites imports between localized chunks', () => {
