@@ -1,6 +1,6 @@
 import { SourceMap as InputSourceMap } from 'node:module';
 import { SourceMap } from 'magic-string';
-import type { SourceMapPayload } from 'node:module';
+import type { SourceMapPayload, SourceMapping } from 'node:module';
 import type { SourceMapSegment } from 'magic-string';
 
 /** An explicitly retained range of the current source, including its provenance. */
@@ -54,8 +54,10 @@ export class SourceEdits {
 			if (column === 0 || origin !== previous) {
 				if (origin === undefined) mappings[line].push([column]);
 				else if (inputMap) {
-					const entry = inputMap.findEntry(lines[origin], columns[origin]);
-					if ('originalSource' in entry) {
+					// Source-map support loaded by the build can return explicit undefined
+					// fields for generated-only segments, despite Node's narrower typings.
+					const entry: Partial<SourceMapping> = inputMap.findEntry(lines[origin], columns[origin]);
+					if (typeof entry.originalSource === 'string' && typeof entry.originalLine === 'number' && typeof entry.originalColumn === 'number') {
 						let source = sources.indexOf(entry.originalSource);
 						if (source < 0) { source = sources.length; sources.push(entry.originalSource); }
 						mappings[line].push([column, source, entry.originalLine, entry.originalColumn]);

@@ -61,6 +61,6 @@ the original report's required failing and passing test.
 
 No version bump or publishing is part of this branch. Include the documented
 runtime/fallback corrections in the next reviewed stabilization release. Inline
-output salt v7 prevents reuse of old URLs for the changed output. The chronological
+output salt v8 prevents reuse of old URLs for the changed output. The chronological
 investigation and failing-before-fix observations are in
 `issue-roadmap-progress.md`; final verification results are recorded there.

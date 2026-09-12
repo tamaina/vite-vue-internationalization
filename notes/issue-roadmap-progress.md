@@ -615,3 +615,19 @@ describe retained helper dictionaries and runtime lookups consistently with the
 new behavior. #39 still requires the original observed symptom/environment; its
 absence is not evidence that the report is fixed. Consequently #51 and the full
 user goal are not complete.
+
+## CI source-map regression after lint cleanup
+
+The lint cleanup in `80b66da` removed an originalSource nullish check that is
+necessary at runtime. With the build's source-map support loaded, findEntry on a
+generated-only segment returns an object whose originalSource/originalLine/
+originalColumn fields are undefined, despite Node's declared SourceMapping type.
+Treating property presence as proof of a mapped segment inserted a null source
+and corrupted later VLQ deltas (the production fixture mapped SFC line 12 to 1990).
+
+The regression reproduces locally on Node 24.18.0 as well as in CI; it is not
+explained by the CI Node version. A three-line fixture reproduces the corrupt
+source list before the fix. Composition now treats entries as Partial<SourceMapping>
+and checks the actual source/line/column types, keeping generated-only segments
+unmapped without disabling lint rules. The output salt advances to v8 so corrected
+source maps and inline sourceMappingURL bytes receive fresh artifact URLs.

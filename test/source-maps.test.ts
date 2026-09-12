@@ -18,6 +18,16 @@ function position(source: string, text: string) {
 }
 
 describe('composed SFC source maps', () => {
+	it('keeps generated-only segments unmapped without corrupting subsequent source positions', () => {
+		const edits = new SourceEdits('first();\nhelper();\nlast();', 'chunk.js');
+		const map = new SourceMap(JSON.parse(edits.generateMap({
+			version: 3, file: 'chunk.js', sourceRoot: '', sources: ['Original.vue'], sourcesContent: ['first();\n  last();'], names: [],
+			mappings: 'AAAA;A;AACE',
+		}).toString()));
+		expect(map.payload.sources).toEqual(['Original.vue']);
+		expect(map.findEntry(1, 0)).not.toHaveProperty('originalSource', 'Original.vue');
+		expect(map.findEntry(2, 0)).toMatchObject({ originalSource: 'Original.vue', originalLine: 1, originalColumn: 2 });
+	});
 	it('preserves upstream sourceRoot and embedded source content when composing chunk maps', () => {
 		const edits = new SourceEdits('generated();', 'chunk.js');
 		edits.replace(edits.code, 0, 0, '/* injected */\n');
