@@ -479,6 +479,17 @@ describe('virtual module generation', () => {
 		expect(output).toContain('__VUE_INTERNATIONALIZATION_INLINE_TEXT__');
 		expect(output).toContain('<p v-for="{ item: $locale } in rows">{{ $locale.sfc.title }}</p>');
 	});
+	it.each(['{ name: /[)]/.test(value) }', '{ name: value /* ) */ }', '{ name: `x${(() => ")")()}` }'])('keeps full localizer argument expressions: %s', (argument) => {
+		const code = `<template>{{ $l.sfc.hello(${argument}) }}</template>`;
+		const output = internals.rewriteInlineLocaleTemplateAccess(code, '/App.vue');
+		expect(output).toContain(`${argument})`);
+		expect(output).toContain('__VUE_INTERNATIONALIZATION_INLINE_LOCALIZER__');
+	});
+	it.each([String.raw`/[\]]/.test(value) ? 'a' : 'b'`, 'value /* ] */', '`x${items[\'key\']}`'])('keeps complete computed-key expressions: %s', (key) => {
+		const output = internals.rewriteInlineLocaleTemplateAccess(`<template>{{ $locale.sfc.items[${key}].title }}</template>`, '/App.vue');
+		expect(output).toContain(`,${key},&quot;title&quot;)`);
+		expect(compileTemplate({ source: output, filename: '/App.vue', id: 'expression' }).errors).toEqual([]);
+	});
 	it('does not inject inline bindings twice', () => {
 		const output = internals.transformVueSfcInline([
 			'<template>{{ $locale.env.title }}</template>',

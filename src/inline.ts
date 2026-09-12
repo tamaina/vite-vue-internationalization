@@ -816,49 +816,22 @@ function createTemplateStringArgument(value: string): string {
 }
 
 function findBalancedExpressionEnd(source: string, start: number, open: string, close: string): number | undefined {
-	let depth = 1;
-	let quote: '"' | '\'' | '`' | undefined;
-	let escaped = false;
-
-	for (let index = start; index < source.length; index++) {
-		const char = source[index];
-
-		if (quote) {
-			if (escaped) {
-				escaped = false;
-				continue;
-			}
-
-			if (char === '\\') {
-				escaped = true;
-				continue;
-			}
-
-			if (char === quote) {
-				quote = undefined;
-			}
-
-			continue;
+	if (source[start - 1] !== open) return undefined;
+	const prefix = '__vvi';
+	const parsed = ts.createSourceFile('expression.ts', prefix + source.slice(start - 1), ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+	let result: number | undefined;
+	const visit = (node: ts.Node) => {
+		if (result !== undefined) return;
+		if ((open === '(' && ts.isCallExpression(node) || open === '[' && ts.isElementAccessExpression(node))
+			&& ts.isIdentifier(node.expression) && node.expression.text === prefix && node.getStart(parsed) === 0) {
+			const token = node.getLastToken(parsed);
+			if (token?.getText(parsed) === close) result = token.getStart(parsed) + start - 1 - prefix.length;
+			return;
 		}
-
-		if (char === '"' || char === '\'' || char === '`') {
-			quote = char;
-			continue;
-		}
-
-		if (char === open) {
-			depth++;
-			continue;
-		}
-
-		if (char === close) {
-			depth--;
-
-			if (depth === 0) {
-				return index;
-			}
-		}
-	}
+		ts.forEachChild(node, visit);
+	};
+	visit(parsed);
+	return result;
 }
 
 export function inlineLocaleChunks(

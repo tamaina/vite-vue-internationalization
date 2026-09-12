@@ -67,6 +67,7 @@ try {
 		assert.equal(await page.locator('#fallback').textContent(), '共通fallback');
 		assert.equal(await page.locator('#literal-text').textContent(), '$locale.sfc.title');
 		assert.equal(await page.locator('#literal-expression').textContent(), '$locale.sfc.title');
+		if (!icu) assert.equal(await page.locator('#computed-key').textContent(), 'computed');
 		assert.equal(await page.evaluate(() => window.ssrContent === document.querySelector('#app').textContent), true);
 		assert.equal(await page.locator('#lazy').evaluate(element => getComputedStyle(element).color), 'rgb(60, 40, 20)');
 		assert.equal(await page.locator('button').textContent(), locale === 'en-US' ? 'English: 1 items' : '日本語: 1 件');

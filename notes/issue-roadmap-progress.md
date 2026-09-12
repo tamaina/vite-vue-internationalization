@@ -241,3 +241,17 @@ do not infer a specific diagnostic or confirmed cause from this screenshot.
   expressions, regex literals/comments in call arguments, nested rewrites and
   unsupported expressions before closing #46. Remaining roadmap issues and remote
   validation are unchanged; no issue closures or push have been performed.
+
+## Eighth increment: balanced expression parsing (#46)
+
+- Replaced the character-based parenthesis/bracket scanner with TypeScript AST
+  token boundaries. A regex character class or comment containing ] previously
+  truncated a dynamic lookup key and produced invalid JavaScript. Both failures
+  were reproduced before the fix (/tmp/vvi-expression-baseline.log).
+- Six cases cover regex/comments/template literals in call arguments and computed
+  keys. Transformed computed-key output also passes the real Vue template compiler.
+- Production SSR fixture includes a comment containing ] inside a computed lookup.
+  Both virtual and mixed inline browser hydration render the expected value.
+- 173 tests, typecheck and build pass; targeted lint was run. Broader #46 audits
+  (nested expression provenance/composition and unsupported syntax handling) remain
+  recorded above. No roadmap issue is declared complete solely from these cases.
