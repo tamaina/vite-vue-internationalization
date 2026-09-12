@@ -1,6 +1,7 @@
 import { parse as parseSfc } from '@vue/compiler-sfc';
 import ts from 'typescript';
 import YAML from 'yaml';
+import { editSource, type SourceEdits } from './sourceEdits.js';
 import { createComponentLocaleType, createComponentLocalizerType, createLocalizerRefType, createUseLocaleTypeParameters, type LocaleBindingTypes } from './localeTypes.js';
 import { getScriptOpenTag, getScriptSetupOpenTag, injectScriptSetup } from './scriptSetup.js';
 import type { LocaleDictionary, LocaleMessageFunction, ParsedVueLocale, SfcLocaleBlock } from './types.js';
@@ -165,27 +166,21 @@ export function mergeLocaleDictionaries(...dictionaries: LocaleDictionary[]): Lo
 	return merged;
 }
 
-export function stripLocaleBlocks(code: string, filename: string): string {
+export function stripLocaleBlocks(code: string, filename: string, edits?: SourceEdits): string {
 	const { blocks } = parseVueLocales(code, filename);
 
 	if (blocks.length === 0) {
 		return code;
 	}
 
-	let next = '';
-	let cursor = 0;
-
-	for (const block of blocks) {
-		next += code.slice(cursor, block.start);
-		cursor = block.end;
-	}
-
-	next += code.slice(cursor);
+	let next = code;
+	for (const block of [...blocks].reverse()) next = editSource(next, block.start, block.end, '', edits);
 	return next;
 }
 
 type LocaleBindingInjectionOptions = {
 	moduleExpression?: string;
+	edits?: SourceEdits;
 };
 
 type TransformVueSfcOptions = LocaleBindingTypes & LocaleBindingInjectionOptions;
@@ -218,7 +213,7 @@ export function injectLocaleBinding(
 		'',
 	].filter((line, index, lines) => line.length > 0 || index === 0 || index === lines.length - 1).join('\n');
 
-	return injectScriptSetup(code, injection);
+	return injectScriptSetup(code, injection, options.edits);
 }
 
 export function hasLocaleBinding(code: string, name: '$locale' | '$l'): boolean {
@@ -270,7 +265,7 @@ export function transformVueSfc(code: string, filename: string, types: Transform
 		module: getPrimaryLocaleDictionary(parsed.blocks, types.primaryLocale, parsed.scriptMessages),
 	};
 	const moduleExpression = types.moduleExpression ?? 'import.meta.url';
-	const withSetupBinding = injectLocaleBinding(stripLocaleBlocks(code, filename), bindingTypes, { moduleExpression });
+	const withSetupBinding = injectLocaleBinding(stripLocaleBlocks(code, filename, types.edits), bindingTypes, { moduleExpression, edits: types.edits });
 
 	if (!hasLocaleDictionaryEntries(bindingTypes.module)) {
 		return withSetupBinding;
@@ -278,6 +273,7 @@ export function transformVueSfc(code: string, filename: string, types: Transform
 
 	return injectComponentLocaleOptions(withSetupBinding, filename, bindingTypes, {
 		moduleExpression,
+		edits: types.edits,
 	});
 }
 
@@ -340,6 +336,7 @@ export function injectComponentLocaleOptions(
 		localeExpression?: string;
 		localizerExpression?: string;
 		moduleExpression?: string;
+		edits?: SourceEdits;
 	} = {},
 ): string {
 	const result = parseSfc(code, { filename, pad: false });
@@ -362,7 +359,7 @@ export function injectComponentLocaleOptions(
 	];
 
 	if (!result.descriptor.script) {
-		return `${code}\n<script${scriptLangAttribute}>\n${importSection}export default {\n${optionLines.map((line) => `\t${line}`).join('\n')}\n};\n</script>\n`;
+		return editSource(code, code.length, code.length, `\n<script${scriptLangAttribute}>\n${importSection}export default {\n${optionLines.map((line) => `\t${line}`).join('\n')}\n};\n</script>\n`, options.edits);
 	}
 
 	const script = result.descriptor.script;
@@ -383,23 +380,17 @@ export function injectComponentLocaleOptions(
 			'',
 		].join('\n');
 
-		return `${code.slice(0, insertAt)}${appended}${code.slice(script.loc.end.offset)}`;
+		return editSource(code, script.loc.end.offset, script.loc.end.offset, appended.slice(content.length), options.edits);
 	}
 
 	const expression = exportAssignment.expression;
-	const beforeExport = content.slice(0, exportAssignment.getStart(sourceFile));
-	const afterExport = content.slice(exportAssignment.end);
 	const componentVariable = '__VUE_INTERNATIONALIZATION_COMPONENT__';
 	const replacement = [
-		importLine,
-		`const ${componentVariable} = ${content.slice(expression.getStart(sourceFile), expression.end)};`,
-		`${componentVariable}.$locale = ${localeExpression};`,
-		`${componentVariable}.$l = ${localizerExpression};`,
-		`export default ${componentVariable};`,
-	].join('\n');
-	const nextContent = `${beforeExport}${replacement}${afterExport}`;
-
-	return `${code.slice(0, insertAt)}${nextContent}${code.slice(script.loc.end.offset)}`;
+		`${importLine}\nconst ${componentVariable} = `,
+		{ start: insertAt + expression.getStart(sourceFile), end: insertAt + expression.end },
+		`;\n${componentVariable}.$locale = ${localeExpression};\n${componentVariable}.$l = ${localizerExpression};\nexport default ${componentVariable};`,
+	];
+	return editSource(code, insertAt + exportAssignment.getStart(sourceFile), insertAt + exportAssignment.end, replacement, options.edits);
 }
 
 function mergeLocaleDictionaryInto(target: LocaleDictionary, source: LocaleDictionary): void {

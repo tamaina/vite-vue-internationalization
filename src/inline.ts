@@ -6,6 +6,7 @@ import MagicString from 'magic-string';
 import ts from 'typescript';
 import { parseSync } from 'rolldown/utils';
 import { ScopeTracker, walk } from 'oxc-walker';
+import { editSource, editSourceRange, type SourceEdits } from './sourceEdits.js';
 import { compileLocaleMessage } from './message.js';
 import { hasLocaleBinding } from './parse.js';
 import { injectScriptSetup } from './scriptSetup.js';
@@ -258,7 +259,7 @@ export function createInlineLocaleMarker(moduleId: string): string {
 	return `${INLINE_MARKER_PREFIX}${Buffer.from(moduleId, 'utf8').toString('base64')}`;
 }
 
-export function injectInlineLocaleBinding(code: string, moduleId: string): string {
+export function injectInlineLocaleBinding(code: string, moduleId: string, edits?: SourceEdits): string {
 	const needsLocaleBinding = !hasLocaleBinding(code, '$locale');
 	const needsLocalizerBinding = !hasLocaleBinding(code, '$l');
 
@@ -273,19 +274,19 @@ export function injectInlineLocaleBinding(code: string, moduleId: string): strin
 		'',
 	].filter((line, index, lines) => line.length > 0 || index === 0 || index === lines.length - 1).join('\n');
 
-	return injectScriptSetup(code, injection);
+	return injectScriptSetup(code, injection, edits);
 }
 
-export function rewriteInlineLocaleTemplateAccess(code: string, moduleId: string): string {
+export function rewriteInlineLocaleTemplateAccess(code: string, moduleId: string, edits?: SourceEdits): string {
 	const marker = createInlineLocaleMarker(moduleId);
 	const bindings = new Set(['$locale', '$l'].filter(name => hasLocaleBinding(code, name as '$locale' | '$l')));
 
-	return replaceVueTemplateContent(code, (template) =>
-		rewriteTemplateLocaleAccess(rewriteTemplateLocalizerAccess(template, marker, bindings), marker, bindings),
-	);
+	return replaceVueTemplateContent(code, (template, child) =>
+		rewriteTemplateLocaleAccess(rewriteTemplateLocalizerAccess(template, marker, bindings, child), marker, bindings, child),
+	edits);
 }
 
-export function rewriteInlineRuntimeLocaleAccess(code: string, moduleId: string, parserFilename = 'inline.ts'): string {
+export function rewriteInlineRuntimeLocaleAccess(code: string, moduleId: string, parserFilename = 'inline.ts', edits?: SourceEdits): string {
 	let parsed: ParsedInlineJavaScript;
 
 	try {
@@ -307,16 +308,16 @@ export function rewriteInlineRuntimeLocaleAccess(code: string, moduleId: string,
 	}
 
 	const marker = JSON.stringify(createInlineLocaleMarker(moduleId));
-	const magic = new MagicString(code);
+	let next = code;
 
-	for (const replacement of replacements) {
+	for (const replacement of [...replacements].sort((a, b) => b.start - a.start)) {
 		const callee = replacement.kind === 'locale'
 			? INLINE_LOCALE_CALL
 			: INLINE_LOCALIZERS_CALL;
-		magic.overwrite(replacement.start, replacement.end, `${callee}(${marker})`);
+		next = editSource(next, replacement.start, replacement.end, `${callee}(${marker})`, edits);
 	}
 
-	return magic.toString();
+	return next;
 }
 
 function collectRuntimeLocaleHelperReplacements(ast: AstNode): RuntimeLocaleHelperReplacement[] {
@@ -350,7 +351,7 @@ function collectRuntimeLocaleHelperReplacements(ast: AstNode): RuntimeLocaleHelp
 	return replacements;
 }
 
-export function rewriteInlineComponentLocaleAccess(code: string, filename: string, root: string): string {
+export function rewriteInlineComponentLocaleAccess(code: string, filename: string, root: string, edits?: SourceEdits): string {
 	const imports = collectVueDefaultImports(code, filename, root);
 
 	if (imports.size === 0) {
@@ -358,8 +359,9 @@ export function rewriteInlineComponentLocaleAccess(code: string, filename: strin
 	}
 
 	return rewriteScriptComponentLocaleAccess(
-		rewriteTemplateComponentLocaleAccess(code, imports),
+		rewriteTemplateComponentLocaleAccess(code, imports, edits),
 		imports,
+		edits,
 	);
 }
 
@@ -434,9 +436,17 @@ function templateBindingNames(content: string | undefined): Set<string> {
 	return names;
 }
 
-function rewriteTemplateLocalizerAccess(template: string, marker: string, bindings: Set<string>): string {
+type SourceEdit = { start: number; end: number; replacement: Parameters<typeof editSource>[3] };
+
+function applySourceEdits(code: string, changes: SourceEdit[], edits?: SourceEdits): string {
+	let next = code;
+	for (const change of changes.sort((a, b) => b.start - a.start)) next = editSource(next, change.start, change.end, change.replacement, edits);
+	return next;
+}
+
+function rewriteTemplateLocalizerAccess(template: string, marker: string, bindings: Set<string>, edits?: SourceEdits): string {
 	const references = templateLocaleReferences(template, bindings);
-	let next = '';
+	const changes: SourceEdit[] = [];
 	let cursor = 0;
 
 	for (const match of template.matchAll(LOCALIZER_ACCESS_PREFIX_RE)) {
@@ -455,17 +465,19 @@ function rewriteTemplateLocalizerAccess(template: string, marker: string, bindin
 			continue;
 		}
 
-		next += template.slice(cursor, start);
-		next += `__VUE_INTERNATIONALIZATION_INLINE_LOCALIZER__(${createTemplateStringArgument(marker)},${createTemplateStringArgument(`${scope}${pathExpression}`)},${template.slice(valuesStart, callEnd)})`;
+		changes.push({ start, end: callEnd + 1, replacement: [
+			`__VUE_INTERNATIONALIZATION_INLINE_LOCALIZER__(${createTemplateStringArgument(marker)},${createTemplateStringArgument(`${scope}${pathExpression}`)},`,
+			{ start: valuesStart, end: callEnd }, ')',
+		] });
 		cursor = callEnd + 1;
 	}
 
-	return cursor === 0 ? template : next + template.slice(cursor);
+	return applySourceEdits(template, changes, edits);
 }
 
-function rewriteTemplateLocaleAccess(template: string, marker: string, bindings: Set<string>): string {
+function rewriteTemplateLocaleAccess(template: string, marker: string, bindings: Set<string>, edits?: SourceEdits): string {
 	const references = templateLocaleReferences(template, bindings);
-	let next = '';
+	const changes: SourceEdit[] = [];
 	let cursor = 0;
 
 	for (const match of template.matchAll(/\$locale(?:\.value)?\.(env|sfc)/g)) {
@@ -488,12 +500,11 @@ function rewriteTemplateLocaleAccess(template: string, marker: string, bindings:
 			continue;
 		}
 
-		next += template.slice(cursor, start);
-		next += replacement;
+		changes.push({ start, end: access.end, replacement });
 		cursor = access.end;
 	}
 
-	return cursor === 0 ? template : next + template.slice(cursor);
+	return applySourceEdits(template, changes, edits);
 }
 
 function createInlineTemplateAccessReplacement(
@@ -525,22 +536,21 @@ function createInlineTemplateAccessReplacement(
 	return `__VUE_INTERNATIONALIZATION_INLINE_LOOKUP__(${createTemplateStringArgument(marker)},${createTemplateStringArgument(`${scope}.${baseKeys.join('.')}`)},${dynamic.expression},${createTemplateStringArgument(suffixKeys.join('.'))})`;
 }
 
-function rewriteScriptComponentLocaleAccess(code: string, imports: Map<string, string>): string {
+function rewriteScriptComponentLocaleAccess(code: string, imports: Map<string, string>, edits?: SourceEdits): string {
 	const { descriptor } = parseSfc(code);
 	if (!descriptor.script && !descriptor.scriptSetup && !descriptor.template && descriptor.styles.length === 0 && descriptor.customBlocks.length === 0) {
-		return rewriteComponentLocaleAccess(code, imports, false);
+		return rewriteComponentLocaleAccess(code, imports, false, edits);
 	}
-	return replaceVueScriptContent(code, script => rewriteComponentLocaleAccess(script, imports, false));
+	return replaceVueScriptContent(code, (script, _filename, child) => rewriteComponentLocaleAccess(script, imports, false, child), edits);
 }
 
-function rewriteTemplateComponentLocaleAccess(code: string, imports: Map<string, string>): string {
-	return replaceVueTemplateContent(code, (template) =>
-		rewriteComponentLocaleAccess(template, imports, true),
-	);
+function rewriteTemplateComponentLocaleAccess(code: string, imports: Map<string, string>, edits?: SourceEdits): string {
+	return replaceVueTemplateContent(code, (template, child) =>
+		rewriteComponentLocaleAccess(template, imports, true, child), edits);
 }
 
-export function rewriteVueScriptRuntimeLocaleAccess(code: string, moduleId: string): string {
-	return replaceVueScriptContent(code, (script, parserFilename) => rewriteInlineRuntimeLocaleAccess(script, moduleId, parserFilename));
+export function rewriteVueScriptRuntimeLocaleAccess(code: string, moduleId: string, edits?: SourceEdits): string {
+	return replaceVueScriptContent(code, (script, parserFilename, child) => rewriteInlineRuntimeLocaleAccess(script, moduleId, parserFilename, child), edits);
 }
 
 export function hasVueScriptLocaleAccess(code: string): boolean {
@@ -550,7 +560,7 @@ export function hasVueScriptLocaleAccess(code: string): boolean {
 		.some(script => script && SCRIPT_LOCALE_ACCESS_RE.test(script.content));
 }
 
-function replaceVueScriptContent(code: string, replacer: (script: string, parserFilename: string) => string): string {
+function replaceVueScriptContent(code: string, replacer: (script: string, parserFilename: string, edits?: SourceEdits) => string, edits?: SourceEdits): string {
 	const descriptor = parseSfc(code).descriptor;
 	const scripts = [descriptor.script, descriptor.scriptSetup]
 		.filter(script => script != null)
@@ -563,13 +573,13 @@ function replaceVueScriptContent(code: string, replacer: (script: string, parser
 		const parserFilename = script.lang === 'tsx' || script.lang === 'jsx'
 			? 'inline.tsx'
 			: 'inline.ts';
-		next = next.slice(0, start) + replacer(next.slice(start, end), parserFilename) + next.slice(end);
+		next = editSourceRange(next, start, end, (source, child) => replacer(source, parserFilename, child), edits);
 	}
 
 	return next;
 }
 
-function replaceVueTemplateContent(code: string, replacer: (template: string) => string): string {
+function replaceVueTemplateContent(code: string, replacer: (template: string, edits?: SourceEdits) => string, edits?: SourceEdits): string {
 	const template = parseSfc(code).descriptor.template;
 
 	if (!template) {
@@ -578,7 +588,7 @@ function replaceVueTemplateContent(code: string, replacer: (template: string) =>
 
 	const start = template.loc.start.offset;
 	const end = template.loc.end.offset;
-	return code.slice(0, start) + replacer(code.slice(start, end)) + code.slice(end);
+	return editSourceRange(code, start, end, replacer, edits);
 }
 
 function parseLocaleAccessSegments(source: string, start: number): ParsedLocaleAccess | undefined {
@@ -660,33 +670,35 @@ function parseStaticPropertyKey(expression: string): string | undefined {
 	}
 }
 
-function rewriteComponentLocaleAccess(code: string, imports: Map<string, string>, htmlEscaped: boolean): string {
+function rewriteComponentLocaleAccess(code: string, imports: Map<string, string>, htmlEscaped: boolean, edits?: SourceEdits): string {
 	let next = code;
 
 	for (const [name, moduleId] of imports) {
 		const marker = createInlineLocaleMarker(moduleId);
-		next = rewriteComponentLocalizerAccess(next, name, marker, htmlEscaped);
-		next = rewriteComponentLocaleMemberAccess(next, name, marker, htmlEscaped);
+		next = rewriteComponentLocalizerAccess(next, name, marker, htmlEscaped, edits);
+		next = rewriteComponentLocaleMemberAccess(next, name, marker, htmlEscaped, edits);
 	}
 
 	return next;
 }
 
-function rewriteComponentLocaleMemberAccess(code: string, name: string, marker: string, htmlEscaped: boolean): string {
+function rewriteComponentLocaleMemberAccess(code: string, name: string, marker: string, htmlEscaped: boolean, edits?: SourceEdits): string {
 	const references = componentReferenceOffsets(code, name, htmlEscaped);
 	const stringArgument = htmlEscaped ? createTemplateStringArgument : JSON.stringify;
 	const regexp = new RegExp(`\\b${escapeRegExp(name)}\\.\\$locale((?:\\.[A-Za-z_$][\\w$]*)+)`, 'g');
 
-	return code.replace(regexp, (match, pathExpression: string, offset: number) =>
-		references.has(offset) ? `__VUE_INTERNATIONALIZATION_INLINE_TEXT__(${stringArgument(marker)},${stringArgument(`sfc${pathExpression}`)})` : match,
-	);
+	const changes: SourceEdit[] = [];
+	for (const match of code.matchAll(regexp)) {
+		if (references.has(match.index)) changes.push({ start: match.index, end: match.index + match[0].length, replacement: `__VUE_INTERNATIONALIZATION_INLINE_TEXT__(${stringArgument(marker)},${stringArgument(`sfc${match[1]}`)})` });
+	}
+	return applySourceEdits(code, changes, edits);
 }
 
-function rewriteComponentLocalizerAccess(code: string, name: string, marker: string, htmlEscaped: boolean): string {
+function rewriteComponentLocalizerAccess(code: string, name: string, marker: string, htmlEscaped: boolean, edits?: SourceEdits): string {
 	const references = componentReferenceOffsets(code, name, htmlEscaped);
 	const stringArgument = htmlEscaped ? createTemplateStringArgument : JSON.stringify;
 	const regexp = new RegExp(`\\b${escapeRegExp(name)}\\.\\$l((?:\\.[A-Za-z_$][\\w$]*)+)\\(`, 'g');
-	let next = '';
+	const changes: SourceEdit[] = [];
 	let cursor = 0;
 
 	for (const match of code.matchAll(regexp)) {
@@ -704,12 +716,14 @@ function rewriteComponentLocalizerAccess(code: string, name: string, marker: str
 			continue;
 		}
 
-		next += code.slice(cursor, start);
-		next += `__VUE_INTERNATIONALIZATION_INLINE_LOCALIZER__(${stringArgument(marker)},${stringArgument(`sfc${pathExpression}`)},${code.slice(valuesStart, callEnd)})`;
+		changes.push({ start, end: callEnd + 1, replacement: [
+			`__VUE_INTERNATIONALIZATION_INLINE_LOCALIZER__(${stringArgument(marker)},${stringArgument(`sfc${pathExpression}`)},`,
+			{ start: valuesStart, end: callEnd }, ')',
+		] });
 		cursor = callEnd + 1;
 	}
 
-	return cursor === 0 ? code : next + code.slice(cursor);
+	return applySourceEdits(code, changes, edits);
 }
 
 function componentReferenceOffsets(code: string, name: string, template: boolean): Set<number> {

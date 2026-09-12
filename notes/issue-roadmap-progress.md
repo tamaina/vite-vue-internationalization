@@ -194,3 +194,27 @@ do not infer a specific diagnostic or confirmed cause from this screenshot.
   shadowing function parameters while translating the real imported accesses.
 - 161 tests, typecheck and build pass; targeted lint was fixed; Vue mixed and ICU
   relative mixed hydration pass. Source-map work remains the next #46 gate.
+
+## Sixth increment: source-position provenance (#46)
+
+- Added SourceEdits: concrete positional edits compose original UTF-16 offsets;
+  retained/moved ranges preserve provenance and synthetic insertions are unmapped.
+  No textual diff guesses are used. Subrange transforms fork/adopt tracked ranges.
+- Both virtual and inline SFC transforms, setup/component-option insertion,
+  locale-block deletion, template/component access and standalone helper rewrites
+  now return source maps. Retained localizer arguments and moved default-export
+  expressions preserve their original source locations.
+- Five mapping tests check original lines/columns and sourcesContent. A real Vite
+  SSR exception with block removal and setup injection maps back to the exact
+  original SFC line and column using ssrFixStacktrace.
+- 166 tests, typecheck, lint (8 warnings, 0 errors), build, Vue mixed and relative
+  ICU mixed hydration, and deterministic hash/SRI fixture pass.
+- Added scripts/test-source-maps.mjs as a production acceptance probe. Virtual
+  output passes. Inline output FAILS: index--pN2Zgtd.en.js maps the exception to
+  line 9 instead of original zero-based line 8. It still references the old
+  output map after locale-specific code rewrites and added guard/import lines.
+  This test is intentionally not wired to CI until repaired; the failure is an
+  outstanding #46/#44 gate, not a successful source-map completion claim.
+- Next: track applyInlineReplacementPlan, import/preload edits and injected headers
+  against each original chunk map; emit a map per localized chunk and rewrite its
+  sourceMappingURL, then validate both locale maps in the production probe.

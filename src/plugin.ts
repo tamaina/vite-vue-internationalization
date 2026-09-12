@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, relative, resolve } from 'node:path';
 import ts from 'typescript';
+import { SourceEdits } from './sourceEdits.js';
 import { augmentSsrManifest, createAssetManifest, finalizeAssetIntegrity, localizeAssetManifest } from './assetManifest.js';
 import {
 	augmentViteManifestJson,
@@ -278,25 +279,28 @@ export function vueInternationalization(options?: Partial<VueInternationalizatio
 						return null;
 					}
 
-					const transformed = rewriteInlineRuntimeLocaleAccess(code, toRuntimeModuleId(cleanId, root), cleanId);
+					const edits = new SourceEdits(code, cleanId);
+					const transformed = rewriteInlineRuntimeLocaleAccess(code, toRuntimeModuleId(cleanId, root), cleanId, edits);
 					return transformed === code
 						? null
 						: {
 							code: transformed,
-							map: null,
+							map: edits.generateMap(),
 						};
 				}
 
 				collectVueFile(state, cleanId, code);
+				const sourceEdits = new SourceEdits(code, cleanId);
 				const transformed =
 					command === 'build' && currentOptions.buildStrategy === 'inline-chunks'
-						? transformVueSfcInline(code, cleanId, root, currentOptions.primaryLocale, currentOptions.sfcTransform === 'all')
+						? transformVueSfcInline(code, cleanId, root, currentOptions.primaryLocale, currentOptions.sfcTransform === 'all', sourceEdits)
 						: transformVueSfc(code, id, {
 							primaryLocale: currentOptions.primaryLocale,
 							global: globalMessages[currentOptions.primaryLocale],
 							messageSyntax: currentOptions.messageSyntax,
 							transformAll: currentOptions.sfcTransform === 'all',
 							moduleExpression: JSON.stringify(toRuntimeModuleId(cleanId, root)),
+							edits: sourceEdits,
 						});
 
 				if (!transformed) {
@@ -305,7 +309,7 @@ export function vueInternationalization(options?: Partial<VueInternationalizatio
 
 				return {
 					code: transformed,
-					map: null,
+					map: sourceEdits.generateMap(),
 				};
 			},
 		},
@@ -761,7 +765,7 @@ function toRuntimeModuleId(filename: string, root: string): string {
 	return `/${relativePath}`;
 }
 
-function transformVueSfcInline(code: string, filename: string, root: string, primaryLocale?: string, transformAll = false): string | undefined {
+function transformVueSfcInline(code: string, filename: string, root: string, primaryLocale?: string, transformAll = false, edits?: SourceEdits): string | undefined {
 	if (hasInjectedLocaleBinding(code) || code.includes('__VUE_INTERNATIONALIZATION_INLINE_LOCALE__')) {
 		return undefined;
 	}
@@ -774,24 +778,25 @@ function transformVueSfcInline(code: string, filename: string, root: string, pri
 
 	const moduleId = toRuntimeModuleId(filename, root);
 	const marker = createInlineLocaleMarker(moduleId);
-	const stripped = stripLocaleBlocks(code, filename);
-	const rewrittenComponentAccess = rewriteInlineComponentLocaleAccess(stripped, filename, root);
-	const rewrittenLocaleAccess = rewriteInlineLocaleTemplateAccess(rewrittenComponentAccess, moduleId);
-	const rewrittenRuntimeAccess = rewriteVueScriptRuntimeLocaleAccess(rewrittenLocaleAccess, moduleId);
+	const stripped = stripLocaleBlocks(code, filename, edits);
+	const rewrittenComponentAccess = rewriteInlineComponentLocaleAccess(stripped, filename, root, edits);
+	const rewrittenLocaleAccess = rewriteInlineLocaleTemplateAccess(rewrittenComponentAccess, moduleId, edits);
+	const rewrittenRuntimeAccess = rewriteVueScriptRuntimeLocaleAccess(rewrittenLocaleAccess, moduleId, edits);
 	const moduleDictionary = getPrimaryLocaleDictionary(parsed.blocks, primaryLocale, parsed.scriptMessages);
 
 	if (!hasLocaleDictionaryEntries(moduleDictionary)) {
 		return hasVueScriptLocaleAccess(rewrittenRuntimeAccess)
-			? injectInlineLocaleBinding(rewrittenRuntimeAccess, moduleId)
+			? injectInlineLocaleBinding(rewrittenRuntimeAccess, moduleId, edits)
 			: rewrittenRuntimeAccess;
 	}
 
-	const withSetupBinding = injectInlineLocaleBinding(rewrittenRuntimeAccess, moduleId);
+	const withSetupBinding = injectInlineLocaleBinding(rewrittenRuntimeAccess, moduleId, edits);
 
 	return injectComponentLocaleOptions(withSetupBinding, filename, {
 		module: moduleDictionary,
 	}, {
 		importLine: '',
+		edits,
 		localeExpression: `__VUE_INTERNATIONALIZATION_INLINE_LOCALE__(${JSON.stringify(marker)}).sfc`,
 		localizerExpression: `__VUE_INTERNATIONALIZATION_INLINE_LOCALIZERS__(${JSON.stringify(marker)}).sfc`,
 	});
