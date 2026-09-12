@@ -277,3 +277,31 @@ do not infer a specific diagnostic or confirmed cause from this screenshot.
   real vue-tsc documented/compact ICU acceptance pass. #49 remains open for actual
   file-deletion/config/project lifecycle verification and matched measurements.
   This cache change does not resolve the unconfirmed original #39 symptom.
+
+## Tenth increment: Volar ownership, lifecycle and matched measurement (#49)
+
+- Real plugin file caches now belong to Vue IR through a WeakMap. Shared type and
+  global caches retain their bounds; disposed file content has no strong index in
+  the live project. This uses the actual IR lifetime because VueLanguagePluginReturn
+  has no dispose hook; no watcher or per-keystroke filesystem sweep was added.
+- The new standalone lifecycle test drives real createVueLanguagePlugin,
+  disposeVirtualCode and recreation, checks the selected locale after project
+  reload, then verifies that disposed IR and released file-cache owners collect
+  while project objects remain alive. It is wired to CI with --expose-gc.
+- Unit checks also cover changed primary locale, updated linked targets clearing
+  diagnostics, separate project caches and shared bounded type tables.
+- Lifecycle testing exposed another confirmed Volar defect: language-core supplies
+  lang=txt for custom blocks lacking a lang attribute. VVI now uses YAML in that
+  implicit case, while explicit lang=txt still reports an unsupported language.
+  This is independent of the still-unconfirmed symptom in #39's screenshot.
+- Added scripts/compare-volar-cache.mjs, which instruments baseline 404beff only
+  with counters, then runs baseline/current alternately in fresh --expose-gc
+  processes. Raw results are notes/benchmarks/volar-cache-comparison.json.
+  Three-sample medians for this 1000-edit internal workload: retained heap
+  6,888,032 -> 4,747,416 bytes; elapsed 320.06 -> 287.78ms. These are fixture
+  measurements, not general editor speed or memory guarantees. Retained entries
+  and parse counts remain the deterministic regression criteria.
+- Volar's 12 existing tests, 5 cache tests, typecheck, targeted lint, build,
+  real vue-tsc and the lifecycle subprocess pass. Cache lifecycle/measurement
+  evidence is now available; original #39 diagnosis and external diagnostics #13
+  still require separate work. No issue closure/push has occurred.

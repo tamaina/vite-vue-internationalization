@@ -3,6 +3,33 @@ import { BoundedCache } from '../src/boundedCache.js';
 import { volarInternals as v } from '../src/volar.js';
 
 describe('Volar cache retention', () => {
+	it('distinguishes the implicit custom-block txt language from explicit unsupported txt', () => {
+		const cache = v.createVolarCache();
+		const block = { name: 'locale_0', type: 'locale', attrs: { locale: 'en' }, lang: 'txt', content: 'title: default YAML' };
+		const dictionary = v.getLocaleDictionary(cache, '', '/App.vue', [block], 'en');
+		expect(dictionary.title).toBe('default YAML');
+		expect(v.getLocaleDiagnostics(cache, [block], 'en', dictionary, '/App.vue')).toHaveLength(0);
+		const explicit = { ...block, attrs: { ...block.attrs, lang: 'txt' } };
+		expect(v.getLocaleDiagnostics(cache, [explicit], 'en', {}, '/App.vue')[0].message).toContain('Unsupported locale lang "txt"');
+	});
+	it('owns file data by IR and isolates new projects while sharing bounded type data', () => {
+		const project = v.createVolarProjectCache();
+		const owner = {};
+		const first = project.forFile(owner);
+		expect(project.forFile(owner)).toBe(first);
+		const other = project.forFile({});
+		expect(other.moduleDictionaries).not.toBe(first.moduleDictionaries);
+		expect(other.generatedTypes).toBe(first.generatedTypes);
+		expect(v.createVolarProjectCache().shared.generatedTypes).not.toBe(first.generatedTypes);
+	});
+	it('invalidates locale selection and linked diagnostics when their inputs change', () => {
+		const cache = v.createVolarCache();
+		const blocks = ['en', 'ja'].map(locale => ({ name: `locale_${locale}`, type: 'locale', attrs: { locale }, lang: 'yaml', content: `title: ${locale}\nlinked: "@:target"` }));
+		expect(v.getLocaleDictionary(cache, '', '/App.vue', blocks, 'en').title).toBe('en');
+		expect(v.getLocaleDictionary(cache, '', '/App.vue', blocks, 'ja').title).toBe('ja');
+		expect(v.getLocaleDiagnostics(cache, blocks, 'en', {}, '/App.vue')).toHaveLength(1);
+		expect(v.getLocaleDiagnostics(cache, blocks, 'en', { target: 'resolved' }, '/App.vue')).toHaveLength(0);
+	});
 	it('replaces per-file revisions and reuses parsing before bounded type eviction', () => {
 		const cache = v.createVolarCache();
 		for (let revision = 0; revision < 1000; revision++) {

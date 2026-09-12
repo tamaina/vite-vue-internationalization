@@ -1,6 +1,6 @@
 import process from 'node:process';
 import { performance } from 'node:perf_hooks';
-import { volarInternals as v } from '../dist/volar.js';
+const { volarInternals: v } = await import(process.env.VVI_BENCHMARK_MODULE ?? '../dist/volar.js');
 
 const iterations = Number(process.argv[2] ?? 1000);
 if (!Number.isInteger(iterations) || iterations < 1) throw new Error('Expected a positive edit count.');

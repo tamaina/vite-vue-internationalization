@@ -39,7 +39,7 @@ export type VueInternationalizationVolarPluginConfig = {
 };
 
 const plugin: VueLanguagePlugin<VueInternationalizationVolarPluginConfig> = ({ config }) => {
-	const cache = createVolarCache();
+	const project = createVolarProjectCache();
 
 	return {
 		version: 2.2,
@@ -49,6 +49,7 @@ const plugin: VueLanguagePlugin<VueInternationalizationVolarPluginConfig> = ({ c
 			if (!/^script_(js|jsx|ts|tsx)$/.test(embeddedFile.id) || !shouldInjectLocaleTypes(config, ir.content, ir.customBlocks)) {
 				return;
 			}
+			const cache = project.forFile(ir);
 
 			const primaryLocale = config.primaryLocale ?? getFirstLocale(ir.customBlocks);
 			const moduleDictionary = getLocaleDictionary(cache, ir.content, fileName, ir.customBlocks, primaryLocale);
@@ -88,7 +89,7 @@ const plugin: VueLanguagePlugin<VueInternationalizationVolarPluginConfig> = ({ c
 export default plugin;
 
 /** Internal diagnostics for reproducible cache benchmarks. */
-export const volarInternals = { createVolarCache, getLocaleDictionary, getGeneratedTypes, getLocaleDiagnostics };
+export const volarInternals = { createVolarCache, createVolarProjectCache, getLocaleDictionary, getGeneratedTypes, getLocaleDiagnostics };
 
 type GeneratedTypes = {
 	localeRefType: string;
@@ -119,6 +120,12 @@ type LocaleBlockDiagnostic = LocaleDictionaryDiagnostic & {
 	source: string;
 };
 
+function localeBlockLanguage(block: LocaleCustomBlock): string {
+	if (typeof block.attrs.lang === 'string') return block.attrs.lang;
+	// Vue Language Tools supplies txt for custom blocks with no lang attribute.
+	return block.lang === 'txt' ? 'yaml' : block.lang ?? 'yaml';
+}
+
 function createVolarCache(): VolarCache {
 	return {
 		stats: { scriptParses: 0 },
@@ -126,6 +133,24 @@ function createVolarCache(): VolarCache {
 		moduleDictionaries: new BoundedCache(256),
 		moduleDiagnostics: new BoundedCache(256),
 		generatedTypes: new BoundedCache(256),
+	};
+}
+
+function createVolarProjectCache() {
+	const shared = createVolarCache();
+	const files = new WeakMap<object, VolarCache>();
+	return {
+		shared,
+		forFile(owner: object): VolarCache {
+			let cache = files.get(owner);
+			if (!cache) {
+				// IR ownership follows Vue Language Tools disposal without a watcher or
+				// a strong project-wide reference to deleted files or their contents.
+				cache = { ...shared, moduleDictionaries: new BoundedCache(1), moduleDiagnostics: new BoundedCache(1) };
+				files.set(owner, cache);
+			}
+			return cache;
+		},
 	};
 }
 
@@ -437,7 +462,7 @@ function getLocaleDictionary(
 		...blocks.map((block) =>
 			parseLocaleDictionaryForDiagnostics(
 				block.content,
-				block.lang ?? 'yaml',
+				localeBlockLanguage(block),
 				`<locale locale="${locale}">`,
 			).dictionary),
 		scriptMessages[locale] ?? {},
@@ -459,7 +484,7 @@ function getLocaleDiagnostics(
 			String(primaryLocale ?? ''),
 			block.name,
 			String(block.attrs.locale),
-			block.lang ?? 'yaml',
+			localeBlockLanguage(block),
 			block.content,
 		].join('\n'))
 		.join('\n---\n') + stableStringify(moduleDictionary);
@@ -472,7 +497,7 @@ function getLocaleDiagnostics(
 	const diagnostics = localeBlocks.flatMap((block) => {
 		const result = parseLocaleDictionaryForDiagnostics(
 			block.content,
-			block.lang ?? 'yaml',
+			localeBlockLanguage(block),
 			`<locale locale="${String(block.attrs.locale)}">`,
 		);
 
@@ -502,7 +527,7 @@ function getLinkedMessageDiagnostics(
 		.flatMap((block) => {
 			const result = parseLocaleDictionaryForDiagnostics(
 				block.content,
-				block.lang ?? 'yaml',
+				localeBlockLanguage(block),
 				`<locale locale="${primaryLocale}">`,
 			);
 
