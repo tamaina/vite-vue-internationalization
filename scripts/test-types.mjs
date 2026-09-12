@@ -17,11 +17,16 @@ try {
 		execFileSync('pnpm', ['exec', 'vue-tsc', '--noEmit', '-p', temporary], { stdio: 'pipe' });
 		writeFileSync(`${temporary}/App.vue`, source.replaceAll('{ n: 1 }', '{}').replaceAll('{ kind: \'yes\' }', '{}'));
 		const result = spawnSync('pnpm', ['exec', 'vue-tsc', '--noEmit', '-p', temporary], { encoding: 'utf8' });
-		if (result.status === 0 || (result.stdout.match(/error TS2345/g) ?? []).length !== 4) {
-			throw new Error(`Expected four missing-argument errors (script + template, SFC + env):\n${result.stdout}\n${result.stderr}`);
+		if (result.status === 0 || (result.stdout.match(/error TS2345/g) ?? []).length !== 6) {
+			throw new Error(`Expected six missing-argument errors (script + template, number/plural/select, SFC + env):\n${result.stdout}\n${result.stderr}`);
+		}
+		writeFileSync(`${temporary}/App.vue`, source.replaceAll('{ n: 1 }', '{ wrong: 1 }').replaceAll('{ kind: \'yes\' }', '{ wrong: \'yes\' }'));
+		const wrong = spawnSync('pnpm', ['exec', 'vue-tsc', '--noEmit', '-p', temporary], { encoding: 'utf8' });
+		if (wrong.status === 0 || (wrong.stdout.match(/error TS\d+/g) ?? []).length !== 6) {
+			throw new Error(`Expected six wrong-argument errors:\n${wrong.stdout}\n${wrong.stderr}`);
 		}
 	}
-	console.log('vue-tsc: documented and compact ICU types accept valid arguments and reject all four invalid calls.');
+	console.log('vue-tsc: documented and compact ICU number/plural/select types accept valid arguments and reject all six missing and wrong argument calls.');
 } finally {
 	rmSync(temporary, { recursive: true, force: true });
 }

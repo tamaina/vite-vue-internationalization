@@ -11,6 +11,24 @@ function compile(source: string) {
 }
 
 describe('inline object references surviving static replacement', () => {
+	it('distinguishes same-named bindings in nested and sibling scopes', () => {
+		const output = compile(`const locale=__VUE_INTERNATIONALIZATION_INLINE_LOCALE__(MARKER);
+const localizer=__VUE_INTERNATIONALIZATION_INLINE_LOCALIZERS__(MARKER);
+function local(locale, localizer) { return [locale.sfc.title, localizer.sfc.title()]; }
+function sibling() { const locale={sfc:{title:'Sibling'}}; return locale.sfc.title; }
+globalThis.result=[locale.sfc.title,localizer.sfc.title(),...local({sfc:{title:'Local'}},{sfc:{title:()=> 'Function'}}),sibling()];`);
+		const scope: { result?: unknown } = {};
+		new Function('globalThis', output)(scope);
+		expect(scope.result).toEqual(['Title', 'Title', 'Local', 'Function', 'Sibling']);
+	});
+	it('retains spread and additional argument evaluation through callable objects', () => {
+		const output = compile(`const localizer=__VUE_INTERNATIONALIZATION_INLINE_LOCALIZERS__(MARKER);
+const args=[{},1]; let effects=0;
+globalThis.result=[localizer.sfc.title(...args),localizer.sfc.title({},1,effects++),effects];`);
+		const scope: { result?: unknown } = {};
+		new Function('globalThis', output)(scope);
+		expect(scope.result).toEqual(['Title', 'Title', 1]);
+	});
 	it('retains Vue unref and escaped aliases, raw functions and missing-key fallback', () => {
 		const output = compile('const locale=__VUE_INTERNATIONALIZATION_INLINE_LOCALE__(MARKER); const unref=value=>value; const alias=unref(locale); globalThis.result=[alias.sfc["title"],alias.env["globalTitle"],alias.value.sfc.fn(1),alias.sfc.nested.missing];');
 		const scope: { result?: unknown } = {};

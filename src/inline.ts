@@ -9,6 +9,7 @@ import { editSource, editSourceRange, SourceEdits } from './sourceEdits.js';
 import { compileLocaleMessage } from './message.js';
 import { hasLocaleBinding } from './parse.js';
 import { injectScriptSetup } from './scriptSetup.js';
+import type { SourceSlice } from './sourceEdits.js';
 import type { SourceMapPayload } from 'node:module';
 import type { LocaleMessageSyntax, LocaleMessageToken } from './message.js';
 import type { LocaleDictionary } from './types.js';
@@ -49,6 +50,7 @@ type ModuleMessages = Partial<Record<string, Partial<Record<string, LocaleDictio
 type LocaleMessages = Partial<Record<string, LocaleDictionary>>;
 type PublicLocaleScope = 'env' | 'sfc';
 type InlinePayloadResolver = (moduleId: string) => InlineLocalePayload;
+type InlineBindings = { get(name: string): string | undefined };
 type InlinePayloadResolverCache = {
 	resolve(locale: string): InlinePayloadResolver;
 };
@@ -64,7 +66,8 @@ type InlineReplacementPlan = {
 	code: string;
 	operations: InlineReplacementOperation[];
 };
-type InlineReplacementOperation =
+type RetainedExpression = 'valuesExpression' | 'pluralExpression' | 'keyExpression';
+type InlineReplacementOperation = { sourceExpressions?: Partial<Record<RetainedExpression, SourceSlice>> } & (
 	| {
 		type: 'text-call';
 		start: number;
@@ -130,7 +133,7 @@ type InlineReplacementOperation =
 		end: number;
 		marker: string;
 		properties: string[];
-	};
+	});
 type ParsedLocaleAccess = {
 	end: number;
 	segments: LocaleAccessSegment[];
@@ -144,6 +147,8 @@ type LocaleAccessSegment =
 	| {
 		type: 'dynamic';
 		expression: string;
+		start: number;
+		end: number;
 	};
 type ParsedInlineJavaScript = {
 	ast: AstNode;
@@ -513,7 +518,7 @@ function createInlineTemplateAccessReplacement(
 	marker: string,
 	scope: PublicLocaleScope,
 	access: ParsedLocaleAccess,
-): string | undefined {
+): Parameters<typeof editSource>[3] | undefined {
 	const dynamicIndex = access.segments.findIndex((segment) => segment.type === 'dynamic');
 
 	if (dynamicIndex === -1) {
@@ -535,7 +540,11 @@ function createInlineTemplateAccessReplacement(
 
 	const baseKeys = base.map((segment) => segment.type === 'static' ? segment.value : '');
 	const suffixKeys = suffix.map((segment) => segment.type === 'static' ? segment.value : '');
-	return `__VUE_INTERNATIONALIZATION_INLINE_LOOKUP__(${createTemplateStringArgument(marker)},${createTemplateStringArgument(`${scope}.${baseKeys.join('.')}`)},${dynamic.expression},${createTemplateStringArgument(suffixKeys.join('.'))})`;
+	return [
+		`__VUE_INTERNATIONALIZATION_INLINE_LOOKUP__(${createTemplateStringArgument(marker)},${createTemplateStringArgument(`${scope}.${baseKeys.join('.')}`)},`,
+		{ start: dynamic.start, end: dynamic.end },
+		`,${createTemplateStringArgument(suffixKeys.join('.'))})`,
+	];
 }
 
 function rewriteScriptComponentLocaleAccess(code: string, imports: Map<string, string>, edits?: SourceEdits): string {
@@ -624,7 +633,7 @@ function parseLocaleAccessSegments(source: string, start: number): ParsedLocaleA
 			const expression = source.slice(cursor + 1, end);
 			const staticKey = parseStaticPropertyKey(expression);
 			segments.push(staticKey === undefined
-				? { type: 'dynamic', expression }
+				? { type: 'dynamic', expression, start: cursor + 1, end }
 				: { type: 'static', value: staticKey });
 			cursor = end + 1;
 			continue;
@@ -1469,23 +1478,36 @@ function createInlineReplacementPlan(
 		throw new Error('Expected inline JavaScript parser to return an AST.');
 	}
 
-	const localeBindings = new Map<string, string>();
-	const localizerBindings = new Map<string, string>();
+	const localeDeclarations = new Map<AstNode, string>();
+	const localizerDeclarations = new Map<AstNode, string>();
+	const scopeTracker = new ScopeTracker({ preserveExitedScopes: true });
+	walk(parsedCode.ast as OxcWalkInput, { scopeTracker, enter(node) {
+		const current = toAstNode(node);
+		if (current && isVariableDeclarator(current)) collectInlineBindingMarker(current, localeDeclarations, localizerDeclarations);
+	} });
+	scopeTracker.freeze();
+	const bindings = (declarations: Map<AstNode, string>): InlineBindings => ({ get(name) {
+		const node = scopeTracker.getDeclaration(name)?.node;
+		return node ? declarations.get(node as AstNode) : undefined;
+	} });
+	const localeBindings = bindings(localeDeclarations);
+	const localizerBindings = bindings(localizerDeclarations);
 	const operations: InlineReplacementOperation[] = [];
 	const objectBindings = new Map<number, string>();
 	const remainingNames = new Set<string>();
+	let replacedUntil = -1;
 
 	walk(parsedCode.ast as OxcWalkInput, {
+		scopeTracker,
 		enter(node, parent) {
 			const current = toAstNode(node);
 			const currentParent = parent ? toAstNode(parent) : undefined;
 
-			if (!current) {
+			if (!current || current.start < replacedUntil) {
 				return;
 			}
 
 			if (isVariableDeclarator(current)) {
-				collectInlineBindingMarker(current, localeBindings, localizerBindings);
 				if (isIdentifier(current.id) && current.init) objectBindings.set(current.init.start, current.id.name);
 				return;
 			}
@@ -1497,7 +1519,7 @@ function createInlineReplacementPlan(
 
 				if (operation) {
 					operations.push(operation);
-					this.skip();
+					replacedUntil = operation.end;
 				}
 
 				return;
@@ -1512,7 +1534,7 @@ function createInlineReplacementPlan(
 
 				if (operation) {
 					operations.push(operation);
-					this.skip();
+					replacedUntil = operation.end;
 				}
 			}
 		},
@@ -1566,7 +1588,9 @@ function applyInlineReplacementPlan(
 	const changes: SourceEdit[] = [];
 
 	for (const operation of plan.operations) {
-		const replacement = getPlannedReplacement(operation, resolvePayload);
+		const replacement = edits
+			? getMappedPlannedReplacement(operation, resolvePayload, edits)
+			: getPlannedReplacement(operation, resolvePayload);
 
 		if (replacement !== undefined) {
 			changes.push({ start: operation.start, end: operation.end, replacement });
@@ -1574,6 +1598,35 @@ function applyInlineReplacementPlan(
 	}
 
 	return applySourceEdits(code, changes, edits);
+}
+
+/** Carry known argument ranges through generated formatting code, never text diffs. */
+function getMappedPlannedReplacement(operation: InlineReplacementOperation, resolvePayload: InlinePayloadResolver, edits: SourceEdits): Parameters<typeof editSource>[3] | undefined {
+	const ordinary = getPlannedReplacement(operation, resolvePayload);
+	if (ordinary === undefined || !operation.sourceExpressions) return ordinary;
+	const ranges: Array<[RetainedExpression, SourceSlice]> = [];
+	for (const key of ['valuesExpression', 'pluralExpression', 'keyExpression'] as const) {
+		const range = operation.sourceExpressions[key];
+		if (range) ranges.push([key, range]);
+	}
+	if (!ranges.length) return ordinary;
+	// Choose tokens absent from the complete expansion (including dictionary values).
+	let prefix = '__VVI_RETAINED_SOURCE_';
+	while (ordinary.includes(prefix)) prefix += '_';
+	const expressions = new Map<string, SourceEdits>();
+	const replacements: Partial<Record<RetainedExpression, string>> = {};
+	for (const [key, range] of ranges) {
+		const child = edits.fork(range.start, range.end);
+		child.replace(child.code, 0, 0, '(');
+		child.replace(child.code, child.code.length, child.code.length, ')');
+		applyInlineReplacementPlan(child.code, createRequiredInlineReplacementPlan(child.code), resolvePayload, child);
+		const token = `${prefix}${expressions.size}__`;
+		expressions.set(token, child.fork(1, child.code.length - 1));
+		replacements[key] = token;
+	}
+	const generated = getPlannedReplacement({ ...operation, ...replacements }, resolvePayload);
+	if (generated === undefined) return ordinary;
+	return generated.split(new RegExp(`(${prefix}\\d+__)`, 'gu')).map(part => expressions.get(part) ?? part);
 }
 
 function parseInlineJavaScript(
@@ -1650,8 +1703,8 @@ function parseLegacyInlineMarkerFallback(
 
 function collectInlineBindingMarker(
 	node: AstVariableDeclarator,
-	localeBindings: Map<string, string>,
-	localizerBindings: Map<string, string>,
+	localeBindings: Map<AstNode, string>,
+	localizerBindings: Map<AstNode, string>,
 ): void {
 	if (!isIdentifier(node.id) || !node.init || !isCallExpression(node.init)) {
 		return;
@@ -1666,19 +1719,19 @@ function collectInlineBindingMarker(
 	const calleeName = getCalleeName(node.init.callee);
 
 	if (calleeName === INLINE_LOCALE_CALL) {
-		localeBindings.set(node.id.name, marker);
+		localeBindings.set(node.id, marker);
 		return;
 	}
 
 	if (calleeName === INLINE_LOCALIZERS_CALL) {
-		localizerBindings.set(node.id.name, marker);
+		localizerBindings.set(node.id, marker);
 	}
 }
 
 function getCallReplacementOperation(
 	code: string,
 	node: AstCallExpression,
-	localizerBindings: Map<string, string>,
+	localizerBindings: InlineBindings,
 	options: AstReplaceOptions,
 ): InlineReplacementOperation | undefined {
 	const calleeName = getCalleeName(node.callee);
@@ -1747,6 +1800,7 @@ function getInlineLocalizerCallReplacementOperation(
 		path,
 		valuesExpression: values ? code.slice(values.start, values.end) : '{}',
 		pluralExpression: plural ? code.slice(plural.start, plural.end) : undefined,
+		sourceExpressions: { valuesExpression: values, pluralExpression: plural },
 	};
 }
 
@@ -1770,6 +1824,7 @@ function getInlineLookupCallReplacementOperation(
 		marker,
 		path,
 		keyExpression: code.slice(key.start, key.end),
+		sourceExpressions: { keyExpression: key },
 		suffixKeys: suffix === '' ? [] : suffix.split('.'),
 	};
 }
@@ -1856,8 +1911,11 @@ function getInlineLocalizerObjectReplacementOperation(node: AstCallExpression, o
 function getLocalizerBindingCallReplacementOperation(
 	code: string,
 	node: AstCallExpression,
-	localizerBindings: Map<string, string>,
+	localizerBindings: InlineBindings,
 ): InlineReplacementOperation | undefined {
+	// Retain the callable object path when argument shape/evaluation cannot be
+	// represented by the optimized values/plural pair.
+	if (node.arguments.length > 2 || node.arguments.some(argument => argument.type === 'SpreadElement')) return undefined;
 	const lookup = getLocalizerLookupCallReplacementOperation(code, node, localizerBindings);
 
 	if (lookup) {
@@ -1893,13 +1951,14 @@ function getLocalizerBindingCallReplacementOperation(
 		properties: access.properties,
 		valuesExpression: values ? code.slice(values.start, values.end) : '{}',
 		pluralExpression: plural ? code.slice(plural.start, plural.end) : undefined,
+		sourceExpressions: { valuesExpression: values, pluralExpression: plural },
 	};
 }
 
 function getLocalizerLookupCallReplacementOperation(
 	code: string,
 	node: AstCallExpression,
-	localizerBindings: Map<string, string>,
+	localizerBindings: InlineBindings,
 ): InlineReplacementOperation | undefined {
 	const access = readDynamicMemberAccess(code, node.callee);
 	const values = node.arguments.at(0);
@@ -1948,12 +2007,13 @@ function getLocalizerLookupCallReplacementOperation(
 		suffixKeys,
 		valuesExpression: values ? code.slice(values.start, values.end) : '{}',
 		pluralExpression: plural ? code.slice(plural.start, plural.end) : undefined,
+		sourceExpressions: { keyExpression: dynamic, valuesExpression: values, pluralExpression: plural },
 	};
 }
 
 function getLocaleMemberReplacementOperation(
 	node: AstMemberExpression,
-	localeBindings: Map<string, string>,
+	localeBindings: InlineBindings,
 ): InlineReplacementOperation | undefined {
 	const access = readMemberAccess(node);
 	const inlineCallAccess = access ? undefined : readInlineLocaleCallMemberAccess(node);
@@ -2179,6 +2239,8 @@ function readDynamicMemberAccess(code: string, node: AstNode): { root: string; s
 				{
 					type: 'dynamic',
 					expression: code.slice(node.property.start, node.property.end),
+					start: node.property.start,
+					end: node.property.end,
 				},
 			],
 		};

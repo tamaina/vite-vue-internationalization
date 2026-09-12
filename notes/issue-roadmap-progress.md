@@ -573,3 +573,24 @@ hydration fixture. Nuxt's example uses virtual/virtual; its ownership of HTML,
 client manifests, preload and route assets requires a separate Nuxt/Nitro adapter
 for inline-chunks. No such adapter is claimed here. Both framework smoke suites
 are included in CI. Public JP/EN backend docs describe these boundaries.
+Final framework run: 18 browser tests passed, including three concurrent request
+cases (12 requests each), on the current local production builds.
+
+## Argument provenance and final chunk scopes (#46)
+
+Inline operations now carry the concrete AST ranges of values/plural/key arguments.
+Source-map emission inserts retained source slices into the generated formatter
+expansion and composes nested edits, instead of anchoring every argument character
+to the enclosing call. Computed template keys retain their exact pre-Vue source
+range as well. Production map fixtures now cover exceptions in script arguments,
+plural arguments, keys and nested calls in both strategies, with external,
+minified, inline and hidden maps. Vue's own template-expression maps can map an
+inner column to the start of the expression; VVI preserves its input map rather
+than claiming finer upstream precision than Vue provides.
+
+A final-chunk regression reproduced local function parameters and sibling bindings
+being replaced by an outer translation binding (Local/Function/Sibling all became
+Title). Binding lookup now follows the declaration through an Oxc scope prepass,
+including declarations later in a scope. The second walk retains scope traversal
+inside replaced expressions while omitting overlapping replacement operations.
+Output hash salt advances to v7 for the changed code/map bytes.

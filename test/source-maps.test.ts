@@ -54,6 +54,16 @@ describe('composed SFC source maps', () => {
 			expect(map.findEntry(line, column)).toMatchObject({ originalLine, originalColumn });
 		}
 	});
+	it('retains the precise template computed-key source range before Vue compilation', () => {
+		const original = '<locale locale="en">\nitems: {one: One}\n</locale>\n<template>{{ $locale.sfc.items[(() => { throw new Error("key-position"); })()] }}</template>';
+		const edits = new SourceEdits(original, '/App.vue');
+		const output = internals.transformVueSfcInline(original, '/App.vue', '/', 'en', false, edits);
+		if (!output) throw new Error('Expected an inline transform.');
+		const map = new SourceMap(JSON.parse(edits.generateMap().toString()));
+		const [line, column] = position(output, 'new Error');
+		const [originalLine, originalColumn] = position(original, 'new Error');
+		expect(map.findEntry(line, column)).toMatchObject({ originalLine, originalColumn });
+	});
 	it('maps a real Vite SSR exception back to the original SFC line and column', async () => {
 		const root = mkdtempSync(join(tmpdir(), 'vvi-source-map-'));
 		const filename = join(root, 'App.vue');
