@@ -2,6 +2,8 @@ import { existsSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { resolve } from 'node:path';
 import { allCodeFeatures } from '@vue/language-core';
+import { BoundedCache } from './boundedCache.js';
+import { insertAfter, replaceFirstGeneratedOnly } from './volarAdapter.js';
 import {
 	createComponentLocaleType,
 	createComponentLocalizerType,
@@ -37,8 +39,10 @@ export type VueInternationalizationVolarPluginConfig = {
 	sfcTransform?: 'locale-sources' | 'all';
 };
 
-const plugin: VueLanguagePlugin<VueInternationalizationVolarPluginConfig> = ({ config }) => {
-	const cache = createVolarCache();
+const plugin: VueLanguagePlugin<VueInternationalizationVolarPluginConfig> = ({ config, compilerOptions }) => {
+	const project = createVolarProjectCache();
+	const warned = new BoundedCache<string, true>(256);
+	const configDir = typeof compilerOptions.configFilePath === 'string' ? dirname(compilerOptions.configFilePath) : undefined;
 
 	return {
 		version: 2.2,
@@ -48,43 +52,51 @@ const plugin: VueLanguagePlugin<VueInternationalizationVolarPluginConfig> = ({ c
 			if (!/^script_(js|jsx|ts|tsx)$/.test(embeddedFile.id) || !shouldInjectLocaleTypes(config, ir.content, ir.customBlocks)) {
 				return;
 			}
+			const cache = project.forFile(ir);
 
 			const primaryLocale = config.primaryLocale ?? getFirstLocale(ir.customBlocks);
 			const moduleDictionary = getLocaleDictionary(cache, ir.content, fileName, ir.customBlocks, primaryLocale);
-			const globalDictionary = getGlobalDictionary(cache, config, primaryLocale, fileName);
+			const globalDictionary = getGlobalDictionary(cache, config, primaryLocale, fileName, configDir);
 			const generatedTypes = getGeneratedTypes(cache, config, globalDictionary, moduleDictionary);
 			const { localeRefType, localeScopeType, localizerRefType, localizerScopeType, componentLocaleType, componentLocalizerType } = generatedTypes;
 			const declaration = `declare const $locale: ${localeRefType};\ndeclare const $l: ${localizerRefType};\n`;
 			const setupExposure = '$locale: typeof $locale;\n$l: typeof $l;\n';
 
 			embeddedFile.content.unshift(declaration);
-			pushLocaleDiagnostics(embeddedFile.content, getLocaleDiagnostics(cache, ir.customBlocks, primaryLocale, moduleDictionary));
-			insertAfter(
+			pushLocaleDiagnostics(embeddedFile.content, getLocaleDiagnostics(cache, ir.customBlocks, primaryLocale, moduleDictionary, fileName));
+			const setupInserted = insertAfter(
 				embeddedFile.content,
 				'type __VLS_SetupExposed = import(\'vue\').ShallowUnwrapRef<{\n',
 				setupExposure,
 			);
-			insertAfter(
+			const contextExtended = insertAfter(
 				embeddedFile.content,
 				'...{} as import(\'vue\').ComponentPublicInstance,\n',
 				`...{} as { $locale: ${localeScopeType}; $l: ${localizerScopeType}; },\n`,
 			);
-			replaceFirstGeneratedOnly(
+			const contextReplaced = replaceFirstGeneratedOnly(
 				embeddedFile.content,
 				'const __VLS_ctx = {} as import(\'vue\').ComponentPublicInstance;',
 				`const __VLS_ctx = {} as import('vue').ComponentPublicInstance & { $locale: ${localeScopeType}; $l: ${localizerScopeType}; };`,
 			);
-			replaceFirstGeneratedOnly(
+			const exportExtended = replaceFirstGeneratedOnly(
 				embeddedFile.content,
 				'export default {} as typeof __VLS_export;',
 				`export default {} as typeof __VLS_export & { $locale: ${componentLocaleType}; $l: ${componentLocalizerType}; };`,
 			);
+			if ((!setupInserted && !contextExtended && !contextReplaced || !exportExtended) && !warned.has(fileName)) {
+				warned.set(fileName, true);
+				console.warn(`[vite-vue-internationalization/volar] Incomplete type injection for ${fileName}. Vue Language Tools generated an unsupported shape (setup=${setupInserted}, context=${contextExtended || contextReplaced}, export=${exportExtended}). Check the supported Vue Language Tools version.`);
+			}
 			applyTemplateTsDirectives(ir.content, embeddedFile.content);
 		},
 	};
 };
 
 export default plugin;
+
+/** Internal diagnostics for reproducible cache benchmarks. */
+export const volarInternals = { createVolarCache, createVolarProjectCache, getLocaleDictionary, getGeneratedTypes, getLocaleDiagnostics };
 
 type GeneratedTypes = {
 	localeRefType: string;
@@ -96,9 +108,10 @@ type GeneratedTypes = {
 };
 
 type VolarCache = {
+	stats: { scriptParses: number };
 	globalDictionaries: Map<string, LocaleDictionary | undefined>;
-	moduleDictionaries: Map<string, LocaleDictionary>;
-	moduleDiagnostics: Map<string, LocaleBlockDiagnostic[]>;
+	moduleDictionaries: Map<string, { key: string; dictionary: LocaleDictionary }>;
+	moduleDiagnostics: Map<string, { key: string; diagnostics: LocaleBlockDiagnostic[] }>;
 	generatedTypes: Map<string, GeneratedTypes>;
 };
 
@@ -114,12 +127,37 @@ type LocaleBlockDiagnostic = LocaleDictionaryDiagnostic & {
 	source: string;
 };
 
+function localeBlockLanguage(block: LocaleCustomBlock): string {
+	if (typeof block.attrs.lang === 'string') return block.attrs.lang;
+	// Vue Language Tools supplies txt for custom blocks with no lang attribute.
+	return block.lang === 'txt' ? 'yaml' : block.lang ?? 'yaml';
+}
+
 function createVolarCache(): VolarCache {
 	return {
-		globalDictionaries: new Map(),
-		moduleDictionaries: new Map(),
-		moduleDiagnostics: new Map(),
-		generatedTypes: new Map(),
+		stats: { scriptParses: 0 },
+		globalDictionaries: new BoundedCache(32),
+		moduleDictionaries: new BoundedCache(256),
+		moduleDiagnostics: new BoundedCache(256),
+		generatedTypes: new BoundedCache(256),
+	};
+}
+
+function createVolarProjectCache() {
+	const shared = createVolarCache();
+	const files = new WeakMap<object, VolarCache>();
+	return {
+		shared,
+		forFile(owner: object): VolarCache {
+			let cache = files.get(owner);
+			if (!cache) {
+				// IR ownership follows Vue Language Tools disposal without a watcher or
+				// a strong project-wide reference to deleted files or their contents.
+				cache = { ...shared, moduleDictionaries: new BoundedCache(1), moduleDiagnostics: new BoundedCache(1) };
+				files.set(owner, cache);
+			}
+			return cache;
+		},
 	};
 }
 
@@ -133,46 +171,6 @@ function shouldInjectLocaleTypes(
 
 function hasLocaleSources(content: string, customBlocks: readonly { type: string }[]): boolean {
 	return customBlocks.some((block) => block.type === 'locale') || content.includes('defineInternationalization');
-}
-
-function insertAfter(content: Code[], marker: string, insertion: string): void {
-	replaceFirstGeneratedOnly(content, marker, `${marker}${insertion}`);
-}
-
-function replaceFirstGeneratedOnly(content: Code[], search: string, replacement: string): void {
-	let runStart = 0;
-
-	while (runStart < content.length) {
-		while (runStart < content.length && typeof content[runStart] !== 'string') {
-			runStart++;
-		}
-
-		let runEnd = runStart;
-
-		while (runEnd < content.length && typeof content[runEnd] === 'string') {
-			runEnd++;
-		}
-
-		if (runStart === runEnd) {
-			continue;
-		}
-
-		const text = content.slice(runStart, runEnd).join('');
-		const start = text.indexOf(search);
-
-		if (start >= 0) {
-			content.splice(
-				runStart,
-				runEnd - runStart,
-				text.slice(0, start),
-				replacement,
-				text.slice(start + search.length),
-			);
-			return;
-		}
-
-		runStart = runEnd + 1;
-	}
 }
 
 function insertGeneratedText(content: Code[], start: number, insertion: string): void {
@@ -380,10 +378,12 @@ function getGeneratedTypes(
 			? createLocalizerScopeType({
 				global: globalDictionary,
 				module: moduleDictionary,
+				messageSyntax: config.messageSyntax ?? 'vue',
 			}, globalTypeOptions)
 			: createLocalizerDocumentationScopeType({
 				global: globalDictionary,
 				module: moduleDictionary,
+				messageSyntax: config.messageSyntax ?? 'vue',
 			}, globalTypeOptions),
 		componentLocaleType: createComponentLocaleType({
 			module: moduleDictionary,
@@ -406,10 +406,16 @@ function getLocaleDictionary(
 	primaryLocale: string | undefined,
 ): LocaleDictionary {
 	const localeBlocks = customBlocks.filter((block) => block.type === 'locale' && typeof block.attrs.locale === 'string');
+	const key = JSON.stringify([primaryLocale, content, localeBlocks]);
+	const cached = cache.moduleDictionaries.get(fileName);
+	if (cached?.key === key) return cached.dictionary;
+	cache.stats.scriptParses++;
 	const scriptMessages = parseScriptLocaleDictionaries(content, fileName);
 
 	if (localeBlocks.length === 0 && Object.keys(scriptMessages).length === 0) {
-		return {};
+		const dictionary = {};
+		cache.moduleDictionaries.set(fileName, { key, dictionary });
+		return dictionary;
 	}
 
 	const primaryBlock = localeBlocks.find((item) => item.attrs.locale === primaryLocale);
@@ -418,31 +424,17 @@ function getLocaleDictionary(
 	const scriptLocale = primaryLocale && scriptMessages[primaryLocale] ? primaryLocale : String(Object.keys(scriptMessages)[0]);
 	const locale = primaryBlockLocale ?? blockLocale ?? scriptLocale;
 	const blocks = localeBlocks.filter((item) => item.attrs.locale === locale);
-	const key = [
-		String(primaryLocale ?? ''),
-		locale,
-		content,
-		...blocks.map((block) => [
-			block.lang ?? 'yaml',
-			block.content,
-		].join('\n')),
-	].join('\n');
-	const cached = cache.moduleDictionaries.get(key);
-
-	if (cached) {
-		return cached;
-	}
 
 	const dictionary = mergeLocaleDictionaries(
 		...blocks.map((block) =>
 			parseLocaleDictionaryForDiagnostics(
 				block.content,
-				block.lang ?? 'yaml',
+				localeBlockLanguage(block),
 				`<locale locale="${locale}">`,
 			).dictionary),
 		scriptMessages[locale] ?? {},
 	);
-	cache.moduleDictionaries.set(key, dictionary);
+	cache.moduleDictionaries.set(fileName, { key, dictionary });
 	return dictionary;
 }
 
@@ -451,6 +443,7 @@ function getLocaleDiagnostics(
 	customBlocks: readonly LocaleCustomBlock[],
 	primaryLocale: string | undefined,
 	moduleDictionary: LocaleDictionary,
+	fileName = '<anonymous>',
 ): LocaleBlockDiagnostic[] {
 	const localeBlocks = customBlocks.filter((block) => block.type === 'locale' && typeof block.attrs.locale === 'string');
 	const key = localeBlocks
@@ -458,20 +451,20 @@ function getLocaleDiagnostics(
 			String(primaryLocale ?? ''),
 			block.name,
 			String(block.attrs.locale),
-			block.lang ?? 'yaml',
+			localeBlockLanguage(block),
 			block.content,
 		].join('\n'))
-		.join('\n---\n');
-	const cached = cache.moduleDiagnostics.get(key);
+		.join('\n---\n') + stableStringify(moduleDictionary);
+	const cached = cache.moduleDiagnostics.get(fileName);
 
-	if (cached) {
-		return cached;
+	if (cached?.key === key) {
+		return cached.diagnostics;
 	}
 
 	const diagnostics = localeBlocks.flatMap((block) => {
 		const result = parseLocaleDictionaryForDiagnostics(
 			block.content,
-			block.lang ?? 'yaml',
+			localeBlockLanguage(block),
 			`<locale locale="${String(block.attrs.locale)}">`,
 		);
 
@@ -483,7 +476,7 @@ function getLocaleDiagnostics(
 	const linkedDiagnostics = getLinkedMessageDiagnostics(localeBlocks, primaryLocale, moduleDictionary);
 
 	const allDiagnostics = [...diagnostics, ...linkedDiagnostics];
-	cache.moduleDiagnostics.set(key, allDiagnostics);
+	cache.moduleDiagnostics.set(fileName, { key, diagnostics: allDiagnostics });
 	return allDiagnostics;
 }
 
@@ -501,7 +494,7 @@ function getLinkedMessageDiagnostics(
 		.flatMap((block) => {
 			const result = parseLocaleDictionaryForDiagnostics(
 				block.content,
-				block.lang ?? 'yaml',
+				localeBlockLanguage(block),
 				`<locale locale="${primaryLocale}">`,
 			);
 
@@ -606,6 +599,7 @@ function getGlobalDictionary(
 	config: VueInternationalizationVolarPluginConfig,
 	primaryLocale: string | undefined,
 	fileName: string,
+	projectConfigDir?: string,
 ): LocaleDictionary | undefined {
 	const global = config.global;
 
@@ -636,7 +630,7 @@ function getGlobalDictionary(
 		return result.dictionary;
 	}
 
-	const configDir = findConfigDir(fileName);
+	const configDir = projectConfigDir ?? findConfigDir(fileName);
 	return loadLocaleEnvDictionaryForDiagnostics(configDir, primaryLocale, value);
 }
 

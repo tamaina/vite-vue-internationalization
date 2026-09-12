@@ -134,3 +134,12 @@ defineInternationalization({
 - [`defineInternationalization()`](./api.md#defineinternationalization)
 - [`LocaleDictionary`](./api.md#localedictionary)
 - [`LocaleMessages`](./api.md#localemessages)
+
+## 開発中の翻訳編集
+
+両ビルド戦略とも、翻訳変更時はページをfull reloadします。
+各Vite環境のlocale payloadとloader一覧を無効化し、SFC・global辞書（root外の指定も含む）・
+配列・globの一致ファイル・ファイル追加削除・新localeの追加に追随します。
+CSSだけの変更はVueのCSS HMRを使い、ページを再読込しません。
+不正な辞書の編集中はerror overlayを表示し、修正後はViteの再起動なしで復旧します。
+翻訳のfull reloadではcomponentの状態は維持しません。

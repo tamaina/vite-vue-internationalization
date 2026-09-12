@@ -1,0 +1,3802 @@
+{
+  "generatedAt": "2026-09-12T12:50:14.732Z",
+  "environment": {
+    "node": "v24.18.0",
+    "platform": "linux",
+    "arch": "x64",
+    "cpu": "Intel(R) Core(TM) i7-10510U CPU @ 1.80GHz",
+    "versions": {
+      "vite": "8.0.16",
+      "vue": "3.5.34",
+      "@vue/compiler-sfc": "3.5.34",
+      "@vitejs/plugin-vue": "6.0.7",
+      "@playwright/test": "1.60.0"
+    },
+    "revision": "d318fecf858ca60fb0b1c34e7caf43be1f5c1f88",
+    "sourceHashes": {
+      "scripts/benchmark-delivery.mjs": "69569d265e30d40fa9fb3e863ecc2d68953ce5ac46a277e8c8cd0e9a698fa735",
+      "src/inline.ts": "e2af060b01c58dac411a7d8682fca18b788a61117ef0904923f43084ca542690",
+      "src/plugin.ts": "2008ffd8b01a52d4b83d386f0c50e323d12fe94b10df8e8f462b92b58db88b1f",
+      "pnpm-lock.yaml": "4046c2bc1a68d4cb9893af3de76509bcca488695a982d50321ec0b0df144b731"
+    },
+    "chromium": "148.0.7778.96"
+  },
+  "methodology": {
+    "gzipLevel": 6,
+    "browserRuns": 3,
+    "locale": "en",
+    "network": "loopback, no emulation",
+    "prototype": "explicit per-route runtime instances, shared global import, premerged primary fallback"
+  },
+  "cases": [
+    {
+      "size": "small",
+      "shape": {
+        "routes": 3,
+        "messages": 12,
+        "global": 20
+      },
+      "mode": "virtual",
+      "buildMs": 229.310839,
+      "processPeakRssKiB": 395204,
+      "inputDictionaryBytes": 11391,
+      "inputDictionaryHash": "8b72c4d3ad0938ddc08376f5e9f5ec3740b8f3afffe0b27cc79b9e6625828263",
+      "totalOutputBytes": 123120,
+      "totalOutputGzipBytes": 44642,
+      "outputFiles": [
+        ".vite/internationalization-manifest.json",
+        ".vite/manifest.json",
+        "assets/Route0-C8hPlhL0.js",
+        "assets/Route1-cv97sQoN.js",
+        "assets/Route2-E1P99hHO.js",
+        "assets/_virtual_vite-vue-internationalization-D1QYctsk.js",
+        "assets/en-JFWk8-AG.js",
+        "assets/index-BIyUwr8u.js",
+        "assets/ja-CUfBWcEW.js",
+        "index.html"
+      ],
+      "runs": [
+        [
+          {
+            "label": "initial",
+            "route": 0,
+            "readyMs": 16.19999998807907,
+            "initialMs": 43,
+            "resourceTimeline": [
+              {
+                "file": "/assets/index-BIyUwr8u.js",
+                "startTime": 9.400000005960464,
+                "duration": 2.4000000059604645,
+                "transferSize": 3819,
+                "encodedBodySize": 3519
+              },
+              {
+                "file": "/assets/_virtual_vite-vue-internationalization-D1QYctsk.js",
+                "startTime": 9.5,
+                "duration": 3.800000011920929,
+                "transferSize": 33653,
+                "encodedBodySize": 33353
+              },
+              {
+                "file": "/assets/en-JFWk8-AG.js",
+                "startTime": 20,
+                "duration": 2,
+                "transferSize": 2818,
+                "encodedBodySize": 2518
+              },
+              {
+                "file": "/assets/Route0-C8hPlhL0.js",
+                "startTime": 28.200000002980232,
+                "duration": 2.1000000089406967,
+                "transferSize": 640,
+                "encodedBodySize": 340
+              }
+            ],
+            "files": [
+              {
+                "file": "index.html",
+                "gzipBytes": 197
+              },
+              {
+                "file": "assets/index-BIyUwr8u.js",
+                "gzipBytes": 3519
+              },
+              {
+                "file": "assets/_virtual_vite-vue-internationalization-D1QYctsk.js",
+                "gzipBytes": 33353
+              },
+              {
+                "file": "assets/en-JFWk8-AG.js",
+                "gzipBytes": 2518
+              },
+              {
+                "file": "assets/Route0-C8hPlhL0.js",
+                "gzipBytes": 340
+              }
+            ],
+            "requests": 5,
+            "gzipBytes": 39927,
+            "routeMarkersInTransferredPayload": [
+              0,
+              1,
+              2
+            ]
+          },
+          {
+            "label": "route-1",
+            "route": 1,
+            "readyMs": 4.0999999940395355,
+            "initialMs": 90.20000000298023,
+            "resourceTimeline": [
+              {
+                "file": "/assets/index-BIyUwr8u.js",
+                "startTime": 9.400000005960464,
+                "duration": 2.4000000059604645,
+                "transferSize": 3819,
+                "encodedBodySize": 3519
+              },
+              {
+                "file": "/assets/_virtual_vite-vue-internationalization-D1QYctsk.js",
+                "startTime": 9.5,
+                "duration": 3.800000011920929,
+                "transferSize": 33653,
+                "encodedBodySize": 33353
+              },
+              {
+                "file": "/assets/en-JFWk8-AG.js",
+                "startTime": 20,
+                "duration": 2,
+                "transferSize": 2818,
+                "encodedBodySize": 2518
+              },
+              {
+                "file": "/assets/Route0-C8hPlhL0.js",
+                "startTime": 28.200000002980232,
+                "duration": 2.1000000089406967,
+                "transferSize": 640,
+                "encodedBodySize": 340
+              },
+              {
+                "file": "/assets/Route1-cv97sQoN.js",
+                "startTime": 86.40000000596046,
+                "duration": 1.5,
+                "transferSize": 640,
+                "encodedBodySize": 340
+              }
+            ],
+            "files": [
+              {
+                "file": "assets/Route1-cv97sQoN.js",
+                "gzipBytes": 340
+              }
+            ],
+            "requests": 1,
+            "gzipBytes": 340,
+            "routeMarkersInTransferredPayload": []
+          },
+          {
+            "label": "return-cached",
+            "route": 0,
+            "readyMs": 7.5,
+            "initialMs": 106.90000000596046,
+            "resourceTimeline": [
+              {
+                "file": "/assets/index-BIyUwr8u.js",
+                "startTime": 9.400000005960464,
+                "duration": 2.4000000059604645,
+                "transferSize": 3819,
+                "encodedBodySize": 3519
+              },
+              {
+                "file": "/assets/_virtual_vite-vue-internationalization-D1QYctsk.js",
+                "startTime": 9.5,
+                "duration": 3.800000011920929,
+                "transferSize": 33653,
+                "encodedBodySize": 33353
+              },
+              {
+                "file": "/assets/en-JFWk8-AG.js",
+                "startTime": 20,
+                "duration": 2,
+                "transferSize": 2818,
+                "encodedBodySize": 2518
+              },
+              {
+                "file": "/assets/Route0-C8hPlhL0.js",
+                "startTime": 28.200000002980232,
+                "duration": 2.1000000089406967,
+                "transferSize": 640,
+                "encodedBodySize": 340
+              },
+              {
+                "file": "/assets/Route1-cv97sQoN.js",
+                "startTime": 86.40000000596046,
+                "duration": 1.5,
+                "transferSize": 640,
+                "encodedBodySize": 340
+              }
+            ],
+            "files": [],
+            "requests": 0,
+            "gzipBytes": 0,
+            "routeMarkersInTransferredPayload": []
+          }
+        ],
+        [
+          {
+            "label": "initial",
+            "route": 0,
+            "readyMs": 24.799999997019768,
+            "initialMs": 46.5,
+            "resourceTimeline": [
+              {
+                "file": "/assets/index-BIyUwr8u.js",
+                "startTime": 4.4000000059604645,
+                "duration": 3,
+                "transferSize": 3819,
+                "encodedBodySize": 3519
+              },
+              {
+                "file": "/assets/_virtual_vite-vue-internationalization-D1QYctsk.js",
+                "startTime": 4.600000008940697,
+                "duration": 3.2999999970197678,
+                "transferSize": 33653,
+                "encodedBodySize": 33353
+              },
+              {
+                "file": "/assets/en-JFWk8-AG.js",
+                "startTime": 14.700000002980232,
+                "duration": 2,
+                "transferSize": 2818,
+                "encodedBodySize": 2518
+              },
+              {
+                "file": "/assets/Route0-C8hPlhL0.js",
+                "startTime": 22.700000002980232,
+                "duration": 1.7000000029802322,
+                "transferSize": 640,
+                "encodedBodySize": 340
+              }
+            ],
+            "files": [
+              {
+                "file": "index.html",
+                "gzipBytes": 197
+              },
+              {
+                "file": "assets/index-BIyUwr8u.js",
+                "gzipBytes": 3519
+              },
+              {
+                "file": "assets/_virtual_vite-vue-internationalization-D1QYctsk.js",
+                "gzipBytes": 33353
+              },
+              {
+                "file": "assets/en-JFWk8-AG.js",
+                "gzipBytes": 2518
+              },
+              {
+                "file": "assets/Route0-C8hPlhL0.js",
+                "gzipBytes": 340
+              }
+            ],
+            "requests": 5,
+            "gzipBytes": 39927,
+            "routeMarkersInTransferredPayload": [
+              0,
+              1,
+              2
+            ]
+          },
+          {
+            "label": "route-1",
+            "route": 1,
+            "readyMs": 3.0999999940395355,
+            "initialMs": 81,
+            "resourceTimeline": [
+              {
+                "file": "/assets/index-BIyUwr8u.js",
+                "startTime": 4.4000000059604645,
+                "duration": 3,
+                "transferSize": 3819,
+                "encodedBodySize": 3519
+              },
+              {
+                "file": "/assets/_virtual_vite-vue-internationalization-D1QYctsk.js",
+                "startTime": 4.600000008940697,
+                "duration": 3.2999999970197678,
+                "transferSize": 33653,
+                "encodedBodySize": 33353
+              },
+              {
+                "file": "/assets/en-JFWk8-AG.js",
+                "startTime": 14.700000002980232,
+                "duration": 2,
+                "transferSize": 2818,
+                "encodedBodySize": 2518
+              },
+              {
+                "file": "/assets/Route0-C8hPlhL0.js",
+                "startTime": 22.700000002980232,
+                "duration": 1.7000000029802322,
+                "transferSize": 640,
+                "encodedBodySize": 340
+              },
+              {
+                "file": "/assets/Route1-cv97sQoN.js",
+                "startTime": 78.1000000089407,
+                "duration": 1.2999999970197678,
+                "transferSize": 640,
+                "encodedBodySize": 340
+              }
+            ],
+            "files": [
+              {
+                "file": "assets/Route1-cv97sQoN.js",
+                "gzipBytes": 340
+              }
+            ],
+            "requests": 1,
+            "gzipBytes": 340,
+            "routeMarkersInTransferredPayload": []
+          },
+          {
+            "label": "return-cached",
+            "route": 0,
+            "readyMs": 6.800000011920929,
+            "initialMs": 96.30000001192093,
+            "resourceTimeline": [
+              {
+                "file": "/assets/index-BIyUwr8u.js",
+                "startTime": 4.4000000059604645,
+                "duration": 3,
+                "transferSize": 3819,
+                "encodedBodySize": 3519
+              },
+              {
+                "file": "/assets/_virtual_vite-vue-internationalization-D1QYctsk.js",
+                "startTime": 4.600000008940697,
+                "duration": 3.2999999970197678,
+                "transferSize": 33653,
+                "encodedBodySize": 33353
+              },
+              {
+                "file": "/assets/en-JFWk8-AG.js",
+                "startTime": 14.700000002980232,
+                "duration": 2,
+                "transferSize": 2818,
+                "encodedBodySize": 2518
+              },
+              {
+                "file": "/assets/Route0-C8hPlhL0.js",
+                "startTime": 22.700000002980232,
+                "duration": 1.7000000029802322,
+                "transferSize": 640,
+                "encodedBodySize": 340
+              },
+              {
+                "file": "/assets/Route1-cv97sQoN.js",
+                "startTime": 78.1000000089407,
+                "duration": 1.2999999970197678,
+                "transferSize": 640,
+                "encodedBodySize": 340
+              }
+            ],
+            "files": [],
+            "requests": 0,
+            "gzipBytes": 0,
+            "routeMarkersInTransferredPayload": []
+          }
+        ],
+        [
+          {
+            "label": "initial",
+            "route": 0,
+            "readyMs": 27.900000005960464,
+            "initialMs": 49.70000000298023,
+            "resourceTimeline": [
+              {
+                "file": "/assets/index-BIyUwr8u.js",
+                "startTime": 4.5999999940395355,
+                "duration": 2.9000000059604645,
+                "transferSize": 3819,
+                "encodedBodySize": 3519
+              },
+              {
+                "file": "/assets/_virtual_vite-vue-internationalization-D1QYctsk.js",
+                "startTime": 4.799999997019768,
+                "duration": 3.2999999970197678,
+                "transferSize": 33653,
+                "encodedBodySize": 33353
+              },
+              {
+                "file": "/assets/en-JFWk8-AG.js",
+                "startTime": 15.099999994039536,
+                "duration": 1.7000000029802322,
+                "transferSize": 2818,
+                "encodedBodySize": 2518
+              },
+              {
+                "file": "/assets/Route0-C8hPlhL0.js",
+                "startTime": 22.799999997019768,
+                "duration": 1.7999999970197678,
+                "transferSize": 640,
+                "encodedBodySize": 340
+              }
+            ],
+            "files": [
+              {
+                "file": "index.html",
+                "gzipBytes": 197
+              },
+              {
+                "file": "assets/index-BIyUwr8u.js",
+                "gzipBytes": 3519
+              },
+              {
+                "file": "assets/_virtual_vite-vue-internationalization-D1QYctsk.js",
+                "gzipBytes": 33353
+              },
+              {
+                "file": "assets/en-JFWk8-AG.js",
+                "gzipBytes": 2518
+              },
+              {
+                "file": "assets/Route0-C8hPlhL0.js",
+                "gzipBytes": 340
+              }
+            ],
+            "requests": 5,
+            "gzipBytes": 39927,
+            "routeMarkersInTransferredPayload": [
+              0,
+              1,
+              2
+            ]
+          },
+          {
+            "label": "route-1",
+            "route": 1,
+            "readyMs": 3.7999999970197678,
+            "initialMs": 82.8999999910593,
+            "resourceTimeline": [
+              {
+                "file": "/assets/index-BIyUwr8u.js",
+                "startTime": 4.5999999940395355,
+                "duration": 2.9000000059604645,
+                "transferSize": 3819,
+                "encodedBodySize": 3519
+              },
+              {
+                "file": "/assets/_virtual_vite-vue-internationalization-D1QYctsk.js",
+                "startTime": 4.799999997019768,
+                "duration": 3.2999999970197678,
+                "transferSize": 33653,
+                "encodedBodySize": 33353
+              },
+              {
+                "file": "/assets/en-JFWk8-AG.js",
+                "startTime": 15.099999994039536,
+                "duration": 1.7000000029802322,
+                "transferSize": 2818,
+                "encodedBodySize": 2518
+              },
+              {
+                "file": "/assets/Route0-C8hPlhL0.js",
+                "startTime": 22.799999997019768,
+                "duration": 1.7999999970197678,
+                "transferSize": 640,
+                "encodedBodySize": 340
+              },
+              {
+                "file": "/assets/Route1-cv97sQoN.js",
+                "startTime": 79.3999999910593,
+                "duration": 1.4000000059604645,
+                "transferSize": 640,
+                "encodedBodySize": 340
+              }
+            ],
+            "files": [
+              {
+                "file": "assets/Route1-cv97sQoN.js",
+                "gzipBytes": 340
+              }
+            ],
+            "requests": 1,
+            "gzipBytes": 340,
+            "routeMarkersInTransferredPayload": []
+          },
+          {
+            "label": "return-cached",
+            "route": 0,
+            "readyMs": 9,
+            "initialMs": 99.59999999403954,
+            "resourceTimeline": [
+              {
+                "file": "/assets/index-BIyUwr8u.js",
+                "startTime": 4.5999999940395355,
+                "duration": 2.9000000059604645,
+                "transferSize": 3819,
+                "encodedBodySize": 3519
+              },
+              {
+                "file": "/assets/_virtual_vite-vue-internationalization-D1QYctsk.js",
+                "startTime": 4.799999997019768,
+                "duration": 3.2999999970197678,
+                "transferSize": 33653,
+                "encodedBodySize": 33353
+              },
+              {
+                "file": "/assets/en-JFWk8-AG.js",
+                "startTime": 15.099999994039536,
+                "duration": 1.7000000029802322,
+                "transferSize": 2818,
+                "encodedBodySize": 2518
+              },
+              {
+                "file": "/assets/Route0-C8hPlhL0.js",
+                "startTime": 22.799999997019768,
+                "duration": 1.7999999970197678,
+                "transferSize": 640,
+                "encodedBodySize": 340
+              },
+              {
+                "file": "/assets/Route1-cv97sQoN.js",
+                "startTime": 79.3999999910593,
+                "duration": 1.4000000059604645,
+                "transferSize": 640,
+                "encodedBodySize": 340
+              }
+            ],
+            "files": [],
+            "requests": 0,
+            "gzipBytes": 0,
+            "routeMarkersInTransferredPayload": []
+          }
+        ]
+      ]
+    },
+    {
+      "size": "small",
+      "shape": {
+        "routes": 3,
+        "messages": 12,
+        "global": 20
+      },
+      "mode": "inline-chunks",
+      "buildMs": 472.2448730000001,
+      "processPeakRssKiB": 465184,
+      "inputDictionaryBytes": 11391,
+      "inputDictionaryHash": "8b72c4d3ad0938ddc08376f5e9f5ec3740b8f3afffe0b27cc79b9e6625828263",
+      "totalOutputBytes": 256651,
+      "totalOutputGzipBytes": 69356,
+      "outputFiles": [
+        ".vite/internationalization-manifest.json",
+        ".vite/manifest.json",
+        "assets/Route0-B-3jFbhk.en.js",
+        "assets/Route0-B-3jFbhk.ja.js",
+        "assets/Route1-IVXChEJ_.en.js",
+        "assets/Route1-IVXChEJ_.ja.js",
+        "assets/Route2-Dedu5IWx.en.js",
+        "assets/Route2-Dedu5IWx.ja.js",
+        "assets/index-nNWtKwge.en.js",
+        "assets/index-nNWtKwge.i18n-loader.js",
+        "assets/index-nNWtKwge.ja.js",
+        "assets/runtime-core.esm-bundler-GBNs3__c.js",
+        "index.html"
+      ],
+      "runs": [
+        [
+          {
+            "label": "initial",
+            "route": 0,
+            "readyMs": 10.699999988079071,
+            "initialMs": 66.69999998807907,
+            "resourceTimeline": [
+              {
+                "file": "/assets/index-nNWtKwge.i18n-loader.js",
+                "startTime": 8.099999994039536,
+                "duration": 2.2000000029802322,
+                "transferSize": 1007,
+                "encodedBodySize": 707
+              },
+              {
+                "file": "/assets/index-nNWtKwge.en.js",
+                "startTime": 13.5,
+                "duration": 2.5,
+                "transferSize": 15897,
+                "encodedBodySize": 15597
+              },
+              {
+                "file": "/assets/runtime-core.esm-bundler-GBNs3__c.js",
+                "startTime": 43.19999998807907,
+                "duration": 2.2000000029802322,
+                "transferSize": 21308,
+                "encodedBodySize": 21008
+              },
+              {
+                "file": "/assets/Route0-B-3jFbhk.en.js",
+                "startTime": 59.099999994039536,
+                "duration": 1.5,
+                "transferSize": 2789,
+                "encodedBodySize": 2489
+              }
+            ],
+            "files": [
+              {
+                "file": "index.html",
+                "gzipBytes": 134
+              },
+              {
+                "file": "assets/index-nNWtKwge.i18n-loader.js",
+                "gzipBytes": 707
+              },
+              {
+                "file": "assets/index-nNWtKwge.en.js",
+                "gzipBytes": 15597
+              },
+              {
+                "file": "assets/runtime-core.esm-bundler-GBNs3__c.js",
+                "gzipBytes": 21008
+              },
+              {
+                "file": "assets/Route0-B-3jFbhk.en.js",
+                "gzipBytes": 2489
+              }
+            ],
+            "requests": 5,
+            "gzipBytes": 39935,
+            "routeMarkersInTransferredPayload": [
+              0
+            ]
+          },
+          {
+            "label": "route-1",
+            "route": 1,
+            "readyMs": 5.5,
+            "initialMs": 150.09999999403954,
+            "resourceTimeline": [
+              {
+                "file": "/assets/index-nNWtKwge.i18n-loader.js",
+                "startTime": 8.099999994039536,
+                "duration": 2.2000000029802322,
+                "transferSize": 1007,
+                "encodedBodySize": 707
+              },
+              {
+                "file": "/assets/index-nNWtKwge.en.js",
+                "startTime": 13.5,
+                "duration": 2.5,
+                "transferSize": 15897,
+                "encodedBodySize": 15597
+              },
+              {
+                "file": "/assets/runtime-core.esm-bundler-GBNs3__c.js",
+                "startTime": 43.19999998807907,
+                "duration": 2.2000000029802322,
+                "transferSize": 21308,
+                "encodedBodySize": 21008
+              },
+              {
+                "file": "/assets/Route0-B-3jFbhk.en.js",
+                "startTime": 59.099999994039536,
+                "duration": 1.5,
+                "transferSize": 2789,
+                "encodedBodySize": 2489
+              },
+              {
+                "file": "/assets/Route1-IVXChEJ_.en.js",
+                "startTime": 144.8999999910593,
+                "duration": 1.4000000059604645,
+                "transferSize": 2791,
+                "encodedBodySize": 2491
+              }
+            ],
+            "files": [
+              {
+                "file": "assets/Route1-IVXChEJ_.en.js",
+                "gzipBytes": 2491
+              }
+            ],
+            "requests": 1,
+            "gzipBytes": 2491,
+            "routeMarkersInTransferredPayload": [
+              1
+            ]
+          },
+          {
+            "label": "return-cached",
+            "route": 0,
+            "readyMs": 8.899999991059303,
+            "initialMs": 166.8999999910593,
+            "resourceTimeline": [
+              {
+                "file": "/assets/index-nNWtKwge.i18n-loader.js",
+                "startTime": 8.099999994039536,
+                "duration": 2.2000000029802322,
+                "transferSize": 1007,
+                "encodedBodySize": 707
+              },
+              {
+                "file": "/assets/index-nNWtKwge.en.js",
+                "startTime": 13.5,
+                "duration": 2.5,
+                "transferSize": 15897,
+                "encodedBodySize": 15597
+              },
+              {
+                "file": "/assets/runtime-core.esm-bundler-GBNs3__c.js",
+                "startTime": 43.19999998807907,
+                "duration": 2.2000000029802322,
+                "transferSize": 21308,
+                "encodedBodySize": 21008
+              },
+              {
+                "file": "/assets/Route0-B-3jFbhk.en.js",
+                "startTime": 59.099999994039536,
+                "duration": 1.5,
+                "transferSize": 2789,
+                "encodedBodySize": 2489
+              },
+              {
+                "file": "/assets/Route1-IVXChEJ_.en.js",
+                "startTime": 144.8999999910593,
+                "duration": 1.4000000059604645,
+                "transferSize": 2791,
+                "encodedBodySize": 2491
+              }
+            ],
+            "files": [],
+            "requests": 0,
+            "gzipBytes": 0,
+            "routeMarkersInTransferredPayload": []
+          }
+        ],
+        [
+          {
+            "label": "initial",
+            "route": 0,
+            "readyMs": 19.299999997019768,
+            "initialMs": 49.70000000298023,
+            "resourceTimeline": [
+              {
+                "file": "/assets/index-nNWtKwge.i18n-loader.js",
+                "startTime": 4.299999997019768,
+                "duration": 1.5,
+                "transferSize": 1007,
+                "encodedBodySize": 707
+              },
+              {
+                "file": "/assets/index-nNWtKwge.en.js",
+                "startTime": 8.5,
+                "duration": 1.7000000029802322,
+                "transferSize": 15897,
+                "encodedBodySize": 15597
+              },
+              {
+                "file": "/assets/runtime-core.esm-bundler-GBNs3__c.js",
+                "startTime": 13.100000008940697,
+                "duration": 1.699999988079071,
+                "transferSize": 21308,
+                "encodedBodySize": 21008
+              },
+              {
+                "file": "/assets/Route0-B-3jFbhk.en.js",
+                "startTime": 32.5,
+                "duration": 1.7000000029802322,
+                "transferSize": 2789,
+                "encodedBodySize": 2489
+              }
+            ],
+            "files": [
+              {
+                "file": "index.html",
+                "gzipBytes": 134
+              },
+              {
+                "file": "assets/index-nNWtKwge.i18n-loader.js",
+                "gzipBytes": 707
+              },
+              {
+                "file": "assets/index-nNWtKwge.en.js",
+                "gzipBytes": 15597
+              },
+              {
+                "file": "assets/runtime-core.esm-bundler-GBNs3__c.js",
+                "gzipBytes": 21008
+              },
+              {
+                "file": "assets/Route0-B-3jFbhk.en.js",
+                "gzipBytes": 2489
+              }
+            ],
+            "requests": 5,
+            "gzipBytes": 39935,
+            "routeMarkersInTransferredPayload": [
+              0
+            ]
+          },
+          {
+            "label": "route-1",
+            "route": 1,
+            "readyMs": 5.700000002980232,
+            "initialMs": 99.70000000298023,
+            "resourceTimeline": [
+              {
+                "file": "/assets/index-nNWtKwge.i18n-loader.js",
+                "startTime": 4.299999997019768,
+                "duration": 1.5,
+                "transferSize": 1007,
+                "encodedBodySize": 707
+              },
+              {
+                "file": "/assets/index-nNWtKwge.en.js",
+                "startTime": 8.5,
+                "duration": 1.7000000029802322,
+                "transferSize": 15897,
+                "encodedBodySize": 15597
+              },
+              {
+                "file": "/assets/runtime-core.esm-bundler-GBNs3__c.js",
+                "startTime": 13.100000008940697,
+                "duration": 1.699999988079071,
+                "transferSize": 21308,
+                "encodedBodySize": 21008
+              },
+              {
+                "file": "/assets/Route0-B-3jFbhk.en.js",
+                "startTime": 32.5,
+                "duration": 1.7000000029802322,
+                "transferSize": 2789,
+                "encodedBodySize": 2489
+              },
+              {
+                "file": "/assets/Route1-IVXChEJ_.en.js",
+                "startTime": 94.40000000596046,
+                "duration": 1.3999999910593033,
+                "transferSize": 2791,
+                "encodedBodySize": 2491
+              }
+            ],
+            "files": [
+              {
+                "file": "assets/Route1-IVXChEJ_.en.js",
+                "gzipBytes": 2491
+              }
+            ],
+            "requests": 1,
+            "gzipBytes": 2491,
+            "routeMarkersInTransferredPayload": [
+              1
+            ]
+          },
+          {
+            "label": "return-cached",
+            "route": 0,
+            "readyMs": 6,
+            "initialMs": 116.1000000089407,
+            "resourceTimeline": [
+              {
+                "file": "/assets/index-nNWtKwge.i18n-loader.js",
+                "startTime": 4.299999997019768,
+                "duration": 1.5,
+                "transferSize": 1007,
+                "encodedBodySize": 707
+              },
+              {
+                "file": "/assets/index-nNWtKwge.en.js",
+                "startTime": 8.5,
+                "duration": 1.7000000029802322,
+                "transferSize": 15897,
+                "encodedBodySize": 15597
+              },
+              {
+                "file": "/assets/runtime-core.esm-bundler-GBNs3__c.js",
+                "startTime": 13.100000008940697,
+                "duration": 1.699999988079071,
+                "transferSize": 21308,
+                "encodedBodySize": 21008
+              },
+              {
+                "file": "/assets/Route0-B-3jFbhk.en.js",
+                "startTime": 32.5,
+                "duration": 1.7000000029802322,
+                "transferSize": 2789,
+                "encodedBodySize": 2489
+              },
+              {
+                "file": "/assets/Route1-IVXChEJ_.en.js",
+                "startTime": 94.40000000596046,
+                "duration": 1.3999999910593033,
+                "transferSize": 2791,
+                "encodedBodySize": 2491
+              }
+            ],
+            "files": [],
+            "requests": 0,
+            "gzipBytes": 0,
+            "routeMarkersInTransferredPayload": []
+          }
+        ],
+        [
+          {
+            "label": "initial",
+            "route": 0,
+            "readyMs": 20,
+            "initialMs": 51,
+            "resourceTimeline": [
+              {
+                "file": "/assets/index-nNWtKwge.i18n-loader.js",
+                "startTime": 4.5,
+                "duration": 1.5,
+                "transferSize": 1007,
+                "encodedBodySize": 707
+              },
+              {
+                "file": "/assets/index-nNWtKwge.en.js",
+                "startTime": 8.700000002980232,
+                "duration": 1.7000000029802322,
+                "transferSize": 15897,
+                "encodedBodySize": 15597
+              },
+              {
+                "file": "/assets/runtime-core.esm-bundler-GBNs3__c.js",
+                "startTime": 13.799999997019768,
+                "duration": 1.7000000029802322,
+                "transferSize": 21308,
+                "encodedBodySize": 21008
+              },
+              {
+                "file": "/assets/Route0-B-3jFbhk.en.js",
+                "startTime": 33.20000000298023,
+                "duration": 1.7000000029802322,
+                "transferSize": 2789,
+                "encodedBodySize": 2489
+              }
+            ],
+            "files": [
+              {
+                "file": "index.html",
+                "gzipBytes": 134
+              },
+              {
+                "file": "assets/index-nNWtKwge.i18n-loader.js",
+                "gzipBytes": 707
+              },
+              {
+                "file": "assets/index-nNWtKwge.en.js",
+                "gzipBytes": 15597
+              },
+              {
+                "file": "assets/runtime-core.esm-bundler-GBNs3__c.js",
+                "gzipBytes": 21008
+              },
+              {
+                "file": "assets/Route0-B-3jFbhk.en.js",
+                "gzipBytes": 2489
+              }
+            ],
+            "requests": 5,
+            "gzipBytes": 39935,
+            "routeMarkersInTransferredPayload": [
+              0
+            ]
+          },
+          {
+            "label": "route-1",
+            "route": 1,
+            "readyMs": 16,
+            "initialMs": 151.09999999403954,
+            "resourceTimeline": [
+              {
+                "file": "/assets/index-nNWtKwge.i18n-loader.js",
+                "startTime": 4.5,
+                "duration": 1.5,
+                "transferSize": 1007,
+                "encodedBodySize": 707
+              },
+              {
+                "file": "/assets/index-nNWtKwge.en.js",
+                "startTime": 8.700000002980232,
+                "duration": 1.7000000029802322,
+                "transferSize": 15897,
+                "encodedBodySize": 15597
+              },
+              {
+                "file": "/assets/runtime-core.esm-bundler-GBNs3__c.js",
+                "startTime": 13.799999997019768,
+                "duration": 1.7000000029802322,
+                "transferSize": 21308,
+                "encodedBodySize": 21008
+              },
+              {
+                "file": "/assets/Route0-B-3jFbhk.en.js",
+                "startTime": 33.20000000298023,
+                "duration": 1.7000000029802322,
+                "transferSize": 2789,
+                "encodedBodySize": 2489
+              },
+              {
+                "file": "/assets/Route1-IVXChEJ_.en.js",
+                "startTime": 135.59999999403954,
+                "duration": 2.1000000089406967,
+                "transferSize": 2791,
+                "encodedBodySize": 2491
+              }
+            ],
+            "files": [
+              {
+                "file": "assets/Route1-IVXChEJ_.en.js",
+                "gzipBytes": 2491
+              }
+            ],
+            "requests": 1,
+            "gzipBytes": 2491,
+            "routeMarkersInTransferredPayload": [
+              1
+            ]
+          },
+          {
+            "label": "return-cached",
+            "route": 0,
+            "readyMs": 1.2000000029802322,
+            "initialMs": 181.40000000596046,
+            "resourceTimeline": [
+              {
+                "file": "/assets/index-nNWtKwge.i18n-loader.js",
+                "startTime": 4.5,
+                "duration": 1.5,
+                "transferSize": 1007,
+                "encodedBodySize": 707
+              },
+              {
+                "file": "/assets/index-nNWtKwge.en.js",
+                "startTime": 8.700000002980232,
+                "duration": 1.7000000029802322,
+                "transferSize": 15897,
+                "encodedBodySize": 15597
+              },
+              {
+                "file": "/assets/runtime-core.esm-bundler-GBNs3__c.js",
+                "startTime": 13.799999997019768,
+                "duration": 1.7000000029802322,
+                "transferSize": 21308,
+                "encodedBodySize": 21008
+              },
+              {
+                "file": "/assets/Route0-B-3jFbhk.en.js",
+                "startTime": 33.20000000298023,
+                "duration": 1.7000000029802322,
+                "transferSize": 2789,
+                "encodedBodySize": 2489
+              },
+              {
+                "file": "/assets/Route1-IVXChEJ_.en.js",
+                "startTime": 135.59999999403954,
+                "duration": 2.1000000089406967,
+                "transferSize": 2791,
+                "encodedBodySize": 2491
+              }
+            ],
+            "files": [],
+            "requests": 0,
+            "gzipBytes": 0,
+            "routeMarkersInTransferredPayload": []
+          }
+        ]
+      ]
+    },
+    {
+      "size": "small",
+      "shape": {
+        "routes": 3,
+        "messages": 12,
+        "global": 20
+      },
+      "mode": "route-prototype",
+      "buildMs": 157.47984800000006,
+      "processPeakRssKiB": 379040,
+      "inputDictionaryBytes": 11391,
+      "inputDictionaryHash": "8b72c4d3ad0938ddc08376f5e9f5ec3740b8f3afffe0b27cc79b9e6625828263",
+      "totalOutputBytes": 118285,
+      "totalOutputGzipBytes": 44600,
+      "outputFiles": [
+        ".vite/manifest.json",
+        "assets/Route0-CCKeQw0F.js",
+        "assets/Route1-DHpYcnnE.js",
+        "assets/Route2-DJ5KvnpR.js",
+        "assets/adapter-DUKmjU7j.js",
+        "assets/global-en--vHEjzdu.js",
+        "assets/global-ja-u4i_C_gq.js",
+        "assets/index-6WABXrIk.js",
+        "assets/route0-en-D81CGsHm.js",
+        "assets/route0-ja-L7_f0UW1.js",
+        "assets/route1-en-Ds-ky9hB.js",
+        "assets/route1-ja-DY-fXoey.js",
+        "assets/route2-en-BYtgg6jW.js",
+        "assets/route2-ja-CNl-2pR2.js",
+        "index.html"
+      ],
+      "runs": [
+        [
+          {
+            "label": "initial",
+            "route": 0,
+            "readyMs": 22.899999991059303,
+            "initialMs": 39.599999994039536,
+            "resourceTimeline": [
+              {
+                "file": "/assets/index-6WABXrIk.js",
+                "startTime": 4.299999997019768,
+                "duration": 2.4000000059604645,
+                "transferSize": 3776,
+                "encodedBodySize": 3476
+              },
+              {
+                "file": "/assets/adapter-DUKmjU7j.js",
+                "startTime": 4.299999997019768,
+                "duration": 3,
+                "transferSize": 33337,
+                "encodedBodySize": 33037
+              },
+              {
+                "file": "/assets/Route0-CCKeQw0F.js",
+                "startTime": 17.799999997019768,
+                "duration": 2.5999999940395355,
+                "transferSize": 586,
+                "encodedBodySize": 286
+              },
+              {
+                "file": "/assets/global-en--vHEjzdu.js",
+                "startTime": 18.299999997019768,
+                "duration": 2.0999999940395355,
+                "transferSize": 1380,
+                "encodedBodySize": 1080
+              },
+              {
+                "file": "/assets/route0-en-D81CGsHm.js",
+                "startTime": 18.399999991059303,
+                "duration": 4.700000002980232,
+                "transferSize": 1032,
+                "encodedBodySize": 732
+              }
+            ],
+            "files": [
+              {
+                "file": "index.html",
+                "gzipBytes": 175
+              },
+              {
+                "file": "assets/index-6WABXrIk.js",
+                "gzipBytes": 3476
+              },
+              {
+                "file": "assets/adapter-DUKmjU7j.js",
+                "gzipBytes": 33037
+              },
+              {
+                "file": "assets/Route0-CCKeQw0F.js",
+                "gzipBytes": 286
+              },
+              {
+                "file": "assets/global-en--vHEjzdu.js",
+                "gzipBytes": 1080
+              },
+              {
+                "file": "assets/route0-en-D81CGsHm.js",
+                "gzipBytes": 732
+              }
+            ],
+            "requests": 6,
+            "gzipBytes": 38786,
+            "routeMarkersInTransferredPayload": [
+              0
+            ]
+          },
+          {
+            "label": "route-1",
+            "route": 1,
+            "readyMs": 4.4000000059604645,
+            "initialMs": 74.5,
+            "resourceTimeline": [
+              {
+                "file": "/assets/index-6WABXrIk.js",
+                "startTime": 4.299999997019768,
+                "duration": 2.4000000059604645,
+                "transferSize": 3776,
+                "encodedBodySize": 3476
+              },
+              {
+                "file": "/assets/adapter-DUKmjU7j.js",
+                "startTime": 4.299999997019768,
+                "duration": 3,
+                "transferSize": 33337,
+                "encodedBodySize": 33037
+              },
+              {
+                "file": "/assets/Route0-CCKeQw0F.js",
+                "startTime": 17.799999997019768,
+                "duration": 2.5999999940395355,
+                "transferSize": 586,
+                "encodedBodySize": 286
+              },
+              {
+                "file": "/assets/global-en--vHEjzdu.js",
+                "startTime": 18.299999997019768,
+                "duration": 2.0999999940395355,
+                "transferSize": 1380,
+                "encodedBodySize": 1080
+              },
+              {
+                "file": "/assets/route0-en-D81CGsHm.js",
+                "startTime": 18.399999991059303,
+                "duration": 4.700000002980232,
+                "transferSize": 1032,
+                "encodedBodySize": 732
+              },
+              {
+                "file": "/assets/Route1-DHpYcnnE.js",
+                "startTime": 70.5,
+                "duration": 2.2000000029802322,
+                "transferSize": 586,
+                "encodedBodySize": 286
+              },
+              {
+                "file": "/assets/route1-en-Ds-ky9hB.js",
+                "startTime": 70.70000000298023,
+                "duration": 2.199999988079071,
+                "transferSize": 1032,
+                "encodedBodySize": 732
+              }
+            ],
+            "files": [
+              {
+                "file": "assets/Route1-DHpYcnnE.js",
+                "gzipBytes": 286
+              },
+              {
+                "file": "assets/route1-en-Ds-ky9hB.js",
+                "gzipBytes": 732
+              }
+            ],
+            "requests": 2,
+            "gzipBytes": 1018,
+            "routeMarkersInTransferredPayload": [
+              1
+            ]
+          },
+          {
+            "label": "return-cached",
+            "route": 0,
+            "readyMs": 6.399999991059303,
+            "initialMs": 89.59999999403954,
+            "resourceTimeline": [
+              {
+                "file": "/assets/index-6WABXrIk.js",
+                "startTime": 4.299999997019768,
+                "duration": 2.4000000059604645,
+                "transferSize": 3776,
+                "encodedBodySize": 3476
+              },
+              {
+                "file": "/assets/adapter-DUKmjU7j.js",
+                "startTime": 4.299999997019768,
+                "duration": 3,
+                "transferSize": 33337,
+                "encodedBodySize": 33037
+              },
+              {
+                "file": "/assets/Route0-CCKeQw0F.js",
+                "startTime": 17.799999997019768,
+                "duration": 2.5999999940395355,
+                "transferSize": 586,
+                "encodedBodySize": 286
+              },
+              {
+                "file": "/assets/global-en--vHEjzdu.js",
+                "startTime": 18.299999997019768,
+                "duration": 2.0999999940395355,
+                "transferSize": 1380,
+                "encodedBodySize": 1080
+              },
+              {
+                "file": "/assets/route0-en-D81CGsHm.js",
+                "startTime": 18.399999991059303,
+                "duration": 4.700000002980232,
+                "transferSize": 1032,
+                "encodedBodySize": 732
+              },
+              {
+                "file": "/assets/Route1-DHpYcnnE.js",
+                "startTime": 70.5,
+                "duration": 2.2000000029802322,
+                "transferSize": 586,
+                "encodedBodySize": 286
+              },
+              {
+                "file": "/assets/route1-en-Ds-ky9hB.js",
+                "startTime": 70.70000000298023,
+                "duration": 2.199999988079071,
+                "transferSize": 1032,
+                "encodedBodySize": 732
+              }
+            ],
+            "files": [],
+            "requests": 0,
+            "gzipBytes": 0,
+            "routeMarkersInTransferredPayload": []
+          }
+        ],
+        [
+          {
+            "label": "initial",
+            "route": 0,
+            "readyMs": 19.799999997019768,
+            "initialMs": 37.099999994039536,
+            "resourceTimeline": [
+              {
+                "file": "/assets/index-6WABXrIk.js",
+                "startTime": 4.200000002980232,
+                "duration": 3,
+                "transferSize": 3776,
+                "encodedBodySize": 3476
+              },
+              {
+                "file": "/assets/adapter-DUKmjU7j.js",
+                "startTime": 4.299999997019768,
+                "duration": 3.5999999940395355,
+                "transferSize": 33337,
+                "encodedBodySize": 33037
+              },
+              {
+                "file": "/assets/Route0-CCKeQw0F.js",
+                "startTime": 18.399999991059303,
+                "duration": 2.4000000059604645,
+                "transferSize": 586,
+                "encodedBodySize": 286
+              },
+              {
+                "file": "/assets/global-en--vHEjzdu.js",
+                "startTime": 18.899999991059303,
+                "duration": 5,
+                "transferSize": 1380,
+                "encodedBodySize": 1080
+              },
+              {
+                "file": "/assets/route0-en-D81CGsHm.js",
+                "startTime": 19.099999994039536,
+                "duration": 4.799999997019768,
+                "transferSize": 1032,
+                "encodedBodySize": 732
+              }
+            ],
+            "files": [
+              {
+                "file": "index.html",
+                "gzipBytes": 175
+              },
+              {
+                "file": "assets/index-6WABXrIk.js",
+                "gzipBytes": 3476
+              },
+              {
+                "file": "assets/adapter-DUKmjU7j.js",
+                "gzipBytes": 33037
+              },
+              {
+                "file": "assets/Route0-CCKeQw0F.js",
+                "gzipBytes": 286
+              },
+              {
+                "file": "assets/global-en--vHEjzdu.js",
+                "gzipBytes": 1080
+              },
+              {
+                "file": "assets/route0-en-D81CGsHm.js",
+                "gzipBytes": 732
+              }
+            ],
+            "requests": 6,
+            "gzipBytes": 38786,
+            "routeMarkersInTransferredPayload": [
+              0
+            ]
+          },
+          {
+            "label": "route-1",
+            "route": 1,
+            "readyMs": 13.400000005960464,
+            "initialMs": 82.20000000298023,
+            "resourceTimeline": [
+              {
+                "file": "/assets/index-6WABXrIk.js",
+                "startTime": 4.200000002980232,
+                "duration": 3,
+                "transferSize": 3776,
+                "encodedBodySize": 3476
+              },
+              {
+                "file": "/assets/adapter-DUKmjU7j.js",
+                "startTime": 4.299999997019768,
+                "duration": 3.5999999940395355,
+                "transferSize": 33337,
+                "encodedBodySize": 33037
+              },
+              {
+                "file": "/assets/Route0-CCKeQw0F.js",
+                "startTime": 18.399999991059303,
+                "duration": 2.4000000059604645,
+                "transferSize": 586,
+                "encodedBodySize": 286
+              },
+              {
+                "file": "/assets/global-en--vHEjzdu.js",
+                "startTime": 18.899999991059303,
+                "duration": 5,
+                "transferSize": 1380,
+                "encodedBodySize": 1080
+              },
+              {
+                "file": "/assets/route0-en-D81CGsHm.js",
+                "startTime": 19.099999994039536,
+                "duration": 4.799999997019768,
+                "transferSize": 1032,
+                "encodedBodySize": 732
+              },
+              {
+                "file": "/assets/Route1-DHpYcnnE.js",
+                "startTime": 69,
+                "duration": 2.3999999910593033,
+                "transferSize": 586,
+                "encodedBodySize": 286
+              },
+              {
+                "file": "/assets/route1-en-Ds-ky9hB.js",
+                "startTime": 69.29999999701977,
+                "duration": 2.2000000029802322,
+                "transferSize": 1032,
+                "encodedBodySize": 732
+              }
+            ],
+            "files": [
+              {
+                "file": "assets/Route1-DHpYcnnE.js",
+                "gzipBytes": 286
+              },
+              {
+                "file": "assets/route1-en-Ds-ky9hB.js",
+                "gzipBytes": 732
+              }
+            ],
+            "requests": 2,
+            "gzipBytes": 1018,
+            "routeMarkersInTransferredPayload": [
+              1
+            ]
+          },
+          {
+            "label": "return-cached",
+            "route": 0,
+            "readyMs": 7.9000000059604645,
+            "initialMs": 99,
+            "resourceTimeline": [
+              {
+                "file": "/assets/index-6WABXrIk.js",
+                "startTime": 4.200000002980232,
+                "duration": 3,
+                "transferSize": 3776,
+                "encodedBodySize": 3476
+              },
+              {
+                "file": "/assets/adapter-DUKmjU7j.js",
+                "startTime": 4.299999997019768,
+                "duration": 3.5999999940395355,
+                "transferSize": 33337,
+                "encodedBodySize": 33037
+              },
+              {
+                "file": "/assets/Route0-CCKeQw0F.js",
+                "startTime": 18.399999991059303,
+                "duration": 2.4000000059604645,
+                "transferSize": 586,
+                "encodedBodySize": 286
+              },
+              {
+                "file": "/assets/global-en--vHEjzdu.js",
+                "startTime": 18.899999991059303,
+                "duration": 5,
+                "transferSize": 1380,
+                "encodedBodySize": 1080
+              },
+              {
+                "file": "/assets/route0-en-D81CGsHm.js",
+                "startTime": 19.099999994039536,
+                "duration": 4.799999997019768,
+                "transferSize": 1032,
+                "encodedBodySize": 732
+              },
+              {
+                "file": "/assets/Route1-DHpYcnnE.js",
+                "startTime": 69,
+                "duration": 2.3999999910593033,
+                "transferSize": 586,
+                "encodedBodySize": 286
+              },
+              {
+                "file": "/assets/route1-en-Ds-ky9hB.js",
+                "startTime": 69.29999999701977,
+                "duration": 2.2000000029802322,
+                "transferSize": 1032,
+                "encodedBodySize": 732
+              }
+            ],
+            "files": [],
+            "requests": 0,
+            "gzipBytes": 0,
+            "routeMarkersInTransferredPayload": []
+          }
+        ],
+        [
+          {
+            "label": "initial",
+            "route": 0,
+            "readyMs": 19.5,
+            "initialMs": 36.400000005960464,
+            "resourceTimeline": [
+              {
+                "file": "/assets/index-6WABXrIk.js",
+                "startTime": 4.4000000059604645,
+                "duration": 2.5999999940395355,
+                "transferSize": 3776,
+                "encodedBodySize": 3476
+              },
+              {
+                "file": "/assets/adapter-DUKmjU7j.js",
+                "startTime": 4.5,
+                "duration": 3,
+                "transferSize": 33337,
+                "encodedBodySize": 33037
+              },
+              {
+                "file": "/assets/Route0-CCKeQw0F.js",
+                "startTime": 17.900000005960464,
+                "duration": 2.7999999970197678,
+                "transferSize": 586,
+                "encodedBodySize": 286
+              },
+              {
+                "file": "/assets/global-en--vHEjzdu.js",
+                "startTime": 18.299999997019768,
+                "duration": 2.5,
+                "transferSize": 1380,
+                "encodedBodySize": 1080
+              },
+              {
+                "file": "/assets/route0-en-D81CGsHm.js",
+                "startTime": 18.400000005960464,
+                "duration": 4.799999997019768,
+                "transferSize": 1032,
+                "encodedBodySize": 732
+              }
+            ],
+            "files": [
+              {
+                "file": "index.html",
+                "gzipBytes": 175
+              },
+              {
+                "file": "assets/index-6WABXrIk.js",
+                "gzipBytes": 3476
+              },
+              {
+                "file": "assets/adapter-DUKmjU7j.js",
+                "gzipBytes": 33037
+              },
+              {
+                "file": "assets/Route0-CCKeQw0F.js",
+                "gzipBytes": 286
+              },
+              {
+                "file": "assets/global-en--vHEjzdu.js",
+                "gzipBytes": 1080
+              },
+              {
+                "file": "assets/route0-en-D81CGsHm.js",
+                "gzipBytes": 732
+              }
+            ],
+            "requests": 6,
+            "gzipBytes": 38786,
+            "routeMarkersInTransferredPayload": [
+              0
+            ]
+          },
+          {
+            "label": "route-1",
+            "route": 1,
+            "readyMs": 13.5,
+            "initialMs": 82,
+            "resourceTimeline": [
+              {
+                "file": "/assets/index-6WABXrIk.js",
+                "startTime": 4.4000000059604645,
+                "duration": 2.5999999940395355,
+                "transferSize": 3776,
+                "encodedBodySize": 3476
+              },
+              {
+                "file": "/assets/adapter-DUKmjU7j.js",
+                "startTime": 4.5,
+                "duration": 3,
+                "transferSize": 33337,
+                "encodedBodySize": 33037
+              },
+              {
+                "file": "/assets/Route0-CCKeQw0F.js",
+                "startTime": 17.900000005960464,
+                "duration": 2.7999999970197678,
+                "transferSize": 586,
+                "encodedBodySize": 286
+              },
+              {
+                "file": "/assets/global-en--vHEjzdu.js",
+                "startTime": 18.299999997019768,
+                "duration": 2.5,
+                "transferSize": 1380,
+                "encodedBodySize": 1080
+              },
+              {
+                "file": "/assets/route0-en-D81CGsHm.js",
+                "startTime": 18.400000005960464,
+                "duration": 4.799999997019768,
+                "transferSize": 1032,
+                "encodedBodySize": 732
+              },
+              {
+                "file": "/assets/Route1-DHpYcnnE.js",
+                "startTime": 68.90000000596046,
+                "duration": 2.199999988079071,
+                "transferSize": 586,
+                "encodedBodySize": 286
+              },
+              {
+                "file": "/assets/route1-en-Ds-ky9hB.js",
+                "startTime": 69.09999999403954,
+                "duration": 2,
+                "transferSize": 1032,
+                "encodedBodySize": 732
+              }
+            ],
+            "files": [
+              {
+                "file": "assets/Route1-DHpYcnnE.js",
+                "gzipBytes": 286
+              },
+              {
+                "file": "assets/route1-en-Ds-ky9hB.js",
+                "gzipBytes": 732
+              }
+            ],
+            "requests": 2,
+            "gzipBytes": 1018,
+            "routeMarkersInTransferredPayload": [
+              1
+            ]
+          },
+          {
+            "label": "return-cached",
+            "route": 0,
+            "readyMs": 1.5999999940395355,
+            "initialMs": 113.79999999701977,
+            "resourceTimeline": [
+              {
+                "file": "/assets/index-6WABXrIk.js",
+                "startTime": 4.4000000059604645,
+                "duration": 2.5999999940395355,
+                "transferSize": 3776,
+                "encodedBodySize": 3476
+              },
+              {
+                "file": "/assets/adapter-DUKmjU7j.js",
+                "startTime": 4.5,
+                "duration": 3,
+                "transferSize": 33337,
+                "encodedBodySize": 33037
+              },
+              {
+                "file": "/assets/Route0-CCKeQw0F.js",
+                "startTime": 17.900000005960464,
+                "duration": 2.7999999970197678,
+                "transferSize": 586,
+                "encodedBodySize": 286
+              },
+              {
+                "file": "/assets/global-en--vHEjzdu.js",
+                "startTime": 18.299999997019768,
+                "duration": 2.5,
+                "transferSize": 1380,
+                "encodedBodySize": 1080
+              },
+              {
+                "file": "/assets/route0-en-D81CGsHm.js",
+                "startTime": 18.400000005960464,
+                "duration": 4.799999997019768,
+                "transferSize": 1032,
+                "encodedBodySize": 732
+              },
+              {
+                "file": "/assets/Route1-DHpYcnnE.js",
+                "startTime": 68.90000000596046,
+                "duration": 2.199999988079071,
+                "transferSize": 586,
+                "encodedBodySize": 286
+              },
+              {
+                "file": "/assets/route1-en-Ds-ky9hB.js",
+                "startTime": 69.09999999403954,
+                "duration": 2,
+                "transferSize": 1032,
+                "encodedBodySize": 732
+              }
+            ],
+            "files": [],
+            "requests": 0,
+            "gzipBytes": 0,
+            "routeMarkersInTransferredPayload": []
+          }
+        ]
+      ]
+    },
+    {
+      "size": "large",
+      "shape": {
+        "routes": 40,
+        "messages": 200,
+        "global": 1000
+      },
+      "mode": "virtual",
+      "buildMs": 1075.245064,
+      "processPeakRssKiB": 674272,
+      "inputDictionaryBytes": 1902038,
+      "inputDictionaryHash": "939977c450f9c316dfaae929da0856429c1030a009d11bf5ffef2127b223e67c",
+      "totalOutputBytes": 2026796,
+      "totalOutputGzipBytes": 824383,
+      "outputFiles": [
+        ".vite/internationalization-manifest.json",
+        ".vite/manifest.json",
+        "assets/Route0-ZurGyL09.js",
+        "assets/Route1-CtAQw1i7.js",
+        "assets/Route10-eG4BfEjn.js",
+        "assets/Route11-C5GudCuV.js",
+        "assets/Route12-Dj2m9WLK.js",
+        "assets/Route13-DpOTKE_f.js",
+        "assets/Route14-B_hvqCYw.js",
+        "assets/Route15-reCoWCOB.js",
+        "assets/Route16-6vnr_Cy1.js",
+        "assets/Route17-BRh7jxTr.js",
+        "assets/Route18-CgKixQgs.js",
+        "assets/Route19-jNNHv8rH.js",
+        "assets/Route2-Dgy90El0.js",
+        "assets/Route20-r3JdCy2s.js",
+        "assets/Route21-mlgG-4Gr.js",
+        "assets/Route22-DhkrnNPN.js",
+        "assets/Route23-BkIhZYf5.js",
+        "assets/Route24-CsIuwgzd.js",
+        "assets/Route25-VhvW4bNp.js",
+        "assets/Route26-rjatDeCS.js",
+        "assets/Route27-DoKJpUlc.js",
+        "assets/Route28-gohZl9fG.js",
+        "assets/Route29-Bh0zyg_3.js",
+        "assets/Route3-BvyoO3h8.js",
+        "assets/Route30-CLd1knV4.js",
+        "assets/Route31-B1K7Wi3_.js",
+        "assets/Route32-CqxUot92.js",
+        "assets/Route33-DGaGqvh4.js",
+        "assets/Route34-ClG23O8m.js",
+        "assets/Route35-BZ4Bt-I_.js",
+        "assets/Route36-jQesPN1v.js",
+        "assets/Route37-D1GnfV64.js",
+        "assets/Route38-CgYj99OU.js",
+        "assets/Route39-r5t7ZS6c.js",
+        "assets/Route4-DER3QlDX.js",
+        "assets/Route5-BHh9NjBP.js",
+        "assets/Route6-spZyVJXS.js",
+        "assets/Route7-B8eetdoO.js",
+        "assets/Route8-CNqZJFl4.js",
+        "assets/Route9-DkdNGuFD.js",
+        "assets/_virtual_vite-vue-internationalization-pNnPzLP3.js",
+        "assets/en-BBsFvu4d.js",
+        "assets/index-DbyUhqb7.js",
+        "assets/ja-BSVednJV.js",
+        "index.html"
+      ],
+      "runs": [
+        [
+          {
+            "label": "initial",
+            "route": 0,
+            "readyMs": 12.299999997019768,
+            "initialMs": 52.5,
+            "resourceTimeline": [
+              {
+                "file": "/assets/index-DbyUhqb7.js",
+                "startTime": 5.100000008940697,
+                "duration": 3.199999988079071,
+                "transferSize": 4560,
+                "encodedBodySize": 4260
+              },
+              {
+                "file": "/assets/_virtual_vite-vue-internationalization-pNnPzLP3.js",
+                "startTime": 5.299999997019768,
+                "duration": 3.2000000029802322,
+                "transferSize": 33652,
+                "encodedBodySize": 33352
+              },
+              {
+                "file": "/assets/en-BBsFvu4d.js",
+                "startTime": 15.100000008940697,
+                "duration": 6.799999997019768,
+                "transferSize": 384056,
+                "encodedBodySize": 383756
+              },
+              {
+                "file": "/assets/Route0-ZurGyL09.js",
+                "startTime": 41.20000000298023,
+                "duration": 1.7000000029802322,
+                "transferSize": 640,
+                "encodedBodySize": 340
+              }
+            ],
+            "files": [
+              {
+                "file": "index.html",
+                "gzipBytes": 197
+              },
+              {
+                "file": "assets/index-DbyUhqb7.js",
+                "gzipBytes": 4260
+              },
+              {
+                "file": "assets/_virtual_vite-vue-internationalization-pNnPzLP3.js",
+                "gzipBytes": 33352
+              },
+              {
+                "file": "assets/en-BBsFvu4d.js",
+                "gzipBytes": 383756
+              },
+              {
+                "file": "assets/Route0-ZurGyL09.js",
+                "gzipBytes": 340
+              }
+            ],
+            "requests": 5,
+            "gzipBytes": 421905,
+            "routeMarkersInTransferredPayload": [
+              0,
+              1,
+              2,
+              3,
+              4,
+              5,
+              6,
+              7,
+              8,
+              9,
+              10,
+              11,
+              12,
+              13,
+              14,
+              15,
+              16,
+              17,
+              18,
+              19,
+              20,
+              21,
+              22,
+              23,
+              24,
+              25,
+              26,
+              27,
+              28,
+              29,
+              30,
+              31,
+              32,
+              33,
+              34,
+              35,
+              36,
+              37,
+              38,
+              39
+            ]
+          },
+          {
+            "label": "route-1",
+            "route": 1,
+            "readyMs": 10.799999997019768,
+            "initialMs": 152.20000000298023,
+            "resourceTimeline": [
+              {
+                "file": "/assets/index-DbyUhqb7.js",
+                "startTime": 5.100000008940697,
+                "duration": 3.199999988079071,
+                "transferSize": 4560,
+                "encodedBodySize": 4260
+              },
+              {
+                "file": "/assets/_virtual_vite-vue-internationalization-pNnPzLP3.js",
+                "startTime": 5.299999997019768,
+                "duration": 3.2000000029802322,
+                "transferSize": 33652,
+                "encodedBodySize": 33352
+              },
+              {
+                "file": "/assets/en-BBsFvu4d.js",
+                "startTime": 15.100000008940697,
+                "duration": 6.799999997019768,
+                "transferSize": 384056,
+                "encodedBodySize": 383756
+              },
+              {
+                "file": "/assets/Route0-ZurGyL09.js",
+                "startTime": 41.20000000298023,
+                "duration": 1.7000000029802322,
+                "transferSize": 640,
+                "encodedBodySize": 340
+              },
+              {
+                "file": "/assets/Route1-CtAQw1i7.js",
+                "startTime": 141.70000000298023,
+                "duration": 1.7999999970197678,
+                "transferSize": 639,
+                "encodedBodySize": 339
+              }
+            ],
+            "files": [
+              {
+                "file": "assets/Route1-CtAQw1i7.js",
+                "gzipBytes": 339
+              }
+            ],
+            "requests": 1,
+            "gzipBytes": 339,
+            "routeMarkersInTransferredPayload": []
+          },
+          {
+            "label": "return-cached",
+            "route": 0,
+            "readyMs": 0.6000000089406967,
+            "initialMs": 176.6000000089407,
+            "resourceTimeline": [
+              {
+                "file": "/assets/index-DbyUhqb7.js",
+                "startTime": 5.100000008940697,
+                "duration": 3.199999988079071,
+                "transferSize": 4560,
+                "encodedBodySize": 4260
+              },
+              {
+                "file": "/assets/_virtual_vite-vue-internationalization-pNnPzLP3.js",
+                "startTime": 5.299999997019768,
+                "duration": 3.2000000029802322,
+                "transferSize": 33652,
+                "encodedBodySize": 33352
+              },
+              {
+                "file": "/assets/en-BBsFvu4d.js",
+                "startTime": 15.100000008940697,
+                "duration": 6.799999997019768,
+                "transferSize": 384056,
+                "encodedBodySize": 383756
+              },
+              {
+                "file": "/assets/Route0-ZurGyL09.js",
+                "startTime": 41.20000000298023,
+                "duration": 1.7000000029802322,
+                "transferSize": 640,
+                "encodedBodySize": 340
+              },
+              {
+                "file": "/assets/Route1-CtAQw1i7.js",
+                "startTime": 141.70000000298023,
+                "duration": 1.7999999970197678,
+                "transferSize": 639,
+                "encodedBodySize": 339
+              }
+            ],
+            "files": [],
+            "requests": 0,
+            "gzipBytes": 0,
+            "routeMarkersInTransferredPayload": []
+          }
+        ],
+        [
+          {
+            "label": "initial",
+            "route": 0,
+            "readyMs": 18.30000001192093,
+            "initialMs": 56.400000005960464,
+            "resourceTimeline": [
+              {
+                "file": "/assets/index-DbyUhqb7.js",
+                "startTime": 4.4000000059604645,
+                "duration": 2.8999999910593033,
+                "transferSize": 4560,
+                "encodedBodySize": 4260
+              },
+              {
+                "file": "/assets/_virtual_vite-vue-internationalization-pNnPzLP3.js",
+                "startTime": 4.5,
+                "duration": 3,
+                "transferSize": 33652,
+                "encodedBodySize": 33352
+              },
+              {
+                "file": "/assets/en-BBsFvu4d.js",
+                "startTime": 14.400000005960464,
+                "duration": 5.899999991059303,
+                "transferSize": 384056,
+                "encodedBodySize": 383756
+              },
+              {
+                "file": "/assets/Route0-ZurGyL09.js",
+                "startTime": 39.099999994039536,
+                "duration": 1.7000000029802322,
+                "transferSize": 640,
+                "encodedBodySize": 340
+              }
+            ],
+            "files": [
+              {
+                "file": "index.html",
+                "gzipBytes": 197
+              },
+              {
+                "file": "assets/index-DbyUhqb7.js",
+                "gzipBytes": 4260
+              },
+              {
+                "file": "assets/_virtual_vite-vue-internationalization-pNnPzLP3.js",
+                "gzipBytes": 33352
+              },
+              {
+                "file": "assets/en-BBsFvu4d.js",
+                "gzipBytes": 383756
+              },
+              {
+                "file": "assets/Route0-ZurGyL09.js",
+                "gzipBytes": 340
+              }
+            ],
+            "requests": 5,
+            "gzipBytes": 421905,
+            "routeMarkersInTransferredPayload": [
+              0,
+              1,
+              2,
+              3,
+              4,
+              5,
+              6,
+              7,
+              8,
+              9,
+              10,
+              11,
+              12,
+              13,
+              14,
+              15,
+              16,
+              17,
+              18,
+              19,
+              20,
+              21,
+              22,
+              23,
+              24,
+              25,
+              26,
+              27,
+              28,
+              29,
+              30,
+              31,
+              32,
+              33,
+              34,
+              35,
+              36,
+              37,
+              38,
+              39
+            ]
+          },
+          {
+            "label": "route-1",
+            "route": 1,
+            "readyMs": 10.400000005960464,
+            "initialMs": 139.70000000298023,
+            "resourceTimeline": [
+              {
+                "file": "/assets/index-DbyUhqb7.js",
+                "startTime": 4.4000000059604645,
+                "duration": 2.8999999910593033,
+                "transferSize": 4560,
+                "encodedBodySize": 4260
+              },
+              {
+                "file": "/assets/_virtual_vite-vue-internationalization-pNnPzLP3.js",
+                "startTime": 4.5,
+                "duration": 3,
+                "transferSize": 33652,
+                "encodedBodySize": 33352
+              },
+              {
+                "file": "/assets/en-BBsFvu4d.js",
+                "startTime": 14.400000005960464,
+                "duration": 5.899999991059303,
+                "transferSize": 384056,
+                "encodedBodySize": 383756
+              },
+              {
+                "file": "/assets/Route0-ZurGyL09.js",
+                "startTime": 39.099999994039536,
+                "duration": 1.7000000029802322,
+                "transferSize": 640,
+                "encodedBodySize": 340
+              },
+              {
+                "file": "/assets/Route1-CtAQw1i7.js",
+                "startTime": 129.70000000298023,
+                "duration": 1.2999999970197678,
+                "transferSize": 639,
+                "encodedBodySize": 339
+              }
+            ],
+            "files": [
+              {
+                "file": "assets/Route1-CtAQw1i7.js",
+                "gzipBytes": 339
+              }
+            ],
+            "requests": 1,
+            "gzipBytes": 339,
+            "routeMarkersInTransferredPayload": []
+          },
+          {
+            "label": "return-cached",
+            "route": 0,
+            "readyMs": 4.899999991059303,
+            "initialMs": 156.29999999701977,
+            "resourceTimeline": [
+              {
+                "file": "/assets/index-DbyUhqb7.js",
+                "startTime": 4.4000000059604645,
+                "duration": 2.8999999910593033,
+                "transferSize": 4560,
+                "encodedBodySize": 4260
+              },
+              {
+                "file": "/assets/_virtual_vite-vue-internationalization-pNnPzLP3.js",
+                "startTime": 4.5,
+                "duration": 3,
+                "transferSize": 33652,
+                "encodedBodySize": 33352
+              },
+              {
+                "file": "/assets/en-BBsFvu4d.js",
+                "startTime": 14.400000005960464,
+                "duration": 5.899999991059303,
+                "transferSize": 384056,
+                "encodedBodySize": 383756
+              },
+              {
+                "file": "/assets/Route0-ZurGyL09.js",
+                "startTime": 39.099999994039536,
+                "duration": 1.7000000029802322,
+                "transferSize": 640,
+                "encodedBodySize": 340
+              },
+              {
+                "file": "/assets/Route1-CtAQw1i7.js",
+                "startTime": 129.70000000298023,
+                "duration": 1.2999999970197678,
+                "transferSize": 639,
+                "encodedBodySize": 339
+              }
+            ],
+            "files": [],
+            "requests": 0,
+            "gzipBytes": 0,
+            "routeMarkersInTransferredPayload": []
+          }
+        ],
+        [
+          {
+            "label": "initial",
+            "route": 0,
+            "readyMs": 7.600000008940697,
+            "initialMs": 48.1000000089407,
+            "resourceTimeline": [
+              {
+                "file": "/assets/index-DbyUhqb7.js",
+                "startTime": 4.100000008940697,
+                "duration": 3.5,
+                "transferSize": 4560,
+                "encodedBodySize": 4260
+              },
+              {
+                "file": "/assets/_virtual_vite-vue-internationalization-pNnPzLP3.js",
+                "startTime": 4.200000002980232,
+                "duration": 3.6000000089406967,
+                "transferSize": 33652,
+                "encodedBodySize": 33352
+              },
+              {
+                "file": "/assets/en-BBsFvu4d.js",
+                "startTime": 14.300000011920929,
+                "duration": 6.399999991059303,
+                "transferSize": 384056,
+                "encodedBodySize": 383756
+              },
+              {
+                "file": "/assets/Route0-ZurGyL09.js",
+                "startTime": 41.5,
+                "duration": 1.7000000029802322,
+                "transferSize": 640,
+                "encodedBodySize": 340
+              }
+            ],
+            "files": [
+              {
+                "file": "index.html",
+                "gzipBytes": 197
+              },
+              {
+                "file": "assets/index-DbyUhqb7.js",
+                "gzipBytes": 4260
+              },
+              {
+                "file": "assets/_virtual_vite-vue-internationalization-pNnPzLP3.js",
+                "gzipBytes": 33352
+              },
+              {
+                "file": "assets/en-BBsFvu4d.js",
+                "gzipBytes": 383756
+              },
+              {
+                "file": "assets/Route0-ZurGyL09.js",
+                "gzipBytes": 340
+              }
+            ],
+            "requests": 5,
+            "gzipBytes": 421905,
+            "routeMarkersInTransferredPayload": [
+              0,
+              1,
+              2,
+              3,
+              4,
+              5,
+              6,
+              7,
+              8,
+              9,
+              10,
+              11,
+              12,
+              13,
+              14,
+              15,
+              16,
+              17,
+              18,
+              19,
+              20,
+              21,
+              22,
+              23,
+              24,
+              25,
+              26,
+              27,
+              28,
+              29,
+              30,
+              31,
+              32,
+              33,
+              34,
+              35,
+              36,
+              37,
+              38,
+              39
+            ]
+          },
+          {
+            "label": "route-1",
+            "route": 1,
+            "readyMs": 10.399999991059303,
+            "initialMs": 114.70000000298023,
+            "resourceTimeline": [
+              {
+                "file": "/assets/index-DbyUhqb7.js",
+                "startTime": 4.100000008940697,
+                "duration": 3.5,
+                "transferSize": 4560,
+                "encodedBodySize": 4260
+              },
+              {
+                "file": "/assets/_virtual_vite-vue-internationalization-pNnPzLP3.js",
+                "startTime": 4.200000002980232,
+                "duration": 3.6000000089406967,
+                "transferSize": 33652,
+                "encodedBodySize": 33352
+              },
+              {
+                "file": "/assets/en-BBsFvu4d.js",
+                "startTime": 14.300000011920929,
+                "duration": 6.399999991059303,
+                "transferSize": 384056,
+                "encodedBodySize": 383756
+              },
+              {
+                "file": "/assets/Route0-ZurGyL09.js",
+                "startTime": 41.5,
+                "duration": 1.7000000029802322,
+                "transferSize": 640,
+                "encodedBodySize": 340
+              },
+              {
+                "file": "/assets/Route1-CtAQw1i7.js",
+                "startTime": 104.6000000089407,
+                "duration": 1.5,
+                "transferSize": 639,
+                "encodedBodySize": 339
+              }
+            ],
+            "files": [
+              {
+                "file": "assets/Route1-CtAQw1i7.js",
+                "gzipBytes": 339
+              }
+            ],
+            "requests": 1,
+            "gzipBytes": 339,
+            "routeMarkersInTransferredPayload": []
+          },
+          {
+            "label": "return-cached",
+            "route": 0,
+            "readyMs": 1.4000000059604645,
+            "initialMs": 131.40000000596046,
+            "resourceTimeline": [
+              {
+                "file": "/assets/index-DbyUhqb7.js",
+                "startTime": 4.100000008940697,
+                "duration": 3.5,
+                "transferSize": 4560,
+                "encodedBodySize": 4260
+              },
+              {
+                "file": "/assets/_virtual_vite-vue-internationalization-pNnPzLP3.js",
+                "startTime": 4.200000002980232,
+                "duration": 3.6000000089406967,
+                "transferSize": 33652,
+                "encodedBodySize": 33352
+              },
+              {
+                "file": "/assets/en-BBsFvu4d.js",
+                "startTime": 14.300000011920929,
+                "duration": 6.399999991059303,
+                "transferSize": 384056,
+                "encodedBodySize": 383756
+              },
+              {
+                "file": "/assets/Route0-ZurGyL09.js",
+                "startTime": 41.5,
+                "duration": 1.7000000029802322,
+                "transferSize": 640,
+                "encodedBodySize": 340
+              },
+              {
+                "file": "/assets/Route1-CtAQw1i7.js",
+                "startTime": 104.6000000089407,
+                "duration": 1.5,
+                "transferSize": 639,
+                "encodedBodySize": 339
+              }
+            ],
+            "files": [],
+            "requests": 0,
+            "gzipBytes": 0,
+            "routeMarkersInTransferredPayload": []
+          }
+        ]
+      ]
+    },
+    {
+      "size": "large",
+      "shape": {
+        "routes": 40,
+        "messages": 200,
+        "global": 1000
+      },
+      "mode": "inline-chunks",
+      "buildMs": 5349.549005,
+      "processPeakRssKiB": 1152564,
+      "inputDictionaryBytes": 1902038,
+      "inputDictionaryHash": "939977c450f9c316dfaae929da0856429c1030a009d11bf5ffef2127b223e67c",
+      "totalOutputBytes": 43417825,
+      "totalOutputGzipBytes": 13315274,
+      "outputFiles": [
+        ".vite/internationalization-manifest.json",
+        ".vite/manifest.json",
+        "assets/Route0-CzA80KCW.en.js",
+        "assets/Route0-CzA80KCW.ja.js",
+        "assets/Route1-B0QkWsbY.en.js",
+        "assets/Route1-B0QkWsbY.ja.js",
+        "assets/Route10-CTFUD3jC.en.js",
+        "assets/Route10-CTFUD3jC.ja.js",
+        "assets/Route11-DP8ZeYsa.en.js",
+        "assets/Route11-DP8ZeYsa.ja.js",
+        "assets/Route12-BYBKaUg2.en.js",
+        "assets/Route12-BYBKaUg2.ja.js",
+        "assets/Route13-WyyJNKoN.en.js",
+        "assets/Route13-WyyJNKoN.ja.js",
+        "assets/Route14-2jERbYTY.en.js",
+        "assets/Route14-2jERbYTY.ja.js",
+        "assets/Route15-lKaSTc_a.en.js",
+        "assets/Route15-lKaSTc_a.ja.js",
+        "assets/Route16-C5B9ql--.en.js",
+        "assets/Route16-C5B9ql--.ja.js",
+        "assets/Route17-Uv6hl48V.en.js",
+        "assets/Route17-Uv6hl48V.ja.js",
+        "assets/Route18-DirUZyuF.en.js",
+        "assets/Route18-DirUZyuF.ja.js",
+        "assets/Route19-D60LW_g-.en.js",
+        "assets/Route19-D60LW_g-.ja.js",
+        "assets/Route2-NmJs71t7.en.js",
+        "assets/Route2-NmJs71t7.ja.js",
+        "assets/Route20-DGe7YoHW.en.js",
+        "assets/Route20-DGe7YoHW.ja.js",
+        "assets/Route21-XRdQRyZ1.en.js",
+        "assets/Route21-XRdQRyZ1.ja.js",
+        "assets/Route22-DJru6wSu.en.js",
+        "assets/Route22-DJru6wSu.ja.js",
+        "assets/Route23-cIkXzRic.en.js",
+        "assets/Route23-cIkXzRic.ja.js",
+        "assets/Route24-BSdVOPWd.en.js",
+        "assets/Route24-BSdVOPWd.ja.js",
+        "assets/Route25-CIItR5sO.en.js",
+        "assets/Route25-CIItR5sO.ja.js",
+        "assets/Route26-Jdk11WYh.en.js",
+        "assets/Route26-Jdk11WYh.ja.js",
+        "assets/Route27-XLDCr3fM.en.js",
+        "assets/Route27-XLDCr3fM.ja.js",
+        "assets/Route28-Bz2xuuf9.en.js",
+        "assets/Route28-Bz2xuuf9.ja.js",
+        "assets/Route29-BU2MAGNq.en.js",
+        "assets/Route29-BU2MAGNq.ja.js",
+        "assets/Route3-DgJUnJ2K.en.js",
+        "assets/Route3-DgJUnJ2K.ja.js",
+        "assets/Route30-CA969nn8.en.js",
+        "assets/Route30-CA969nn8.ja.js",
+        "assets/Route31-u5e-FJC9.en.js",
+        "assets/Route31-u5e-FJC9.ja.js",
+        "assets/Route32-U-I36QWt.en.js",
+        "assets/Route32-U-I36QWt.ja.js",
+        "assets/Route33-DJ11eowg.en.js",
+        "assets/Route33-DJ11eowg.ja.js",
+        "assets/Route34-CtUZbJ3C.en.js",
+        "assets/Route34-CtUZbJ3C.ja.js",
+        "assets/Route35-BfEv6FEo.en.js",
+        "assets/Route35-BfEv6FEo.ja.js",
+        "assets/Route36-DmB38fl3.en.js",
+        "assets/Route36-DmB38fl3.ja.js",
+        "assets/Route37-63ESilwp.en.js",
+        "assets/Route37-63ESilwp.ja.js",
+        "assets/Route38-DvR9PCf6.en.js",
+        "assets/Route38-DvR9PCf6.ja.js",
+        "assets/Route39-vXDJMO4E.en.js",
+        "assets/Route39-vXDJMO4E.ja.js",
+        "assets/Route4-BiUUg9rN.en.js",
+        "assets/Route4-BiUUg9rN.ja.js",
+        "assets/Route5-C0urxyLu.en.js",
+        "assets/Route5-C0urxyLu.ja.js",
+        "assets/Route6-CKl0ojEX.en.js",
+        "assets/Route6-CKl0ojEX.ja.js",
+        "assets/Route7-Bo39dH-k.en.js",
+        "assets/Route7-Bo39dH-k.ja.js",
+        "assets/Route8-BFb3xgXp.en.js",
+        "assets/Route8-BFb3xgXp.ja.js",
+        "assets/Route9-fqdV570u.en.js",
+        "assets/Route9-fqdV570u.ja.js",
+        "assets/index-BfHHmyo6.en.js",
+        "assets/index-BfHHmyo6.i18n-loader.js",
+        "assets/index-BfHHmyo6.ja.js",
+        "assets/runtime-core.esm-bundler-DXdWdT6C.js",
+        "index.html"
+      ],
+      "runs": [
+        [
+          {
+            "label": "initial",
+            "route": 0,
+            "readyMs": 24.400000005960464,
+            "initialMs": 54.70000000298023,
+            "resourceTimeline": [
+              {
+                "file": "/assets/index-BfHHmyo6.i18n-loader.js",
+                "startTime": 4.200000002980232,
+                "duration": 1.5999999940395355,
+                "transferSize": 1006,
+                "encodedBodySize": 706
+              },
+              {
+                "file": "/assets/index-BfHHmyo6.en.js",
+                "startTime": 8.799999997019768,
+                "duration": 1.7999999970197678,
+                "transferSize": 16523,
+                "encodedBodySize": 16223
+              },
+              {
+                "file": "/assets/runtime-core.esm-bundler-DXdWdT6C.js",
+                "startTime": 13.400000005960464,
+                "duration": 1.8999999910593033,
+                "transferSize": 21308,
+                "encodedBodySize": 21008
+              },
+              {
+                "file": "/assets/Route0-CzA80KCW.en.js",
+                "startTime": 32.599999994039536,
+                "duration": 3.5,
+                "transferSize": 165939,
+                "encodedBodySize": 165639
+              }
+            ],
+            "files": [
+              {
+                "file": "index.html",
+                "gzipBytes": 134
+              },
+              {
+                "file": "assets/index-BfHHmyo6.i18n-loader.js",
+                "gzipBytes": 706
+              },
+              {
+                "file": "assets/index-BfHHmyo6.en.js",
+                "gzipBytes": 16223
+              },
+              {
+                "file": "assets/runtime-core.esm-bundler-DXdWdT6C.js",
+                "gzipBytes": 21008
+              },
+              {
+                "file": "assets/Route0-CzA80KCW.en.js",
+                "gzipBytes": 165639
+              }
+            ],
+            "requests": 5,
+            "gzipBytes": 203710,
+            "routeMarkersInTransferredPayload": [
+              0
+            ]
+          },
+          {
+            "label": "route-1",
+            "route": 1,
+            "readyMs": 21.900000005960464,
+            "initialMs": 137.90000000596046,
+            "resourceTimeline": [
+              {
+                "file": "/assets/index-BfHHmyo6.i18n-loader.js",
+                "startTime": 4.200000002980232,
+                "duration": 1.5999999940395355,
+                "transferSize": 1006,
+                "encodedBodySize": 706
+              },
+              {
+                "file": "/assets/index-BfHHmyo6.en.js",
+                "startTime": 8.799999997019768,
+                "duration": 1.7999999970197678,
+                "transferSize": 16523,
+                "encodedBodySize": 16223
+              },
+              {
+                "file": "/assets/runtime-core.esm-bundler-DXdWdT6C.js",
+                "startTime": 13.400000005960464,
+                "duration": 1.8999999910593033,
+                "transferSize": 21308,
+                "encodedBodySize": 21008
+              },
+              {
+                "file": "/assets/Route0-CzA80KCW.en.js",
+                "startTime": 32.599999994039536,
+                "duration": 3.5,
+                "transferSize": 165939,
+                "encodedBodySize": 165639
+              },
+              {
+                "file": "/assets/Route1-B0QkWsbY.en.js",
+                "startTime": 116.29999999701977,
+                "duration": 3.2999999970197678,
+                "transferSize": 165910,
+                "encodedBodySize": 165610
+              }
+            ],
+            "files": [
+              {
+                "file": "assets/Route1-B0QkWsbY.en.js",
+                "gzipBytes": 165610
+              }
+            ],
+            "requests": 1,
+            "gzipBytes": 165610,
+            "routeMarkersInTransferredPayload": [
+              1
+            ]
+          },
+          {
+            "label": "return-cached",
+            "route": 0,
+            "readyMs": 0.9000000059604645,
+            "initialMs": 158.20000000298023,
+            "resourceTimeline": [
+              {
+                "file": "/assets/index-BfHHmyo6.i18n-loader.js",
+                "startTime": 4.200000002980232,
+                "duration": 1.5999999940395355,
+                "transferSize": 1006,
+                "encodedBodySize": 706
+              },
+              {
+                "file": "/assets/index-BfHHmyo6.en.js",
+                "startTime": 8.799999997019768,
+                "duration": 1.7999999970197678,
+                "transferSize": 16523,
+                "encodedBodySize": 16223
+              },
+              {
+                "file": "/assets/runtime-core.esm-bundler-DXdWdT6C.js",
+                "startTime": 13.400000005960464,
+                "duration": 1.8999999910593033,
+                "transferSize": 21308,
+                "encodedBodySize": 21008
+              },
+              {
+                "file": "/assets/Route0-CzA80KCW.en.js",
+                "startTime": 32.599999994039536,
+                "duration": 3.5,
+                "transferSize": 165939,
+                "encodedBodySize": 165639
+              },
+              {
+                "file": "/assets/Route1-B0QkWsbY.en.js",
+                "startTime": 116.29999999701977,
+                "duration": 3.2999999970197678,
+                "transferSize": 165910,
+                "encodedBodySize": 165610
+              }
+            ],
+            "files": [],
+            "requests": 0,
+            "gzipBytes": 0,
+            "routeMarkersInTransferredPayload": []
+          }
+        ],
+        [
+          {
+            "label": "initial",
+            "route": 0,
+            "readyMs": 20.299999997019768,
+            "initialMs": 52,
+            "resourceTimeline": [
+              {
+                "file": "/assets/index-BfHHmyo6.i18n-loader.js",
+                "startTime": 4.200000002980232,
+                "duration": 1.8999999910593033,
+                "transferSize": 1006,
+                "encodedBodySize": 706
+              },
+              {
+                "file": "/assets/index-BfHHmyo6.en.js",
+                "startTime": 8.700000002980232,
+                "duration": 1.5999999940395355,
+                "transferSize": 16523,
+                "encodedBodySize": 16223
+              },
+              {
+                "file": "/assets/runtime-core.esm-bundler-DXdWdT6C.js",
+                "startTime": 13.299999997019768,
+                "duration": 1.7000000029802322,
+                "transferSize": 21308,
+                "encodedBodySize": 21008
+              },
+              {
+                "file": "/assets/Route0-CzA80KCW.en.js",
+                "startTime": 33.8999999910593,
+                "duration": 3.9000000059604645,
+                "transferSize": 165939,
+                "encodedBodySize": 165639
+              }
+            ],
+            "files": [
+              {
+                "file": "index.html",
+                "gzipBytes": 134
+              },
+              {
+                "file": "assets/index-BfHHmyo6.i18n-loader.js",
+                "gzipBytes": 706
+              },
+              {
+                "file": "assets/index-BfHHmyo6.en.js",
+                "gzipBytes": 16223
+              },
+              {
+                "file": "assets/runtime-core.esm-bundler-DXdWdT6C.js",
+                "gzipBytes": 21008
+              },
+              {
+                "file": "assets/Route0-CzA80KCW.en.js",
+                "gzipBytes": 165639
+              }
+            ],
+            "requests": 5,
+            "gzipBytes": 203710,
+            "routeMarkersInTransferredPayload": [
+              0
+            ]
+          },
+          {
+            "label": "route-1",
+            "route": 1,
+            "readyMs": 22.30000001192093,
+            "initialMs": 129.70000000298023,
+            "resourceTimeline": [
+              {
+                "file": "/assets/index-BfHHmyo6.i18n-loader.js",
+                "startTime": 4.200000002980232,
+                "duration": 1.8999999910593033,
+                "transferSize": 1006,
+                "encodedBodySize": 706
+              },
+              {
+                "file": "/assets/index-BfHHmyo6.en.js",
+                "startTime": 8.700000002980232,
+                "duration": 1.5999999940395355,
+                "transferSize": 16523,
+                "encodedBodySize": 16223
+              },
+              {
+                "file": "/assets/runtime-core.esm-bundler-DXdWdT6C.js",
+                "startTime": 13.299999997019768,
+                "duration": 1.7000000029802322,
+                "transferSize": 21308,
+                "encodedBodySize": 21008
+              },
+              {
+                "file": "/assets/Route0-CzA80KCW.en.js",
+                "startTime": 33.8999999910593,
+                "duration": 3.9000000059604645,
+                "transferSize": 165939,
+                "encodedBodySize": 165639
+              },
+              {
+                "file": "/assets/Route1-B0QkWsbY.en.js",
+                "startTime": 107.79999999701977,
+                "duration": 3.2999999970197678,
+                "transferSize": 165910,
+                "encodedBodySize": 165610
+              }
+            ],
+            "files": [
+              {
+                "file": "assets/Route1-B0QkWsbY.en.js",
+                "gzipBytes": 165610
+              }
+            ],
+            "requests": 1,
+            "gzipBytes": 165610,
+            "routeMarkersInTransferredPayload": [
+              1
+            ]
+          },
+          {
+            "label": "return-cached",
+            "route": 0,
+            "readyMs": 0.9000000059604645,
+            "initialMs": 149.79999999701977,
+            "resourceTimeline": [
+              {
+                "file": "/assets/index-BfHHmyo6.i18n-loader.js",
+                "startTime": 4.200000002980232,
+                "duration": 1.8999999910593033,
+                "transferSize": 1006,
+                "encodedBodySize": 706
+              },
+              {
+                "file": "/assets/index-BfHHmyo6.en.js",
+                "startTime": 8.700000002980232,
+                "duration": 1.5999999940395355,
+                "transferSize": 16523,
+                "encodedBodySize": 16223
+              },
+              {
+                "file": "/assets/runtime-core.esm-bundler-DXdWdT6C.js",
+                "startTime": 13.299999997019768,
+                "duration": 1.7000000029802322,
+                "transferSize": 21308,
+                "encodedBodySize": 21008
+              },
+              {
+                "file": "/assets/Route0-CzA80KCW.en.js",
+                "startTime": 33.8999999910593,
+                "duration": 3.9000000059604645,
+                "transferSize": 165939,
+                "encodedBodySize": 165639
+              },
+              {
+                "file": "/assets/Route1-B0QkWsbY.en.js",
+                "startTime": 107.79999999701977,
+                "duration": 3.2999999970197678,
+                "transferSize": 165910,
+                "encodedBodySize": 165610
+              }
+            ],
+            "files": [],
+            "requests": 0,
+            "gzipBytes": 0,
+            "routeMarkersInTransferredPayload": []
+          }
+        ],
+        [
+          {
+            "label": "initial",
+            "route": 0,
+            "readyMs": 20.099999994039536,
+            "initialMs": 51.099999994039536,
+            "resourceTimeline": [
+              {
+                "file": "/assets/index-BfHHmyo6.i18n-loader.js",
+                "startTime": 4.200000002980232,
+                "duration": 1.3999999910593033,
+                "transferSize": 1006,
+                "encodedBodySize": 706
+              },
+              {
+                "file": "/assets/index-BfHHmyo6.en.js",
+                "startTime": 8.200000002980232,
+                "duration": 1.5999999940395355,
+                "transferSize": 16523,
+                "encodedBodySize": 16223
+              },
+              {
+                "file": "/assets/runtime-core.esm-bundler-DXdWdT6C.js",
+                "startTime": 12.700000002980232,
+                "duration": 2,
+                "transferSize": 21308,
+                "encodedBodySize": 21008
+              },
+              {
+                "file": "/assets/Route0-CzA80KCW.en.js",
+                "startTime": 33.20000000298023,
+                "duration": 4,
+                "transferSize": 165939,
+                "encodedBodySize": 165639
+              }
+            ],
+            "files": [
+              {
+                "file": "index.html",
+                "gzipBytes": 134
+              },
+              {
+                "file": "assets/index-BfHHmyo6.i18n-loader.js",
+                "gzipBytes": 706
+              },
+              {
+                "file": "assets/index-BfHHmyo6.en.js",
+                "gzipBytes": 16223
+              },
+              {
+                "file": "assets/runtime-core.esm-bundler-DXdWdT6C.js",
+                "gzipBytes": 21008
+              },
+              {
+                "file": "assets/Route0-CzA80KCW.en.js",
+                "gzipBytes": 165639
+              }
+            ],
+            "requests": 5,
+            "gzipBytes": 203710,
+            "routeMarkersInTransferredPayload": [
+              0
+            ]
+          },
+          {
+            "label": "route-1",
+            "route": 1,
+            "readyMs": 16.19999998807907,
+            "initialMs": 116.09999999403954,
+            "resourceTimeline": [
+              {
+                "file": "/assets/index-BfHHmyo6.i18n-loader.js",
+                "startTime": 4.200000002980232,
+                "duration": 1.3999999910593033,
+                "transferSize": 1006,
+                "encodedBodySize": 706
+              },
+              {
+                "file": "/assets/index-BfHHmyo6.en.js",
+                "startTime": 8.200000002980232,
+                "duration": 1.5999999940395355,
+                "transferSize": 16523,
+                "encodedBodySize": 16223
+              },
+              {
+                "file": "/assets/runtime-core.esm-bundler-DXdWdT6C.js",
+                "startTime": 12.700000002980232,
+                "duration": 2,
+                "transferSize": 21308,
+                "encodedBodySize": 21008
+              },
+              {
+                "file": "/assets/Route0-CzA80KCW.en.js",
+                "startTime": 33.20000000298023,
+                "duration": 4,
+                "transferSize": 165939,
+                "encodedBodySize": 165639
+              },
+              {
+                "file": "/assets/Route1-B0QkWsbY.en.js",
+                "startTime": 100.20000000298023,
+                "duration": 3.2000000029802322,
+                "transferSize": 165910,
+                "encodedBodySize": 165610
+              }
+            ],
+            "files": [
+              {
+                "file": "assets/Route1-B0QkWsbY.en.js",
+                "gzipBytes": 165610
+              }
+            ],
+            "requests": 1,
+            "gzipBytes": 165610,
+            "routeMarkersInTransferredPayload": [
+              1
+            ]
+          },
+          {
+            "label": "return-cached",
+            "route": 0,
+            "readyMs": 0.9000000059604645,
+            "initialMs": 140.5,
+            "resourceTimeline": [
+              {
+                "file": "/assets/index-BfHHmyo6.i18n-loader.js",
+                "startTime": 4.200000002980232,
+                "duration": 1.3999999910593033,
+                "transferSize": 1006,
+                "encodedBodySize": 706
+              },
+              {
+                "file": "/assets/index-BfHHmyo6.en.js",
+                "startTime": 8.200000002980232,
+                "duration": 1.5999999940395355,
+                "transferSize": 16523,
+                "encodedBodySize": 16223
+              },
+              {
+                "file": "/assets/runtime-core.esm-bundler-DXdWdT6C.js",
+                "startTime": 12.700000002980232,
+                "duration": 2,
+                "transferSize": 21308,
+                "encodedBodySize": 21008
+              },
+              {
+                "file": "/assets/Route0-CzA80KCW.en.js",
+                "startTime": 33.20000000298023,
+                "duration": 4,
+                "transferSize": 165939,
+                "encodedBodySize": 165639
+              },
+              {
+                "file": "/assets/Route1-B0QkWsbY.en.js",
+                "startTime": 100.20000000298023,
+                "duration": 3.2000000029802322,
+                "transferSize": 165910,
+                "encodedBodySize": 165610
+              }
+            ],
+            "files": [],
+            "requests": 0,
+            "gzipBytes": 0,
+            "routeMarkersInTransferredPayload": []
+          }
+        ]
+      ]
+    },
+    {
+      "size": "large",
+      "shape": {
+        "routes": 40,
+        "messages": 200,
+        "global": 1000
+      },
+      "mode": "route-prototype",
+      "buildMs": 393.499554,
+      "processPeakRssKiB": 555304,
+      "inputDictionaryBytes": 1902038,
+      "inputDictionaryHash": "939977c450f9c316dfaae929da0856429c1030a009d11bf5ffef2127b223e67c",
+      "totalOutputBytes": 2303036,
+      "totalOutputGzipBytes": 971111,
+      "outputFiles": [
+        ".vite/manifest.json",
+        "assets/Route0-Cmam4GPz.js",
+        "assets/Route1-BDKheLJ0.js",
+        "assets/Route10-CGBH_vSb.js",
+        "assets/Route11-B_f1Hr8C.js",
+        "assets/Route12-By_hcfVk.js",
+        "assets/Route13-S1zZCaQp.js",
+        "assets/Route14-CnKERMTy.js",
+        "assets/Route15-DqHnhAXi.js",
+        "assets/Route16-B0fX_Yf_.js",
+        "assets/Route17-BDIn-KM2.js",
+        "assets/Route18-Bn63f6UG.js",
+        "assets/Route19-CH8Lfv2x.js",
+        "assets/Route2-BWR7XsYL.js",
+        "assets/Route20-2ZRrlh9o.js",
+        "assets/Route21-DUQ5xDNp.js",
+        "assets/Route22-CafR-ehJ.js",
+        "assets/Route23-CVCenFrG.js",
+        "assets/Route24-tMFx5ugf.js",
+        "assets/Route25-JlwHAGPg.js",
+        "assets/Route26-XNW6x7x_.js",
+        "assets/Route27-CJIGyJFm.js",
+        "assets/Route28-DeJpv5PC.js",
+        "assets/Route29-CHD5L606.js",
+        "assets/Route3-B9aK4vl4.js",
+        "assets/Route30-BlqNsX0s.js",
+        "assets/Route31-Qst0XJxD.js",
+        "assets/Route32-DbifLnfs.js",
+        "assets/Route33-Bi5NAN4O.js",
+        "assets/Route34-CN9xOoop.js",
+        "assets/Route35-W7xtRo9R.js",
+        "assets/Route36-_njz3YoM.js",
+        "assets/Route37-I3NPih3h.js",
+        "assets/Route38-D1vEJ2c6.js",
+        "assets/Route39-bykGGnF1.js",
+        "assets/Route4-Dyb1U6js.js",
+        "assets/Route5-KLe5NIFs.js",
+        "assets/Route6-BNUWicPG.js",
+        "assets/Route7-CJShRU8D.js",
+        "assets/Route8-EWUIvU9K.js",
+        "assets/Route9-DKcQPalX.js",
+        "assets/adapter-BuzFAt2w.js",
+        "assets/global-en-C0vLPa3C.js",
+        "assets/global-ja-B3fKUS8o.js",
+        "assets/index-B64Wae_v.js",
+        "assets/route0-en-j_FpCetg.js",
+        "assets/route0-ja-DM3mLRCP.js",
+        "assets/route1-en-CgjBPg7x.js",
+        "assets/route1-ja-CjVeWN6r.js",
+        "assets/route10-en-BWkb0iYk.js",
+        "assets/route10-ja-DV8dwoQ9.js",
+        "assets/route11-en-HoS8OugK.js",
+        "assets/route11-ja-BhiQLL0v.js",
+        "assets/route12-en-B0Cs4EiR.js",
+        "assets/route12-ja-DEJKOw1h.js",
+        "assets/route13-en-CB9hOvJZ.js",
+        "assets/route13-ja-BJhCS11Z.js",
+        "assets/route14-en-16pN1J73.js",
+        "assets/route14-ja-l3vKnKhl.js",
+        "assets/route15-en-KwE5cmxR.js",
+        "assets/route15-ja-DUJugZf1.js",
+        "assets/route16-en-MMOF-CcO.js",
+        "assets/route16-ja-lpv2D5r2.js",
+        "assets/route17-en-CvRkcsnH.js",
+        "assets/route17-ja-Dd1gR9D4.js",
+        "assets/route18-en-Fmchz5IK.js",
+        "assets/route18-ja-DBcKcYvc.js",
+        "assets/route19-en-BZfBCkqf.js",
+        "assets/route19-ja-CkrGiy0l.js",
+        "assets/route2-en-DUqOBZ9u.js",
+        "assets/route2-ja-CNVLmgTN.js",
+        "assets/route20-en-ByBKOC0S.js",
+        "assets/route20-ja-CcGHRdAz.js",
+        "assets/route21-en-Cr9u8tqz.js",
+        "assets/route21-ja-BUP75bwZ.js",
+        "assets/route22-en-DGDF4AQJ.js",
+        "assets/route22-ja-RII9TE_r.js",
+        "assets/route23-en-CX2xB8uN.js",
+        "assets/route23-ja-BmLvOfDH.js",
+        "assets/route24-en-DCabHqHS.js",
+        "assets/route24-ja-C239YxQY.js",
+        "assets/route25-en-CHgrpO-B.js",
+        "assets/route25-ja-DG4ex9ri.js",
+        "assets/route26-en-BG2LcknT.js",
+        "assets/route26-ja-Bi9ncaKN.js",
+        "assets/route27-en-DNhNZ2Hl.js",
+        "assets/route27-ja-NVaPKn94.js",
+        "assets/route28-en-CFB7qRJR.js",
+        "assets/route28-ja-B4VJfj7A.js",
+        "assets/route29-en-1-JLhuvO.js",
+        "assets/route29-ja-fYXSHWYh.js",
+        "assets/route3-en-CKlXRLlS.js",
+        "assets/route3-ja-DDdHgmq0.js",
+        "assets/route30-en-BVMVUywA.js",
+        "assets/route30-ja-FjJ4kOuo.js",
+        "assets/route31-en-xq8Kvl9o.js",
+        "assets/route31-ja-D0-Z-VvQ.js",
+        "assets/route32-en-lLog6Gje.js",
+        "assets/route32-ja-Djpnr1VY.js",
+        "assets/route33-en-CgaPfsXf.js",
+        "assets/route33-ja-D1V76clI.js",
+        "assets/route34-en-2dVuLYM1.js",
+        "assets/route34-ja-ZNk471VS.js",
+        "assets/route35-en-DYeN1fRX.js",
+        "assets/route35-ja-BPmC1Dv2.js",
+        "assets/route36-en-DVVdutml.js",
+        "assets/route36-ja-CMHe-cU6.js",
+        "assets/route37-en-51W6zHNF.js",
+        "assets/route37-ja-ud6aVRh6.js",
+        "assets/route38-en-DCPVtpA7.js",
+        "assets/route38-ja-DrITnFjf.js",
+        "assets/route39-en-LX5Xc-sa.js",
+        "assets/route39-ja-C3mdrLuf.js",
+        "assets/route4-en-N2QSDYFp.js",
+        "assets/route4-ja-RSxzxJMG.js",
+        "assets/route5-en-C0CPZQwE.js",
+        "assets/route5-ja-B8eLNfu-.js",
+        "assets/route6-en-CVxMtsF_.js",
+        "assets/route6-ja-C-TEx49V.js",
+        "assets/route7-en-D8G-G6qo.js",
+        "assets/route7-ja-jpyaeddE.js",
+        "assets/route8-en-1ufSQpEO.js",
+        "assets/route8-ja-R4mxyOLF.js",
+        "assets/route9-en-CVRk5QpL.js",
+        "assets/route9-ja-BJwoZgPD.js",
+        "index.html"
+      ],
+      "runs": [
+        [
+          {
+            "label": "initial",
+            "route": 0,
+            "readyMs": 35,
+            "initialMs": 52.5,
+            "resourceTimeline": [
+              {
+                "file": "/assets/index-B64Wae_v.js",
+                "startTime": 4.5,
+                "duration": 3.2000000029802322,
+                "transferSize": 4520,
+                "encodedBodySize": 4220
+              },
+              {
+                "file": "/assets/adapter-BuzFAt2w.js",
+                "startTime": 4.700000002980232,
+                "duration": 3.0999999940395355,
+                "transferSize": 34234,
+                "encodedBodySize": 33934
+              },
+              {
+                "file": "/assets/Route0-Cmam4GPz.js",
+                "startTime": 18.599999994039536,
+                "duration": 2.4000000059604645,
+                "transferSize": 587,
+                "encodedBodySize": 287
+              },
+              {
+                "file": "/assets/global-en-C0vLPa3C.js",
+                "startTime": 19.099999994039536,
+                "duration": 6.100000008940697,
+                "transferSize": 49453,
+                "encodedBodySize": 49153
+              },
+              {
+                "file": "/assets/route0-en-j_FpCetg.js",
+                "startTime": 19.200000002980232,
+                "duration": 5.5999999940395355,
+                "transferSize": 10548,
+                "encodedBodySize": 10248
+              }
+            ],
+            "files": [
+              {
+                "file": "index.html",
+                "gzipBytes": 175
+              },
+              {
+                "file": "assets/index-B64Wae_v.js",
+                "gzipBytes": 4220
+              },
+              {
+                "file": "assets/adapter-BuzFAt2w.js",
+                "gzipBytes": 33934
+              },
+              {
+                "file": "assets/Route0-Cmam4GPz.js",
+                "gzipBytes": 287
+              },
+              {
+                "file": "assets/global-en-C0vLPa3C.js",
+                "gzipBytes": 49153
+              },
+              {
+                "file": "assets/route0-en-j_FpCetg.js",
+                "gzipBytes": 10248
+              }
+            ],
+            "requests": 6,
+            "gzipBytes": 98017,
+            "routeMarkersInTransferredPayload": [
+              0
+            ]
+          },
+          {
+            "label": "route-1",
+            "route": 1,
+            "readyMs": 8.200000002980232,
+            "initialMs": 102.5,
+            "resourceTimeline": [
+              {
+                "file": "/assets/index-B64Wae_v.js",
+                "startTime": 4.5,
+                "duration": 3.2000000029802322,
+                "transferSize": 4520,
+                "encodedBodySize": 4220
+              },
+              {
+                "file": "/assets/adapter-BuzFAt2w.js",
+                "startTime": 4.700000002980232,
+                "duration": 3.0999999940395355,
+                "transferSize": 34234,
+                "encodedBodySize": 33934
+              },
+              {
+                "file": "/assets/Route0-Cmam4GPz.js",
+                "startTime": 18.599999994039536,
+                "duration": 2.4000000059604645,
+                "transferSize": 587,
+                "encodedBodySize": 287
+              },
+              {
+                "file": "/assets/global-en-C0vLPa3C.js",
+                "startTime": 19.099999994039536,
+                "duration": 6.100000008940697,
+                "transferSize": 49453,
+                "encodedBodySize": 49153
+              },
+              {
+                "file": "/assets/route0-en-j_FpCetg.js",
+                "startTime": 19.200000002980232,
+                "duration": 5.5999999940395355,
+                "transferSize": 10548,
+                "encodedBodySize": 10248
+              },
+              {
+                "file": "/assets/Route1-BDKheLJ0.js",
+                "startTime": 94.70000000298023,
+                "duration": 2.8999999910593033,
+                "transferSize": 587,
+                "encodedBodySize": 287
+              },
+              {
+                "file": "/assets/route1-en-CgjBPg7x.js",
+                "startTime": 95,
+                "duration": 2.8999999910593033,
+                "transferSize": 10545,
+                "encodedBodySize": 10245
+              }
+            ],
+            "files": [
+              {
+                "file": "assets/Route1-BDKheLJ0.js",
+                "gzipBytes": 287
+              },
+              {
+                "file": "assets/route1-en-CgjBPg7x.js",
+                "gzipBytes": 10245
+              }
+            ],
+            "requests": 2,
+            "gzipBytes": 10532,
+            "routeMarkersInTransferredPayload": [
+              1
+            ]
+          },
+          {
+            "label": "return-cached",
+            "route": 0,
+            "readyMs": 0.5,
+            "initialMs": 120.3999999910593,
+            "resourceTimeline": [
+              {
+                "file": "/assets/index-B64Wae_v.js",
+                "startTime": 4.5,
+                "duration": 3.2000000029802322,
+                "transferSize": 4520,
+                "encodedBodySize": 4220
+              },
+              {
+                "file": "/assets/adapter-BuzFAt2w.js",
+                "startTime": 4.700000002980232,
+                "duration": 3.0999999940395355,
+                "transferSize": 34234,
+                "encodedBodySize": 33934
+              },
+              {
+                "file": "/assets/Route0-Cmam4GPz.js",
+                "startTime": 18.599999994039536,
+                "duration": 2.4000000059604645,
+                "transferSize": 587,
+                "encodedBodySize": 287
+              },
+              {
+                "file": "/assets/global-en-C0vLPa3C.js",
+                "startTime": 19.099999994039536,
+                "duration": 6.100000008940697,
+                "transferSize": 49453,
+                "encodedBodySize": 49153
+              },
+              {
+                "file": "/assets/route0-en-j_FpCetg.js",
+                "startTime": 19.200000002980232,
+                "duration": 5.5999999940395355,
+                "transferSize": 10548,
+                "encodedBodySize": 10248
+              },
+              {
+                "file": "/assets/Route1-BDKheLJ0.js",
+                "startTime": 94.70000000298023,
+                "duration": 2.8999999910593033,
+                "transferSize": 587,
+                "encodedBodySize": 287
+              },
+              {
+                "file": "/assets/route1-en-CgjBPg7x.js",
+                "startTime": 95,
+                "duration": 2.8999999910593033,
+                "transferSize": 10545,
+                "encodedBodySize": 10245
+              }
+            ],
+            "files": [],
+            "requests": 0,
+            "gzipBytes": 0,
+            "routeMarkersInTransferredPayload": []
+          }
+        ],
+        [
+          {
+            "label": "initial",
+            "route": 0,
+            "readyMs": 22.899999991059303,
+            "initialMs": 40,
+            "resourceTimeline": [
+              {
+                "file": "/assets/index-B64Wae_v.js",
+                "startTime": 4.4000000059604645,
+                "duration": 3.2000000029802322,
+                "transferSize": 4520,
+                "encodedBodySize": 4220
+              },
+              {
+                "file": "/assets/adapter-BuzFAt2w.js",
+                "startTime": 4.5,
+                "duration": 3.4000000059604645,
+                "transferSize": 34234,
+                "encodedBodySize": 33934
+              },
+              {
+                "file": "/assets/Route0-Cmam4GPz.js",
+                "startTime": 18.30000001192093,
+                "duration": 2.3999999910593033,
+                "transferSize": 587,
+                "encodedBodySize": 287
+              },
+              {
+                "file": "/assets/global-en-C0vLPa3C.js",
+                "startTime": 18.80000001192093,
+                "duration": 4,
+                "transferSize": 49453,
+                "encodedBodySize": 49153
+              },
+              {
+                "file": "/assets/route0-en-j_FpCetg.js",
+                "startTime": 18.900000005960464,
+                "duration": 5.5999999940395355,
+                "transferSize": 10548,
+                "encodedBodySize": 10248
+              }
+            ],
+            "files": [
+              {
+                "file": "index.html",
+                "gzipBytes": 175
+              },
+              {
+                "file": "assets/index-B64Wae_v.js",
+                "gzipBytes": 4220
+              },
+              {
+                "file": "assets/adapter-BuzFAt2w.js",
+                "gzipBytes": 33934
+              },
+              {
+                "file": "assets/Route0-Cmam4GPz.js",
+                "gzipBytes": 287
+              },
+              {
+                "file": "assets/global-en-C0vLPa3C.js",
+                "gzipBytes": 49153
+              },
+              {
+                "file": "assets/route0-en-j_FpCetg.js",
+                "gzipBytes": 10248
+              }
+            ],
+            "requests": 6,
+            "gzipBytes": 98017,
+            "routeMarkersInTransferredPayload": [
+              0
+            ]
+          },
+          {
+            "label": "route-1",
+            "route": 1,
+            "readyMs": 5.100000008940697,
+            "initialMs": 81.80000001192093,
+            "resourceTimeline": [
+              {
+                "file": "/assets/index-B64Wae_v.js",
+                "startTime": 4.4000000059604645,
+                "duration": 3.2000000029802322,
+                "transferSize": 4520,
+                "encodedBodySize": 4220
+              },
+              {
+                "file": "/assets/adapter-BuzFAt2w.js",
+                "startTime": 4.5,
+                "duration": 3.4000000059604645,
+                "transferSize": 34234,
+                "encodedBodySize": 33934
+              },
+              {
+                "file": "/assets/Route0-Cmam4GPz.js",
+                "startTime": 18.30000001192093,
+                "duration": 2.3999999910593033,
+                "transferSize": 587,
+                "encodedBodySize": 287
+              },
+              {
+                "file": "/assets/global-en-C0vLPa3C.js",
+                "startTime": 18.80000001192093,
+                "duration": 4,
+                "transferSize": 49453,
+                "encodedBodySize": 49153
+              },
+              {
+                "file": "/assets/route0-en-j_FpCetg.js",
+                "startTime": 18.900000005960464,
+                "duration": 5.5999999940395355,
+                "transferSize": 10548,
+                "encodedBodySize": 10248
+              },
+              {
+                "file": "/assets/Route1-BDKheLJ0.js",
+                "startTime": 77.1000000089407,
+                "duration": 2.5,
+                "transferSize": 587,
+                "encodedBodySize": 287
+              },
+              {
+                "file": "/assets/route1-en-CgjBPg7x.js",
+                "startTime": 77.20000000298023,
+                "duration": 2.7000000029802322,
+                "transferSize": 10545,
+                "encodedBodySize": 10245
+              }
+            ],
+            "files": [
+              {
+                "file": "assets/Route1-BDKheLJ0.js",
+                "gzipBytes": 287
+              },
+              {
+                "file": "assets/route1-en-CgjBPg7x.js",
+                "gzipBytes": 10245
+              }
+            ],
+            "requests": 2,
+            "gzipBytes": 10532,
+            "routeMarkersInTransferredPayload": [
+              1
+            ]
+          },
+          {
+            "label": "return-cached",
+            "route": 0,
+            "readyMs": 0.3999999910593033,
+            "initialMs": 96.70000000298023,
+            "resourceTimeline": [
+              {
+                "file": "/assets/index-B64Wae_v.js",
+                "startTime": 4.4000000059604645,
+                "duration": 3.2000000029802322,
+                "transferSize": 4520,
+                "encodedBodySize": 4220
+              },
+              {
+                "file": "/assets/adapter-BuzFAt2w.js",
+                "startTime": 4.5,
+                "duration": 3.4000000059604645,
+                "transferSize": 34234,
+                "encodedBodySize": 33934
+              },
+              {
+                "file": "/assets/Route0-Cmam4GPz.js",
+                "startTime": 18.30000001192093,
+                "duration": 2.3999999910593033,
+                "transferSize": 587,
+                "encodedBodySize": 287
+              },
+              {
+                "file": "/assets/global-en-C0vLPa3C.js",
+                "startTime": 18.80000001192093,
+                "duration": 4,
+                "transferSize": 49453,
+                "encodedBodySize": 49153
+              },
+              {
+                "file": "/assets/route0-en-j_FpCetg.js",
+                "startTime": 18.900000005960464,
+                "duration": 5.5999999940395355,
+                "transferSize": 10548,
+                "encodedBodySize": 10248
+              },
+              {
+                "file": "/assets/Route1-BDKheLJ0.js",
+                "startTime": 77.1000000089407,
+                "duration": 2.5,
+                "transferSize": 587,
+                "encodedBodySize": 287
+              },
+              {
+                "file": "/assets/route1-en-CgjBPg7x.js",
+                "startTime": 77.20000000298023,
+                "duration": 2.7000000029802322,
+                "transferSize": 10545,
+                "encodedBodySize": 10245
+              }
+            ],
+            "files": [],
+            "requests": 0,
+            "gzipBytes": 0,
+            "routeMarkersInTransferredPayload": []
+          }
+        ],
+        [
+          {
+            "label": "initial",
+            "route": 0,
+            "readyMs": 31,
+            "initialMs": 48.20000000298023,
+            "resourceTimeline": [
+              {
+                "file": "/assets/index-B64Wae_v.js",
+                "startTime": 4,
+                "duration": 3.6000000089406967,
+                "transferSize": 4520,
+                "encodedBodySize": 4220
+              },
+              {
+                "file": "/assets/adapter-BuzFAt2w.js",
+                "startTime": 4.200000002980232,
+                "duration": 3.5999999940395355,
+                "transferSize": 34234,
+                "encodedBodySize": 33934
+              },
+              {
+                "file": "/assets/Route0-Cmam4GPz.js",
+                "startTime": 18.400000005960464,
+                "duration": 2.2000000029802322,
+                "transferSize": 587,
+                "encodedBodySize": 287
+              },
+              {
+                "file": "/assets/global-en-C0vLPa3C.js",
+                "startTime": 18.900000005960464,
+                "duration": 5.5,
+                "transferSize": 49453,
+                "encodedBodySize": 49153
+              },
+              {
+                "file": "/assets/route0-en-j_FpCetg.js",
+                "startTime": 19,
+                "duration": 5.200000002980232,
+                "transferSize": 10548,
+                "encodedBodySize": 10248
+              }
+            ],
+            "files": [
+              {
+                "file": "index.html",
+                "gzipBytes": 175
+              },
+              {
+                "file": "assets/index-B64Wae_v.js",
+                "gzipBytes": 4220
+              },
+              {
+                "file": "assets/adapter-BuzFAt2w.js",
+                "gzipBytes": 33934
+              },
+              {
+                "file": "assets/Route0-Cmam4GPz.js",
+                "gzipBytes": 287
+              },
+              {
+                "file": "assets/global-en-C0vLPa3C.js",
+                "gzipBytes": 49153
+              },
+              {
+                "file": "assets/route0-en-j_FpCetg.js",
+                "gzipBytes": 10248
+              }
+            ],
+            "requests": 6,
+            "gzipBytes": 98017,
+            "routeMarkersInTransferredPayload": [
+              0
+            ]
+          },
+          {
+            "label": "route-1",
+            "route": 1,
+            "readyMs": 15.400000005960464,
+            "initialMs": 98.20000000298023,
+            "resourceTimeline": [
+              {
+                "file": "/assets/index-B64Wae_v.js",
+                "startTime": 4,
+                "duration": 3.6000000089406967,
+                "transferSize": 4520,
+                "encodedBodySize": 4220
+              },
+              {
+                "file": "/assets/adapter-BuzFAt2w.js",
+                "startTime": 4.200000002980232,
+                "duration": 3.5999999940395355,
+                "transferSize": 34234,
+                "encodedBodySize": 33934
+              },
+              {
+                "file": "/assets/Route0-Cmam4GPz.js",
+                "startTime": 18.400000005960464,
+                "duration": 2.2000000029802322,
+                "transferSize": 587,
+                "encodedBodySize": 287
+              },
+              {
+                "file": "/assets/global-en-C0vLPa3C.js",
+                "startTime": 18.900000005960464,
+                "duration": 5.5,
+                "transferSize": 49453,
+                "encodedBodySize": 49153
+              },
+              {
+                "file": "/assets/route0-en-j_FpCetg.js",
+                "startTime": 19,
+                "duration": 5.200000002980232,
+                "transferSize": 10548,
+                "encodedBodySize": 10248
+              },
+              {
+                "file": "/assets/Route1-BDKheLJ0.js",
+                "startTime": 83,
+                "duration": 2.4000000059604645,
+                "transferSize": 587,
+                "encodedBodySize": 287
+              },
+              {
+                "file": "/assets/route1-en-CgjBPg7x.js",
+                "startTime": 83.29999999701977,
+                "duration": 2.2000000029802322,
+                "transferSize": 10545,
+                "encodedBodySize": 10245
+              }
+            ],
+            "files": [
+              {
+                "file": "assets/Route1-BDKheLJ0.js",
+                "gzipBytes": 287
+              },
+              {
+                "file": "assets/route1-en-CgjBPg7x.js",
+                "gzipBytes": 10245
+              }
+            ],
+            "requests": 2,
+            "gzipBytes": 10532,
+            "routeMarkersInTransferredPayload": [
+              1
+            ]
+          },
+          {
+            "label": "return-cached",
+            "route": 0,
+            "readyMs": 2.800000011920929,
+            "initialMs": 115.1000000089407,
+            "resourceTimeline": [
+              {
+                "file": "/assets/index-B64Wae_v.js",
+                "startTime": 4,
+                "duration": 3.6000000089406967,
+                "transferSize": 4520,
+                "encodedBodySize": 4220
+              },
+              {
+                "file": "/assets/adapter-BuzFAt2w.js",
+                "startTime": 4.200000002980232,
+                "duration": 3.5999999940395355,
+                "transferSize": 34234,
+                "encodedBodySize": 33934
+              },
+              {
+                "file": "/assets/Route0-Cmam4GPz.js",
+                "startTime": 18.400000005960464,
+                "duration": 2.2000000029802322,
+                "transferSize": 587,
+                "encodedBodySize": 287
+              },
+              {
+                "file": "/assets/global-en-C0vLPa3C.js",
+                "startTime": 18.900000005960464,
+                "duration": 5.5,
+                "transferSize": 49453,
+                "encodedBodySize": 49153
+              },
+              {
+                "file": "/assets/route0-en-j_FpCetg.js",
+                "startTime": 19,
+                "duration": 5.200000002980232,
+                "transferSize": 10548,
+                "encodedBodySize": 10248
+              },
+              {
+                "file": "/assets/Route1-BDKheLJ0.js",
+                "startTime": 83,
+                "duration": 2.4000000059604645,
+                "transferSize": 587,
+                "encodedBodySize": 287
+              },
+              {
+                "file": "/assets/route1-en-CgjBPg7x.js",
+                "startTime": 83.29999999701977,
+                "duration": 2.2000000029802322,
+                "transferSize": 10545,
+                "encodedBodySize": 10245
+              }
+            ],
+            "files": [],
+            "requests": 0,
+            "gzipBytes": 0,
+            "routeMarkersInTransferredPayload": []
+          }
+        ]
+      ]
+    }
+  ]
+}

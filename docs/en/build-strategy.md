@@ -16,9 +16,9 @@ The rewritten `<script>` keeps existing attributes such as `nonce`, `crossorigin
 
 ### References That Cannot Be Fully Inlined
 
-Static references such as `$locale.sfc.title`, `$locale.env.title`, and `$l.sfc.count({ n })` are replaced with locale-specific string literals or message formatting expressions. References that become dynamic after a static prefix, such as `$locale.env.labels[key]`, embed only the resolved locale-specific subtree and keep a runtime lookup expression. Bare locale helper objects are not expanded into full dictionaries.
+Static references such as `$locale.sfc.title`, `$locale.env.title`, and `$l.sfc.count({ n })` are replaced with locale-specific string literals or message formatting expressions. References that become dynamic after a static prefix, such as `$locale.env.labels[key]`, embed only the resolved locale-specific subtree and keep a runtime lookup expression. Helper objects that survive static replacement, for example through `unref` or a function argument, retain the locale-specific dictionaries needed at runtime. Objects with no remaining uses can be pruned.
 
-Paths that cannot be resolved at build time and `$l` calls that are too complex fall back to the primary locale value. If the primary locale is also missing the value, the expression returns a key string such as `$locale.sfc.missingKey`. JavaScript that cannot be parsed during replacement fails the build instead of being left silently unprocessed.
+References that cannot be optimized retain a locale-specific object lookup or callable localizer. Missing translations fall back to the primary locale value; if that is also missing, the expression returns a key string such as `$locale.sfc.missingKey`. JavaScript that cannot be parsed during replacement fails the build instead of being left silently unprocessed.
 
 This strategy increases the number of output files and the total delivery size in proportion to the number of locales. Prefer `virtual` when the application has many locales.
 

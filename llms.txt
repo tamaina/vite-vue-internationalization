@@ -12,6 +12,7 @@ VVI targets Vite 8 and newer. Assume Vite builds use the Rolldown-based pipeline
 
 - `vite-vue-internationalization`: Vite plugin, message helpers, and runtime exports.
 - `vite-vue-internationalization/runtime`: runtime-only APIs such as `createInternationalization`, `useLocale`, `useLocalizer`, `createComponentLocale`, and `createComponentLocalizer`.
+- `vite-vue-internationalization/ssr`: dependency-free `resolveLocaleAssets()` and client asset manifest types for SSR.
 - `vite-vue-internationalization/virtual`: TypeScript declarations for the generated virtual module.
 - `vite-vue-internationalization/volar`: Vue Language Tools / Volar plugin.
 - `virtual:vite-vue-internationalization`: Vite-generated app runtime module. Import this from app code, not from this package source.
@@ -88,7 +89,7 @@ When message functions are extracted or emitted into inline chunks, their source
 ## Build Strategies
 
 - `virtual`: default strategy. Locale payloads are loaded through virtual modules and dynamic imports.
-- `inline-chunks`: build-only strategy. Localizable chunks are duplicated per locale and static `$locale` / `$l` access is replaced with locale-specific output where possible. Bare locale helper objects are not expanded into full dictionaries; only accessed member paths or static dynamic-lookup subtrees are emitted.
+- `inline-chunks`: build-only strategy. Localizable chunks are duplicated per locale and static `$locale` / `$l` access is replaced with locale-specific output where possible. Static accesses emit only the referenced value or subtree. Helper objects that survive static replacement (for example when passed through `unref` or another function) retain the locale-specific dictionary needed at runtime; unused objects can be pruned.
 
 In `inline-chunks`, the plugin still only starts from localizable Vue SFC modules. Ordinary `.ts` files are not rewritten as localization modules.
 
@@ -120,3 +121,19 @@ Configure the same plugin options in Vite and Vue Language Tools via `tsconfig.j
 - `docs/en/messages.md`: `<locale>` blocks, global dictionaries, locale-only SFCs, and script-defined messages.
 - `docs/en/build-strategy.md`: `virtual` vs `inline-chunks`.
 - `docs/en/message-syntax.md`: placeholders, pluralization, linked messages, and ICU mode.
+
+## SSR
+
+Create an app and VVI instance per request and await `ready` (which rejects on
+load failure). Outside Vue injection context, pass that instance explicitly to
+`useLocale`, `useLocalizer`, component proxy or formatter helpers. Server install
+does not set the implicit global instance; do not use the compatibility global
+setter for concurrent SSR. Use `data-vvi-locale` on the HTML root for hydration.
+
+Server-consumer Vite environments always use `virtual`, even when the client
+uses `inline-chunks`. Use `.vite/internationalization-manifest.json` with
+`resolveLocaleAssets()` from `/ssr` for locale-specific entry/CSS/modulepreload.
+Relative bases require an explicit deployment-root `assetBaseUrl`. Configure
+Vue `features.componentIdGenerator: 'filepath'` on both sides. With plugin-vue 6,
+build both environments sequentially in one process because its descriptor
+cache is shared. See `docs/en/backend-rendering.md` for the integration contract.

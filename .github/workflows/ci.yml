@@ -28,3 +28,33 @@ jobs:
       - run: pnpm typecheck
       - run: pnpm lint
       - run: pnpm build
+      - run: pnpm exec playwright install --with-deps chromium
+      - run: node scripts/test-types.mjs
+      - run: node --expose-gc scripts/test-volar-cache-lifecycle.mjs
+      - run: xvfb-run -a pnpm test:editor
+      - run: pnpm package:editor
+      - uses: actions/upload-artifact@v4
+        with:
+          name: vvi-editor-extension
+          path: extensions/vscode/dist/vvi-tools.vsix
+      - run: node scripts/test-ssr.mjs
+      - run: node scripts/test-ssr.mjs --icu
+      - run: node scripts/test-ssr.mjs --inline
+      - run: node scripts/test-ssr.mjs --icu --inline
+      - run: node scripts/test-inline-hash.mjs
+      - run: node scripts/test-source-maps.mjs
+      - run: node scripts/test-source-maps.mjs --minify
+      - run: node scripts/test-source-maps.mjs --inline-map
+      - run: node scripts/test-source-maps.mjs --hidden
+      - run: node scripts/test-ssr.mjs --icu --inline --relative
+      - run: node scripts/test-ssr.mjs --icu --inline --relative --custom-manifest
+      - run: pnpm examples:smoke
+      - run: node scripts/test-hmr.mjs
+      - run: node scripts/test-hmr.mjs --inline
+      - run: node scripts/test-hmr.mjs --all
+      - run: node scripts/test-hmr.mjs --inline --all
+      - run: node scripts/benchmark-delivery.mjs
+      - uses: actions/upload-artifact@v4
+        with:
+          name: vvi-delivery-benchmark
+          path: notes/benchmarks/delivery-comparison.json

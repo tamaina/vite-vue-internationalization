@@ -319,9 +319,9 @@ describe('virtual module generation', () => {
 
 		expect(bundle['assets/App-abc.ja-JP.js'].type).toBe('chunk');
 		expect(bundle['assets/App-abc.ja-JP.js'].code).toContain('const msg = "ほげ";');
-		expect(bundle['assets/App-abc.ja-JP.js'].code).toContain('const scope = {"title":"ほげ"};');
+		expect(new Function(`${bundle['assets/App-abc.ja-JP.js'].code}; return scope.title;`)()).toBe('ほげ');
 		expect(bundle['assets/App-abc.en-US.js'].code).toContain('const msg = "foo";');
-		expect(bundle['assets/App-abc.en-US.js'].code).toContain('const scope = {"title":"foo"};');
+		expect(new Function(`${bundle['assets/App-abc.en-US.js'].code}; return scope.title;`)()).toBe('foo');
 		expect(bundle['assets/App-abc.ja-JP.js'].code).not.toContain('__VUE_INTERNATIONALIZATION_INLINE_LOCALE__');
 	});
 
@@ -454,6 +454,42 @@ describe('virtual module generation', () => {
 		expect(output).toContain('return useLocale(import.meta.url);');
 	});
 
+	it('preserves template text, literals and locally bound locale names', () => {
+		const preserved = [
+			'<code>$locale.sfc.title</code>',
+			'<p title="$locale.sfc.title">{{ \'$locale.sfc.title\' }}</p>',
+			'<p>{{ \'$l.sfc.title({})\' }}</p>',
+			'<p v-for="$locale in rows">{{ $locale.sfc.title }}</p>',
+			'<template #default="{ $l }">{{ $l.sfc.title({}) }}</template>',
+			'<p>{{ rows.map(($locale) => $locale.sfc.title) }}</p>',
+			'<p>{{ object.$locale.sfc.title }}</p>',
+		];
+		const code = `<template>${preserved.join('')}<p>{{ $locale.sfc.title }}</p></template>`;
+		const output = internals.rewriteInlineLocaleTemplateAccess(code, '/App.vue');
+		for (const fragment of preserved) expect(output).toContain(fragment);
+		expect(output).toContain('__VUE_INTERNATIONALIZATION_INLINE_TEXT__');
+	});
+	it('preserves template access to user-provided setup bindings', () => {
+		const code = '<script setup>const $locale = { sfc: { title: "local" } };</script><template>{{ $locale.sfc.title }}</template>';
+		expect(internals.rewriteInlineLocaleTemplateAccess(code, '/App.vue')).toBe(code);
+	});
+	it('distinguishes template destructuring keys from bound names and default strings', () => {
+		const code = '<template><template #default="{ $locale: row, label = \'$locale\' }">{{ $locale.sfc.title }}</template><p v-for="{ item: $locale } in rows">{{ $locale.sfc.title }}</p></template>';
+		const output = internals.rewriteInlineLocaleTemplateAccess(code, '/App.vue');
+		expect(output).toContain('__VUE_INTERNATIONALIZATION_INLINE_TEXT__');
+		expect(output).toContain('<p v-for="{ item: $locale } in rows">{{ $locale.sfc.title }}</p>');
+	});
+	it.each(['{ name: /[)]/.test(value) }', '{ name: value /* ) */ }', '{ name: `x${(() => ")")()}` }'])('keeps full localizer argument expressions: %s', (argument) => {
+		const code = `<template>{{ $l.sfc.hello(${argument}) }}</template>`;
+		const output = internals.rewriteInlineLocaleTemplateAccess(code, '/App.vue');
+		expect(output).toContain(`${argument})`);
+		expect(output).toContain('__VUE_INTERNATIONALIZATION_INLINE_LOCALIZER__');
+	});
+	it.each([String.raw`/[\]]/.test(value) ? 'a' : 'b'`, 'value /* ] */', '`x${items[\'key\']}`'])('keeps complete computed-key expressions: %s', (key) => {
+		const output = internals.rewriteInlineLocaleTemplateAccess(`<template>{{ $locale.sfc.items[${key}].title }}</template>`, '/App.vue');
+		expect(output).toContain(`,${key},&quot;title&quot;)`);
+		expect(compileTemplate({ source: output, filename: '/App.vue', id: 'expression' }).errors).toEqual([]);
+	});
 	it('does not inject inline bindings twice', () => {
 		const output = internals.transformVueSfcInline([
 			'<template>{{ $locale.env.title }}</template>',
@@ -568,10 +604,8 @@ describe('virtual module generation', () => {
 			{},
 		);
 
-		expect(replaced).toContain('const apples = ((__values) => ((typeof __values === "number" ? (__values) : __values?.["n"]) ?? "{n}") + " apples")({ n });');
-		expect(replaced).toContain('const refApples = ((__values) => ((typeof __values === "number" ? (__values) : __values?.["n"]) ?? "{n}") + " apples")({ n: count });');
-		expect(replaced).toContain('const computedApples = ((__values) => ((typeof __values === "number" ? (__values) : __values?.["n"]) ?? "{n}") + " apples")({ n: Math.max(count, 1) });');
-		expect(replaced).toContain('const missing = "$locale.sfc.missing";');
+		const execute = new Function('n', 'count', `${replaced.replace(/^const l = [^;]+;/, '')}; return [apples, refApples, computedApples, missing];`);
+		expect(execute(2, 3)).toEqual(['2 apples', '3 apples', '3 apples', '$locale.sfc.missing']);
 	});
 
 	it('preserves message functions in virtual and inline localizer output', () => {
@@ -604,8 +638,8 @@ describe('virtual module generation', () => {
 			},
 		);
 
-		expect(replaced).toContain('const value = (((values');
-		expect(replaced).toContain(')({ name }));');
+		const execute = new Function('name', `${replaced.replace(/^const l = [^;]+;/, '')}; return value;`);
+		expect(execute('Fixture')).toBe('Hello Fixture');
 	});
 
 	it('resolves linked messages in inline localizer calls', () => {
@@ -641,10 +675,8 @@ describe('virtual module generation', () => {
 			},
 		);
 
-		expect(replaced).toContain('const relative = ((__values) => "Hello " + ((((__values) => "World " + ((typeof __values === "number" ? (__values) : __values?.["count"]) ?? "{count}"))(__values)).toLocaleLowerCase()))({ count });');
-		expect(replaced).toContain('const env = ((__values) => "From " + ((__values) => "Example " + ((typeof __values === "number" ? (__values) : __values?.["count"]) ?? "{count}"))(__values))({ count });');
-		expect(replaced).toContain('const sfc = ((__values) => "From " + ((__values) => "World " + ((typeof __values === "number" ? (__values) : __values?.["count"]) ?? "{count}"))(__values))({ count });');
-		expect(replaced).toContain('const recursive = ((__values) => ((__values) => "@:recursive")(__values))({ count });');
+		const execute = new Function('count', `${replaced.replace(/^const l = [^;]+;/, '')}; return [relative, env, sfc, recursive];`);
+		expect(execute(3)).toEqual(['Hello world 3', 'From Example 3', 'From World 3', '@:recursive']);
 	});
 
 	it('replaces ICU messageformat inline localizer calls', () => {
@@ -672,9 +704,9 @@ describe('virtual module generation', () => {
 			'icu',
 		);
 
-		expect(replaced).toContain('new Intl.PluralRules("en-US"');
-		expect(replaced).toContain('"female":()=>');
-		expect(replaced).not.toContain('one {one apple}');
+		expect(replaced).toContain('__VVI_FORMAT_ICU__');
+		expect(replaced).toContain('syntax:"icu",locale:"en-US"');
+		expect(replaced).not.toContain('new Intl.PluralRules');
 	});
 
 	it('rewrites template locale access to inline text markers', () => {
@@ -804,9 +836,8 @@ describe('virtual module generation', () => {
 		expect(code).toContain('__VUE_INTERNATIONALIZATION_INLINE_LOOKUP__');
 		expect(replaced).toContain('"read":"読む"');
 		expect(replaced).toContain('"write":"書く"');
-		expect(replaced).toContain('"_login":"ログイン"');
+		expect(replaced).toContain('"title":"ログイン"');
 		expect(replaced).not.toContain('__VUE_INTERNATIONALIZATION_INLINE_');
-		expect(replaced).not.toContain('$locale.env');
 	});
 
 	it('rewrites locale-only SFC static access in scripts and templates for inline chunks', () => {
@@ -836,6 +867,26 @@ describe('virtual module generation', () => {
 		expect(code).toContain('__VUE_INTERNATIONALIZATION_INLINE_LOCALIZER__(&quot;__VUE_INTERNATIONALIZATION_INLINE__:L3NyYy9tZXNzYWdlcy52dWU=&quot;,&quot;sfc.body&quot;,{ source: "template" })');
 	});
 
+	it('only rewrites references to the imported locale component binding', () => {
+		const root = mkdtempSync(join(tmpdir(), 'vite-vue-internationalization-'));
+		writeFileSync(join(root, 'messages.vue'), '<locale locale="ja-JP">title: Title</locale>');
+		const preserved = [
+			'const literal = "Messages.$locale.title";',
+			'// Messages.$l.title()',
+			'function nested(Messages) { return Messages.$locale.title; }',
+		];
+		const template = [
+			'<code>Messages.$locale.title</code>',
+			'<p>{{ "Messages.$locale.title" }}</p>',
+			'<p v-for="Messages in rows">{{ Messages.$locale.title }}</p>',
+		];
+		const code = `<script setup>import { default as Messages } from './messages.vue';\n${preserved.join('\n')}\nconst translated = Messages.$locale.title;</script><template>${template.join('')}{{ Messages.$locale.title }}</template><style>.x::after { content: 'Messages.$locale.title'; }</style>`;
+		const output = internals.rewriteInlineComponentLocaleAccess(code, join(root, 'App.vue'), root);
+		for (const fragment of [...preserved, ...template]) expect(output).toContain(fragment);
+		expect(output).toContain('content: \'Messages.$locale.title\'');
+		expect(output).toContain('const translated = __VUE_INTERNATIONALIZATION_INLINE_TEXT__');
+		expect(output).toContain('INLINE_TEXT__(&quot;');
+	});
 	it('replaces locale-only SFC static access markers with localized values', () => {
 		const root = mkdtempSync(join(tmpdir(), 'vite-vue-internationalization-'));
 		mkdirSync(join(root, 'src'), { recursive: true });
@@ -872,7 +923,8 @@ describe('virtual module generation', () => {
 
 		expect(replaced).toContain('const title = "Title";');
 		expect(replaced).toContain('const titleText = "Title";');
-		expect(replaced).toContain('const body = ((__values) => "From " + ((typeof __values === "number" ? (undefined) : __values?.["source"]) ?? "{source}"))({ source });');
+		const execute = new Function('source', `${replaced.replace(/^import[^;]+;/, '')}; return [title, titleText, body];`);
+		expect(execute('fixture')).toEqual(['Title', 'Title', 'From fixture']);
 		expect(replaced).not.toContain('Messages.$locale');
 		expect(replaced).not.toContain('Messages.$l');
 	});
@@ -1131,9 +1183,10 @@ describe('virtual module generation', () => {
 
 		const localizedCode = bundle['assets/StatusLabel.ja-JP.js'].code;
 
-		expect(localizedCode).toContain('const label = (({');
-		expect(localizedCode).toContain('[String(key)])({ count })');
-		expect(localizedCode).not.toContain('=>{"completed"');
+		const execute = new Function('status', 'count', `${localizedCode}; return label;`);
+		expect(execute('done', 3)).toBe('3 件が完了しました');
+		expect(execute('failed', 2)).toBe('2 件が失敗しました');
+		expect(execute('pending', 1)).toBe('1 件を処理中です');
 	});
 
 	it('rewrites imports between localized chunks', () => {
@@ -1546,7 +1599,7 @@ describe('virtual module generation', () => {
 		expect(html).not.toContain('AsyncPanel-abc.i18n-loader.js');
 	});
 
-	it('injects fallback locale loader and css with a relative base', () => {
+	it.each([['index.html', './'], ['nested/index.html', '../']])('injects fallback assets relative to %s', (htmlFileName, prefix) => {
 		const html = internals.replaceInlineLocaleHtml(
 			'<div id="app"></div>',
 			{
@@ -1565,12 +1618,12 @@ describe('virtual module generation', () => {
 					},
 				],
 			},
-			undefined,
+			htmlFileName,
 			'./',
 		);
 
-		expect(html).toContain('href="./assets/App-abc.css"');
-		expect(html).toContain('src="./assets/App-abc.i18n-loader.js"');
+		expect(html).toContain(`href="${prefix}assets/App-abc.css"`);
+		expect(html).toContain(`src="${prefix}assets/App-abc.i18n-loader.js"`);
 	});
 
 	it('injects only the matching html entry loader when Vite removes multiple html entry scripts', () => {

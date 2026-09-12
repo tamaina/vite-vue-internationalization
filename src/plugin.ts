@@ -1,6 +1,9 @@
+import { createHash } from 'node:crypto';
 import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, relative, resolve } from 'node:path';
 import ts from 'typescript';
+import { SourceEdits } from './sourceEdits.js';
+import { augmentSsrManifest, createAssetManifest, finalizeAssetIntegrity, localizeAssetManifest } from './assetManifest.js';
 import {
 	augmentViteManifestJson,
 	getInlineLocaleHtmlLoaders,
@@ -34,9 +37,10 @@ import {
 	validateLocaleDictionary,
 } from './parse.js';
 import { readTextFile, scanVueFiles, type ScanVueFilesOptions } from './files.js';
-import { loadLocaleEnvDictionary, type LocaleEnvSource, type LocaleEnvSources } from './localeEnv.js';
+import { loadLocaleEnvDictionary, localeEnvWatchRoots, matchesLocaleEnvFile, type LocaleEnvSource, type LocaleEnvSources } from './localeEnv.js';
 import type { LocaleMessageSyntax } from './message.js';
-import type { Plugin } from 'vite';
+import type { Environment, Plugin } from 'vite';
+import type { LocaleAssetManifest } from './ssr.js';
 import type { LocaleDictionary } from './types.js';
 
 export type { LocaleDictionary };
@@ -75,6 +79,7 @@ type TsconfigVueCompilerPlugin = {
 
 type ModuleMessages = Partial<Record<string, LocaleMessages>>;
 
+const ICU_FORMATTER_ID = '\0vvi-icu-formatter';
 const VIRTUAL_ID = 'virtual:vite-vue-internationalization';
 const RESOLVED_VIRTUAL_ID = `\0${VIRTUAL_ID}`;
 const LOCALE_PREFIX = 'virtual:vite-vue-internationalization/locale/';
@@ -89,16 +94,40 @@ const TSCONFIG_PLUGIN_NAMES = new Set(['vite-vue-internationalization', 'vite-vu
  * `vite-vue-internationalization/volar` entry from the Vite root `tsconfig.json`.
  */
 export function vueInternationalization(options?: Partial<VueInternationalizationOptions>): Plugin {
-	const modules: ModuleMessages = {};
-	const globalMessages: LocaleMessages = {};
+	type State = {
+		modules: ModuleMessages;
+		globalMessages: LocaleMessages;
+		inlineManifest?: InlineChunkManifest;
+		assetManifest?: LocaleAssetManifest;
+		scanned: boolean;
+		failed?: boolean;
+		icuFormatterReference?: string;
+		localeHash?: string;
+	};
+	const createState = (): State => ({ modules: {}, globalMessages: {}, scanned: false });
+	const states = new WeakMap<Environment, State>();
+	const fallbackState = createState();
 	let root = process.cwd();
 	let command: 'build' | 'serve' = 'serve';
-	let inlineManifest: InlineChunkManifest | undefined;
 	let resolvedOptions: ResolvedVueInternationalizationOptions | undefined;
 	let base = '/';
-	let scanned = false;
+	let legacyServerBuild = false;
 
-	function collectVueFile(filename: string, code: string): void {
+	function getState(context?: { environment?: Environment }): State {
+		if (!context?.environment) return fallbackState;
+		let state = states.get(context.environment);
+		if (!state) { state = createState(); states.set(context.environment, state); }
+		return state;
+	}
+
+	function environmentOptions(context?: { environment?: Environment }): ResolvedVueInternationalizationOptions {
+		const current = getResolvedOptions(resolvedOptions);
+		const server = context?.environment ? context.environment.config.consumer === 'server' : legacyServerBuild;
+		return server ? { ...current, buildStrategy: 'virtual' } : current;
+	}
+
+	function collectVueFile(state: State, filename: string, code: string): void {
+		const { modules } = state;
 		const parsed = parseVueLocales(code, filename);
 
 		if (parsed.blocks.length === 0 && Object.keys(parsed.scriptMessages).length === 0) {
@@ -122,7 +151,8 @@ export function vueInternationalization(options?: Partial<VueInternationalizatio
 		modules[toRuntimeModuleId(filename, root)] = messages;
 	}
 
-	function loadGlobalMessages(): void {
+	function loadGlobalMessages(state: State): void {
+		const { globalMessages } = state;
 		for (const locale of Object.keys(globalMessages)) {
 			delete globalMessages[locale];
 		}
@@ -143,35 +173,54 @@ export function vueInternationalization(options?: Partial<VueInternationalizatio
 		}
 	}
 
-	function scan(): void {
-		loadGlobalMessages();
+	function scan(state: State): void {
+		for (const key of Object.keys(state.modules)) delete state.modules[key];
+		loadGlobalMessages(state);
 
 		for (const file of scanVueFiles(root, getResolvedOptions(resolvedOptions).scan)) {
-			collectVueFile(file, readTextFile(file));
+			collectVueFile(state, file, readTextFile(file));
 		}
 
-		scanned = true;
+		state.scanned = true;
 	}
 
-	function ensureScanned(): void {
-		if (!scanned) {
-			scan();
+	function ensureScanned(state: State): void {
+		if (!state.scanned) {
+			scan(state);
 		}
 	}
 
 	return {
 		name: 'vite-vue-internationalization',
 		enforce: 'pre',
+		perEnvironmentStartEndDuringDev: true,
+		sharedDuringBuild: true,
 		configResolved(config) {
 			root = config.root;
 			command = config.command;
+			legacyServerBuild = Boolean(config.build.ssr);
 			base = config.base;
 			resolvedOptions = resolveOptions(root, options);
 		},
+		configureServer(server) {
+			for (const source of Object.values(getResolvedOptions(resolvedOptions).global ?? {})) {
+				if (typeof source === 'string' || Array.isArray(source)) server.watcher.add(localeEnvWatchRoots(root, source));
+			}
+		},
 		buildStart() {
-			scan();
+			const state = getState(this);
+			state.localeHash = undefined;
+			state.inlineManifest = undefined;
+			state.assetManifest = undefined;
+			state.icuFormatterReference = undefined;
+			scan(state);
+			const currentOptions = environmentOptions(this);
+			if (command === 'build' && currentOptions.buildStrategy === 'inline-chunks' && currentOptions.messageSyntax === 'icu') {
+				state.icuFormatterReference = this.emitFile({ type: 'chunk', id: ICU_FORMATTER_ID, name: 'vvi-icu-formatter', preserveSignature: 'strict' });
+			}
 		},
 		resolveId(id) {
+			if (id === ICU_FORMATTER_ID) return id;
 			if (id === VIRTUAL_ID) {
 				return RESOLVED_VIRTUAL_ID;
 			}
@@ -183,8 +232,11 @@ export function vueInternationalization(options?: Partial<VueInternationalizatio
 			return null;
 		},
 		load(id) {
-			ensureScanned();
-			const currentOptions = getResolvedOptions(resolvedOptions);
+			const state = getState(this);
+			const { modules, globalMessages } = state;
+			if (id === ICU_FORMATTER_ID) return 'export { formatLocaleMessage as format } from "vite-vue-internationalization/runtime";';
+			ensureScanned(state);
+			const currentOptions = environmentOptions(this);
 
 			if (id === RESOLVED_VIRTUAL_ID) {
 				if (command === 'build' && currentOptions.buildStrategy === 'inline-chunks') {
@@ -206,38 +258,49 @@ export function vueInternationalization(options?: Partial<VueInternationalizatio
 				id: /\.(?:vue|[cm]?[jt]sx?)(?:\?.*)?$/u,
 			},
 			handler(code, id) {
+				const state = getState(this);
+				const { globalMessages } = state;
 				const cleanId = id.split('?')[0] ?? id;
+				const query = new URLSearchParams(id.slice(cleanId.length + 1));
+
+				// These requests contain a block or an asset representation, not an SFC.
+				if (query.has('vue') || query.has('raw') || query.has('url')) {
+					return null;
+				}
 
 				if (!existsSync(cleanId)) {
 					return null;
 				}
 
-				const currentOptions = getResolvedOptions(resolvedOptions);
+				const currentOptions = environmentOptions(this);
 
 				if (!cleanId.endsWith('.vue')) {
 					if (command !== 'build' || currentOptions.buildStrategy !== 'inline-chunks') {
 						return null;
 					}
 
-					const transformed = rewriteInlineRuntimeLocaleAccess(code, toRuntimeModuleId(cleanId, root), cleanId);
+					const edits = new SourceEdits(code, cleanId);
+					const transformed = rewriteInlineRuntimeLocaleAccess(code, toRuntimeModuleId(cleanId, root), cleanId, edits);
 					return transformed === code
 						? null
 						: {
 							code: transformed,
-							map: null,
+							map: edits.generateMap(),
 						};
 				}
 
-				collectVueFile(cleanId, code);
+				collectVueFile(state, cleanId, code);
+				const sourceEdits = new SourceEdits(code, cleanId);
 				const transformed =
 					command === 'build' && currentOptions.buildStrategy === 'inline-chunks'
-						? transformVueSfcInline(code, cleanId, root, currentOptions.primaryLocale, currentOptions.sfcTransform === 'all')
+						? transformVueSfcInline(code, cleanId, root, currentOptions.primaryLocale, currentOptions.sfcTransform === 'all', sourceEdits)
 						: transformVueSfc(code, id, {
 							primaryLocale: currentOptions.primaryLocale,
 							global: globalMessages[currentOptions.primaryLocale],
 							messageSyntax: currentOptions.messageSyntax,
 							transformAll: currentOptions.sfcTransform === 'all',
 							moduleExpression: JSON.stringify(toRuntimeModuleId(cleanId, root)),
+							edits: sourceEdits,
 						});
 
 				if (!transformed) {
@@ -246,21 +309,66 @@ export function vueInternationalization(options?: Partial<VueInternationalizatio
 
 				return {
 					code: transformed,
-					map: null,
+					map: sourceEdits.generateMap(),
 				};
 			},
 		},
-		handleHotUpdate(context) {
-			if (context.file.endsWith('.vue')) {
-				collectVueFile(context.file, readTextFile(context.file));
+		async hotUpdate(context) {
+			const state = getState(this);
+			const currentOptions = environmentOptions(this);
+			const moduleId = toRuntimeModuleId(context.file, root);
+			const sfc = context.file.endsWith('.vue') && (Object.hasOwn(state.modules, moduleId) || scanVueFiles(root, currentOptions.scan).includes(context.file));
+			const global = Object.values(currentOptions.global ?? {}).some(source =>
+				(typeof source === 'string' || Array.isArray(source)) && matchesLocaleEnvFile(root, context.file, source),
+			);
+			if (!sfc && !global) return;
+			const before = serializeLocaleValue([state.modules, state.globalMessages]);
+			const recovering = state.failed;
+			const invalidate = () => {
+				const modules = new Set(context.modules);
+				for (const [id, module] of this.environment.moduleGraph.idToModuleMap) {
+					if (id === RESOLVED_VIRTUAL_ID || id.startsWith(RESOLVED_LOCALE_PREFIX)) modules.add(module);
+				}
+				for (const module of modules) this.environment.moduleGraph.invalidateModule(module, new Set(), context.timestamp, true);
+			};
+			try {
+				if (sfc) {
+					if (context.type === 'delete') delete state.modules[moduleId];
+					else collectVueFile(state, context.file, await context.read());
+				}
+				if (global) loadGlobalMessages(state);
+				state.failed = false;
+			} catch (error) {
+				state.failed = true;
+				state.scanned = false;
+				invalidate();
+				this.environment.hot.send({ type: 'error', err: { message: String(error), stack: error instanceof Error ? error.stack ?? '' : '', plugin: 'vite-vue-internationalization' } });
+				return [];
 			}
+			if (!recovering && before === serializeLocaleValue([state.modules, state.globalMessages])) return;
+			invalidate();
+			if (this.environment.config.consumer === 'client') this.environment.hot.send({ type: 'full-reload' });
+			return [];
+		},
+
+		augmentChunkHash() {
+			const state = getState(this);
+			const { modules, globalMessages } = state;
+			const currentOptions = environmentOptions(this);
+			if (currentOptions.buildStrategy !== 'inline-chunks') return;
+			state.localeHash ??= createLocaleHash(['vvi-inline-output-v8', modules, globalMessages, currentOptions.primaryLocale, currentOptions.messageSyntax, this.environment.config.build.sourcemap]);
+			return state.localeHash;
 		},
 		generateBundle(_outputOptions, bundle) {
-			ensureScanned();
-			const currentOptions = getResolvedOptions(resolvedOptions);
+			const state = getState(this);
+			const { modules, globalMessages } = state;
+			ensureScanned(state);
+			const currentOptions = environmentOptions(this);
+			const client = this.environment.config.consumer === 'client';
+			const assetManifest = client ? createAssetManifest(bundle, root, base, currentOptions.primaryLocale, getLocales(modules, globalMessages)) : undefined;
 
 			if (currentOptions.buildStrategy === 'inline-chunks') {
-				inlineManifest = inlineLocaleChunks(
+				state.inlineManifest = inlineLocaleChunks(
 					bundle as Record<string, unknown>,
 					getLocales(modules, globalMessages),
 					currentOptions.primaryLocale,
@@ -268,6 +376,9 @@ export function vueInternationalization(options?: Partial<VueInternationalizatio
 					globalMessages,
 					currentOptions.messageSyntax,
 					{
+						base,
+						icuFormatterFile: state.icuFormatterReference ? this.getFileName(state.icuFormatterReference) : undefined,
+						emitAsset: asset => { this.emitFile({ type: 'asset', fileName: asset.fileName, source: asset.source }); },
 						emitChunk: chunk => {
 							this.emitFile({
 								type: 'asset',
@@ -277,7 +388,7 @@ export function vueInternationalization(options?: Partial<VueInternationalizatio
 						},
 					},
 				);
-				inlineLocaleHtml(bundle as Record<string, unknown>, inlineManifest, {
+				inlineLocaleHtml(bundle as Record<string, unknown>, state.inlineManifest, {
 					base,
 					emitAsset: asset => {
 						this.emitFile({
@@ -288,21 +399,35 @@ export function vueInternationalization(options?: Partial<VueInternationalizatio
 					},
 				});
 			}
-		},
-		writeBundle(outputOptions) {
-			const currentOptions = getResolvedOptions(resolvedOptions);
-
-			if (currentOptions.buildStrategy !== 'inline-chunks' || !inlineManifest) {
-				return;
+			if (assetManifest) {
+				if (state.inlineManifest) localizeAssetManifest(assetManifest, state.inlineManifest);
+				state.assetManifest = assetManifest;
+				this.emitFile({ type: 'asset', fileName: '.vite/internationalization-manifest.json', source: JSON.stringify(assetManifest, null, 2) + '\n' });
 			}
-
-			rewriteWrittenHtml(resolve(root, outputOptions.dir ?? dirname(outputOptions.file ?? 'dist/index.js')), inlineManifest, base);
-			rewriteWrittenViteManifest(resolve(root, outputOptions.dir ?? dirname(outputOptions.file ?? 'dist/index.js')), inlineManifest);
+		},
+		writeBundle(outputOptions, bundle) {
+			const state = getState(this);
+			const outputDir = resolve(root, outputOptions.dir ?? dirname(outputOptions.file ?? 'dist/index.js'));
+			if (state.inlineManifest) {
+				rewriteWrittenHtml(outputDir, state.inlineManifest, base);
+				const manifestOption = this.environment.config.build.manifest;
+				if (manifestOption) rewriteWrittenViteManifest(outputDir, state.inlineManifest, typeof manifestOption === 'string' ? manifestOption : '.vite/manifest.json');
+			}
+			if (state.assetManifest) {
+				finalizeAssetIntegrity(state.assetManifest, outputDir, bundle);
+				writeFileSync(resolve(outputDir, '.vite/internationalization-manifest.json'), JSON.stringify(state.assetManifest, null, 2) + '\n');
+			}
+			const ssrManifestOption = this.environment.config.build.ssrManifest;
+			const ssrManifestPath = resolve(outputDir, typeof ssrManifestOption === 'string' ? ssrManifestOption : '.vite/ssr-manifest.json');
+			if (ssrManifestOption && state.assetManifest && existsSync(ssrManifestPath)) {
+				writeFileSync(ssrManifestPath, augmentSsrManifest(readTextFile(ssrManifestPath), state.assetManifest));
+			}
 		},
 	};
 }
 
 export const internals = {
+	createLocaleHash,
 	generateLocaleModule,
 	generateInlineRuntimeModule,
 	generateRuntimeModule,
@@ -526,6 +651,11 @@ function generateRuntimeModule(primaryLocale: string, locales: string[], message
 		`export const locales = ${JSON.stringify(locales)};`,
 		`export const localeLoaders = {\n  ${loaderEntries}\n};`,
 		'export function resolveInitialLocale() {',
+		'  const handedOff = typeof document !== "undefined" ? document.documentElement.getAttribute("data-vvi-locale") : null;',
+		'  if (handedOff !== null) {',
+		'    if (!locales.includes(handedOff)) throw new Error(`Unsupported SSR locale: ${handedOff}`);',
+		'    return handedOff;',
+		'  }',
 		'  if (typeof window !== "undefined") {',
 		'    const locale = new URL(window.location.href).searchParams.get("locale");',
 		'    if (locale && locales.includes(locale)) return locale;',
@@ -560,6 +690,11 @@ function generateInlineRuntimeModule(primaryLocale: string, locales: string[], m
 		`export const localeLoaders = {\n  ${loaderEntries}\n};`,
 		'export { Internationalization, createComponentLocale, createComponentLocalizer, defineInternationalization, setActiveInternationalization, useDateTimeFormat, useInternationalization, useLocale, useLocalizer, useNumberFormat };',
 		'export function resolveInitialLocale() {',
+		'  const handedOff = typeof document !== "undefined" ? document.documentElement.getAttribute("data-vvi-locale") : null;',
+		'  if (handedOff !== null) {',
+		'    if (!locales.includes(handedOff)) throw new Error(`Unsupported SSR locale: ${handedOff}`);',
+		'    return handedOff;',
+		'  }',
 		'  if (typeof window === "undefined") return primaryLocale;',
 		'  const locale = new URL(window.location.href).searchParams.get("locale");',
 		'  return locale && locales.includes(locale) ? locale : primaryLocale;',
@@ -598,6 +733,19 @@ function generateLocaleModule(locale: string, primaryLocale: string, modules: Mo
 	].join('\n');
 }
 
+// Tag every node, not only functions: a user dictionary can contain any marker key.
+function createLocaleHash(value: unknown): string {
+	function encode(value: unknown): unknown {
+		if (typeof value === 'function') return ['function', value.toString()];
+		if (Array.isArray(value)) return ['array', value.map(encode)];
+		if (value !== null && typeof value === 'object') return ['object', Object.keys(value).sort().map(key => [key, encode((value as Record<string, unknown>)[key])])];
+		if (typeof value === 'number') return ['number', Object.is(value, -0) ? '-0' : String(value)];
+		return [typeof value, value];
+	}
+
+	return createHash('sha256').update(JSON.stringify(encode(value))).digest('hex');
+}
+
 function serializeLocaleValue(value: unknown): string {
 	if (typeof value === 'function') {
 		return `(${value.toString()})`;
@@ -625,7 +773,7 @@ function toRuntimeModuleId(filename: string, root: string): string {
 	return `/${relativePath}`;
 }
 
-function transformVueSfcInline(code: string, filename: string, root: string, primaryLocale?: string, transformAll = false): string | undefined {
+function transformVueSfcInline(code: string, filename: string, root: string, primaryLocale?: string, transformAll = false, edits?: SourceEdits): string | undefined {
 	if (hasInjectedLocaleBinding(code) || code.includes('__VUE_INTERNATIONALIZATION_INLINE_LOCALE__')) {
 		return undefined;
 	}
@@ -638,24 +786,25 @@ function transformVueSfcInline(code: string, filename: string, root: string, pri
 
 	const moduleId = toRuntimeModuleId(filename, root);
 	const marker = createInlineLocaleMarker(moduleId);
-	const stripped = stripLocaleBlocks(code, filename);
-	const rewrittenComponentAccess = rewriteInlineComponentLocaleAccess(stripped, filename, root);
-	const rewrittenLocaleAccess = rewriteInlineLocaleTemplateAccess(rewrittenComponentAccess, moduleId);
-	const rewrittenRuntimeAccess = rewriteVueScriptRuntimeLocaleAccess(rewrittenLocaleAccess, moduleId);
+	const stripped = stripLocaleBlocks(code, filename, edits);
+	const rewrittenComponentAccess = rewriteInlineComponentLocaleAccess(stripped, filename, root, edits);
+	const rewrittenLocaleAccess = rewriteInlineLocaleTemplateAccess(rewrittenComponentAccess, moduleId, edits);
+	const rewrittenRuntimeAccess = rewriteVueScriptRuntimeLocaleAccess(rewrittenLocaleAccess, moduleId, edits);
 	const moduleDictionary = getPrimaryLocaleDictionary(parsed.blocks, primaryLocale, parsed.scriptMessages);
 
 	if (!hasLocaleDictionaryEntries(moduleDictionary)) {
 		return hasVueScriptLocaleAccess(rewrittenRuntimeAccess)
-			? injectInlineLocaleBinding(rewrittenRuntimeAccess, moduleId)
+			? injectInlineLocaleBinding(rewrittenRuntimeAccess, moduleId, edits)
 			: rewrittenRuntimeAccess;
 	}
 
-	const withSetupBinding = injectInlineLocaleBinding(rewrittenRuntimeAccess, moduleId);
+	const withSetupBinding = injectInlineLocaleBinding(rewrittenRuntimeAccess, moduleId, edits);
 
 	return injectComponentLocaleOptions(withSetupBinding, filename, {
 		module: moduleDictionary,
 	}, {
 		importLine: '',
+		edits,
 		localeExpression: `__VUE_INTERNATIONALIZATION_INLINE_LOCALE__(${JSON.stringify(marker)}).sfc`,
 		localizerExpression: `__VUE_INTERNATIONALIZATION_INLINE_LOCALIZERS__(${JSON.stringify(marker)}).sfc`,
 	});
@@ -684,15 +833,12 @@ function rewriteWrittenHtml(outDir: string, manifest: InlineChunkManifest, base:
 	}
 }
 
-function rewriteWrittenViteManifest(outDir: string, manifest: InlineChunkManifest): void {
-	for (const file of findManifestFiles(outDir)) {
-		const source = readFileSync(file, 'utf8');
-		const next = augmentViteManifestJson(source, manifest);
-
-		if (next !== source) {
-			writeFileSync(file, next);
-		}
-	}
+function rewriteWrittenViteManifest(outDir: string, manifest: InlineChunkManifest, manifestFile: string): void {
+	const file = resolve(outDir, manifestFile);
+	if (!existsSync(file)) return;
+	const source = readFileSync(file, 'utf8');
+	const next = augmentViteManifestJson(source, manifest);
+	if (next !== source) writeFileSync(file, next);
 }
 
 function findHtmlFiles(dir: string): string[] {
@@ -712,30 +858,6 @@ function findHtmlFiles(dir: string): string[] {
 		}
 
 		if (stat.isFile() && path.endsWith('.html')) {
-			files.push(path);
-		}
-	}
-
-	return files;
-}
-
-function findManifestFiles(dir: string): string[] {
-	if (!existsSync(dir)) {
-		return [];
-	}
-
-	const files: string[] = [];
-
-	for (const entry of readdirSync(dir)) {
-		const path = resolve(dir, entry);
-		const stat = statSync(path);
-
-		if (stat.isDirectory()) {
-			files.push(...findManifestFiles(path));
-			continue;
-		}
-
-		if (stat.isFile() && path.endsWith('manifest.json')) {
 			files.push(path);
 		}
 	}

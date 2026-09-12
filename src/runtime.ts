@@ -3,6 +3,8 @@ import { compileLocaleMessage, formatLocaleMessage } from './message.js';
 import type { App, ComputedRef, InjectionKey, PropType, VNodeChild } from 'vue';
 import type { LocaleMessageSyntax, LocaleMessageToken, LocaleMessageValues } from './message.js';
 
+export { formatLocaleMessage } from './message.js';
+
 /** Runtime dictionary shape used when generated types intentionally skip detailed keys. */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type RuntimeLocaleDictionary = Record<string, any>;
@@ -112,7 +114,7 @@ export type InternationalizationInstance = {
 	locale: string;
 	/** Primary locale code. */
 	primaryLocale: string;
-	/** Promise that settles after the initial locale load attempt. */
+	/** Promise that resolves after initial loading, or rejects with the loader error. */
 	ready: Promise<void>;
 	/** Loads a locale bundle if it has not already been loaded. */
 	loadLocale(locale: string): Promise<void>;
@@ -196,6 +198,8 @@ export function createInternationalization(options: InternationalizationRuntimeO
 		numberFormats: options.numberFormats ?? {},
 	});
 
+	const pending = new Map<string, Promise<void>>();
+
 	const instance: InternationalizationInstance = {
 		get locale() {
 			return state.locale;
@@ -204,34 +208,40 @@ export function createInternationalization(options: InternationalizationRuntimeO
 			return state.primaryLocale;
 		},
 		ready: Promise.resolve(),
-		async loadLocale(locale) {
-			if (state.bundles[locale]) {
-				return;
-			}
+		loadLocale(locale) {
+			if (state.bundles[locale]) return Promise.resolve();
+			const existing = pending.get(locale);
+			if (existing) return existing;
 
-			const loader = options.loaders[locale];
-
-			if (!loader) {
-				throw new Error(`Locale "${locale}" is not available.`);
-			}
-
-			const loaded = await loader();
-			const bundle = 'default' in loaded ? loaded.default : loaded;
-			state.bundles[locale] = {
-				global: bundle.global ?? {},
-				modules: bundle.modules ?? {},
-			};
+			const promise = Promise.resolve().then(async () => {
+				const loader = options.loaders[locale];
+				if (!loader) throw new Error(`Locale "${locale}" is not available.`);
+				// Loader results cross a runtime boundary, including untyped app code.
+				const loaded: unknown = await loader();
+				if (!loaded || typeof loaded !== 'object') throw new Error(`Invalid locale bundle for "${locale}".`);
+				const bundle = 'default' in loaded ? loaded.default : loaded;
+				if (!bundle || typeof bundle !== 'object' || Array.isArray(bundle)) throw new Error(`Invalid locale bundle for "${locale}".`);
+				const data = bundle as LocaleBundle;
+				for (const dictionary of [data.global, data.modules, ...Object.values(data.modules ?? {})] as unknown[]) {
+					if (dictionary !== undefined && (!dictionary || typeof dictionary !== 'object' || Array.isArray(dictionary))) {
+						throw new Error(`Invalid locale dictionary for "${locale}".`);
+					}
+				}
+				state.bundles[locale] = { global: data.global ?? {}, modules: data.modules ?? {} };
+			}).finally(() => { pending.delete(locale); });
+			pending.set(locale, promise);
+			return promise;
 		},
 		install(app) {
 			app.provide(INTERNATIONALIZATION_KEY, instance);
-			setActiveInternationalization(instance);
+			if (typeof window !== 'undefined') setActiveInternationalization(instance);
 		},
 	};
 
 	STATES.set(instance, state);
-	instance.ready = instance.loadLocale(state.locale).catch((error) => {
-		console.error(error);
-	});
+	instance.ready = instance.loadLocale(state.locale);
+	// Mark the automatically started promise handled without changing its result.
+	void instance.ready.catch(() => {});
 
 	return instance;
 }
@@ -252,9 +262,10 @@ export function setActiveInternationalization(instance: InternationalizationInst
 }
 
 /** Returns the installed internationalization instance. */
-export function useInternationalization(): InternationalizationInstance {
+export function useInternationalization(instance?: InternationalizationInstance): InternationalizationInstance {
+	if (instance) return instance;
 	const internationalization = hasInjectionContext()
-		? inject(INTERNATIONALIZATION_KEY, activeInternationalization)
+		? inject(INTERNATIONALIZATION_KEY, undefined)
 		: activeInternationalization;
 
 	if (!internationalization) {
@@ -271,8 +282,8 @@ export function useInternationalization(): InternationalizationInstance {
 export function useLocale<
 	TGlobal extends RuntimeLocaleDictionary = RuntimeLocaleDictionary,
 	TModule extends RuntimeLocaleDictionary = RuntimeLocaleDictionary,
->(moduleUrl: string): Readonly<ComputedRef<LocaleScope<TGlobal, TModule>>> {
-	const internationalization = useInternationalization();
+>(moduleUrl: string, instance?: InternationalizationInstance): Readonly<ComputedRef<LocaleScope<TGlobal, TModule>>> {
+	const internationalization = useInternationalization(instance);
 
 	return computed(() => resolveLocale(internationalization, moduleUrl)) as ComputedRef<LocaleScope<TGlobal, TModule>>;
 }
@@ -281,9 +292,9 @@ export function useLocale<
 export function useLocalizer<
 	TGlobal extends RuntimeLocaleDictionary = RuntimeLocaleDictionary,
 	TModule extends RuntimeLocaleDictionary = RuntimeLocaleDictionary,
->(moduleUrl: string): Readonly<ComputedRef<LocaleLocalizerScope<TGlobal, TModule>>> {
-	const internationalization = useInternationalization();
-	const locale = useLocale(moduleUrl);
+>(moduleUrl: string, instance?: InternationalizationInstance): Readonly<ComputedRef<LocaleLocalizerScope<TGlobal, TModule>>> {
+	const internationalization = useInternationalization(instance);
+	const locale = useLocale(moduleUrl, internationalization);
 
 	return computed(() => {
 		const rootDictionary = locale.value as RuntimeLocaleDictionary;
@@ -303,6 +314,7 @@ export function useLocalizer<
  */
 export function createComponentLocale<TModule extends RuntimeLocaleDictionary = RuntimeLocaleDictionary>(
 	moduleUrl: string,
+	instance?: InternationalizationInstance,
 ): TModule {
 	return new Proxy({}, {
 		get(_target, property) {
@@ -310,7 +322,7 @@ export function createComponentLocale<TModule extends RuntimeLocaleDictionary = 
 				return undefined;
 			}
 
-			const internationalization = useInternationalization();
+			const internationalization = useInternationalization(instance);
 			return Reflect.get(resolveLocale(internationalization, moduleUrl).sfc, property);
 		},
 	}) as TModule;
@@ -321,14 +333,14 @@ export function createComponentLocale<TModule extends RuntimeLocaleDictionary = 
  *
  * This is primarily used by generated component options.
  */
-export function createComponentLocalizer(moduleUrl: string): LocaleLocalizerDictionary {
+export function createComponentLocalizer(moduleUrl: string, instance?: InternationalizationInstance): LocaleLocalizerDictionary {
 	return new Proxy({}, {
 		get(_target, property) {
 			if (typeof property !== 'string') {
 				return undefined;
 			}
 
-			const internationalization = useInternationalization();
+			const internationalization = useInternationalization(instance);
 			const locale = resolveLocale(internationalization, moduleUrl);
 			const rootDictionary = locale as RuntimeLocaleDictionary;
 			const state = getState(internationalization);
@@ -340,8 +352,8 @@ export function createComponentLocalizer(moduleUrl: string): LocaleLocalizerDict
 }
 
 /** Returns a formatter for the current locale's date-time presets. */
-export function useDateTimeFormat(): Readonly<ComputedRef<LocaleDateTimeFormatter>> {
-	const internationalization = useInternationalization();
+export function useDateTimeFormat(instance?: InternationalizationInstance): Readonly<ComputedRef<LocaleDateTimeFormatter>> {
+	const internationalization = useInternationalization(instance);
 
 	return computed(() => {
 		const state = getState(internationalization);
@@ -350,8 +362,8 @@ export function useDateTimeFormat(): Readonly<ComputedRef<LocaleDateTimeFormatte
 }
 
 /** Returns a formatter for the current locale's number presets. */
-export function useNumberFormat(): Readonly<ComputedRef<LocaleNumberFormatter>> {
-	const internationalization = useInternationalization();
+export function useNumberFormat(instance?: InternationalizationInstance): Readonly<ComputedRef<LocaleNumberFormatter>> {
+	const internationalization = useInternationalization(instance);
 
 	return computed(() => {
 		const state = getState(internationalization);
@@ -502,7 +514,8 @@ function resolveInternationalizationLinkedMessage(
 		return undefined;
 	}
 
-	seen.add(resolvedKey);
+	const nextSeen = new Set(seen);
+	nextSeen.add(resolvedKey);
 	return formatLocaleMessage(value, {
 		values,
 		plural,
@@ -618,11 +631,14 @@ function createDictionaryProxy(
 			const fallbackValue = getOwnValue(fallback, property);
 			const nextPath = [...path, property];
 
-			if (isDictionary(value) || isDictionary(fallbackValue)) {
+			if (isDictionary(value) || value === undefined && isDictionary(fallbackValue)) {
 				return createDictionaryProxy(asDictionary(value), asDictionary(fallbackValue), nextPath);
 			}
 
-			return value ?? fallbackValue ?? `$locale.${nextPath.join('.')}`;
+			return value !== undefined ? value : fallbackValue !== undefined ? fallbackValue : `$locale.${nextPath.join('.')}`;
+		},
+		has(target, property) {
+			return Object.hasOwn(target, property) || Object.hasOwn(fallback, property);
 		},
 	}) as RuntimeLocaleDictionary;
 
@@ -651,7 +667,7 @@ function createLocalizerDictionary(
 				return undefined;
 			}
 
-			const value = Reflect.get(dictionary, property) as unknown;
+			const value = property in dictionary ? Reflect.get(dictionary, property) as unknown : undefined;
 			const nextPath = [...path, property];
 
 			if (isDictionary(value)) {
@@ -666,14 +682,15 @@ function createLocalizerDictionary(
 					return value(normalizedValues, normalizedPlural);
 				}
 
-				const message = typeof value === 'string' ? value : `$locale.${nextPath.join('.')}`;
+				if (typeof value !== 'string') return `$locale.${nextPath.join('.')}`;
+				const message = value;
 
 				return formatLocaleMessage(message, {
 					locale,
 					syntax: messageSyntax,
 					values: normalizedValues,
 					plural: normalizedPlural,
-					resolveLinked: (key) => resolveLinkedMessage(rootDictionary, key, normalizedValues, normalizedPlural, messageSyntax, undefined, path[0]),
+					resolveLinked: (key) => resolveLinkedMessage(rootDictionary, key, normalizedValues, normalizedPlural, messageSyntax, undefined, path[0], locale),
 				});
 			};
 		},
@@ -747,6 +764,7 @@ function resolveLinkedMessage(
 	messageSyntax: LocaleMessageSyntax,
 	seen: Set<string> = new Set(),
 	scope: string | undefined = undefined,
+	locale?: string,
 ): string {
 	const path = resolveLinkedPath(key, scope);
 	const resolvedKey = path.join('.');
@@ -760,12 +778,14 @@ function resolveLinkedMessage(
 		return `@:${key}`;
 	}
 
-	seen.add(resolvedKey);
+	const nextSeen = new Set(seen);
+	nextSeen.add(resolvedKey);
 	return formatLocaleMessage(value, {
+		locale,
 		syntax: messageSyntax,
 		values,
 		plural,
-		resolveLinked: (linkedKey) => resolveLinkedMessage(dictionary, linkedKey, values, plural, messageSyntax, seen, path[0]),
+		resolveLinked: (linkedKey) => resolveLinkedMessage(dictionary, linkedKey, values, plural, messageSyntax, nextSeen, path[0], locale),
 	});
 }
 

@@ -41,6 +41,8 @@ VS Codeやvue-tscで型を取得するために、Viteルート`tsconfig.json`�
 
 Vite の変換結果では、巨大なグローバル辞書型を各 SFC に重複して展開しないように、`$locale.env` / `$l.env` は広い runtime 型になります。Vue Language Tools / Volar では標準で詳細なグローバル辞書型を使いますが、辞書が大きすぎて型検査が重くなる場合は `globalType: "runtime"` を指定します。
 
+型注入の回帰fixtureは Vue Language Tools / `vue-tsc` 3.3.1 で検証しています。生成コードの挿入点が見つからない場合は、言語サーバーのログに `Incomplete type injection` と対象ファイルを報告します。その場合は型注入が不完全なので、使用バージョンとログを確認してください。ログの同一ファイルへの重複出力は抑制されます。
+
 現在の Vite プラグインは `tsconfig.app.json` など別名の設定ファイルを自動探索しません。別名の tsconfig に設定を置く場合は、ルートの `tsconfig.json` にも `vueCompilerOptions.plugins` を置くか、[`vueInternationalization({ primaryLocale, global, messageSyntax })`](./api.md#vueinternationalization) に明示してください。
 
 関連 API:

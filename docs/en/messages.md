@@ -126,3 +126,14 @@ Related API:
 - [`defineInternationalization()`](../api.md#defineinternationalization)
 - [`LocaleDictionary`](../api.md#localedictionary)
 - [`LocaleMessages`](../api.md#localemessages)
+
+## Translation edits in development
+
+Translation changes trigger a full page reload in development for both build
+strategies. VVI invalidates the locale payload and loader list in each Vite
+environment. This covers SFC messages, configured global files (including outside
+the Vite root), arrays and glob matches, added/removed files and new locales.
+Ordinary CSS-only changes continue through Vue's CSS HMR without reloading the
+page. Invalid dictionary edits show an error overlay; fixing the dictionary
+reloads the page and clears the error without restarting Vite. Translation reloads
+do not preserve component state.

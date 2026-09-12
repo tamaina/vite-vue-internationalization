@@ -1,0 +1,100 @@
+{
+  "name": "vite-vue-internationalization-tools",
+  "displayName": "Vite Vue Internationalization Tools",
+  "description": "External dictionary diagnostics and locale-only Vue message highlighting.",
+  "version": "0.1.0",
+  "publisher": "tamaina",
+  "engines": {
+    "vscode": "^1.95.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "main": "./dist/extension.cjs",
+  "activationEvents": [
+    "workspaceContains:**/tsconfig*.json",
+    "onLanguage:vue",
+    "workspaceContains:**/jsconfig.json"
+  ],
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": false
+    }
+  },
+  "contributes": {
+    "commands": [
+      {
+        "command": "vvi.refreshDiagnostics",
+        "title": "VVI: Refresh Dictionary Diagnostics"
+      }
+    ],
+    "configuration": {
+      "title": "Vite Vue Internationalization",
+      "properties": {
+        "vvi.messageHighlighting": {
+          "type": "boolean",
+          "default": true,
+          "description": "Highlight Vue message syntax in locale blocks. Disabled for projects configured with ICU syntax."
+        }
+      }
+    },
+    "colors": [
+      {
+        "id": "vvi.message.named",
+        "description": "VVI named message syntax.",
+        "defaults": {
+          "dark": "#DCDCAA",
+          "light": "#795E26",
+          "highContrast": "editor.foreground",
+          "highContrastLight": "editor.foreground"
+        }
+      },
+      {
+        "id": "vvi.message.list",
+        "description": "VVI list message syntax.",
+        "defaults": {
+          "dark": "#B5CEA8",
+          "light": "#098658",
+          "highContrast": "editor.foreground",
+          "highContrastLight": "editor.foreground"
+        }
+      },
+      {
+        "id": "vvi.message.literal",
+        "description": "VVI literal message syntax.",
+        "defaults": {
+          "dark": "#CE9178",
+          "light": "#A31515",
+          "highContrast": "editor.foreground",
+          "highContrastLight": "editor.foreground"
+        }
+      },
+      {
+        "id": "vvi.message.linked",
+        "description": "VVI linked message syntax.",
+        "defaults": {
+          "dark": "#4EC9B0",
+          "light": "#267F99",
+          "highContrast": "editor.foreground",
+          "highContrastLight": "editor.foreground"
+        }
+      },
+      {
+        "id": "vvi.message.plural",
+        "description": "VVI plural message syntax.",
+        "defaults": {
+          "dark": "#C586C0",
+          "light": "#AF00DB",
+          "highContrast": "editor.foreground",
+          "highContrastLight": "editor.foreground"
+        }
+      }
+    ]
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/tamaina/vite-vue-internationalization",
+    "directory": "extensions/vscode"
+  }
+}
