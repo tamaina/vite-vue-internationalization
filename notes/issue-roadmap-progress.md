@@ -1,5 +1,8 @@
 # Stabilization implementation progress
 
+Current acceptance summary: [stabilization-acceptance.md](./stabilization-acceptance.md).
+The entries below are chronological; earlier remaining-work lists are historical.
+
 Base: develop `f8af2c5`. Requested scope: #40, #41, #47, #48, #53,
 #43, #44, #42, #46, #39, #49, #13, #50, #14, #45 and roadmap #51.
 No issue has been closed or posted to. Work is local until the acceptance evidence
@@ -594,3 +597,21 @@ Title). Binding lookup now follows the declaration through an Oxc scope prepass,
 including declarations later in a scope. The second walk retains scope traversal
 inside replaced expressions while omitting overlapping replacement operations.
 Output hash salt advances to v7 for the changed code/map bytes.
+
+## Final local verification (2026-09-12)
+
+At `e52ed10`, all 217 tests in 18 files pass; typecheck and lint pass (9 warnings,
+no errors). Package build, real vue-tsc documented/compact number/plural/select
+positive and six missing/wrong-key negative calls, and Volar cache lifecycle pass.
+All six production SSR commands, hash/SRI/nested-entry browser fixture, four map
+modes in both strategies and four development HMR combinations pass. The actual
+VS Code extension host exits successfully; VSIX packaging and VitePress build pass.
+The framework example run at `abba891` passed all 18 browser tests. Nuxt and
+Workers sources have not changed since then. No production deployment or publish
+was performed. Remote CI has not run and GitHub issues have not been closed.
+
+The README, packaged llms.txt and JP/EN build-strategy guides are corrected to
+describe retained helper dictionaries and runtime lookups consistently with the
+new behavior. #39 still requires the original observed symptom/environment; its
+absence is not evidence that the report is fixed. Consequently #51 and the full
+user goal are not complete.
