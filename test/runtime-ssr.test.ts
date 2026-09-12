@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createSSRApp, h } from 'vue';
 import { renderToString } from 'vue/server-renderer';
-import { createComponentLocale, createComponentLocalizer, createInternationalization, useInternationalization, useLocale, useLocalizer, useNumberFormat } from '../src/runtime.js';
+import { createComponentLocale, createComponentLocalizer, createInternationalization, useDateTimeFormat, useInternationalization, useLocale, useLocalizer, useNumberFormat } from '../src/runtime.js';
 
 function barrier() {
 	let release!: () => void;
@@ -26,6 +26,7 @@ describe('SSR runtime ownership', () => {
 			expect(useLocalizer('/App.vue', a).value.sfc.title()).toBe('ja-JP');
 			expect(createComponentLocale('/App.vue', a).title).toBe('ja-JP');
 			expect((createComponentLocalizer('/App.vue', a).title as () => string)()).toBe('ja-JP');
+			expect(useDateTimeFormat(a).value(0, { dateStyle: 'long', timeZone: 'UTC' })).toBe(new Intl.DateTimeFormat('ja-JP', { dateStyle: 'long', timeZone: 'UTC' }).format(0));
 			expect(useNumberFormat(a).value(1234.5)).toBe(new Intl.NumberFormat('ja-JP').format(1234.5));
 			return () => h('p', injected.value.sfc.title);
 		} });

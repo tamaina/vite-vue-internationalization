@@ -104,3 +104,63 @@ includes transformed SFC source in the scope ID. VVI's virtual and inline transf
 produce different source, so the default can give server HTML and client CSS
 different IDs. The filepath setting keeps scoped CSS IDs consistent across both
 strategies. Custom ID generators must likewise produce the same ID on both sides.
+
+## Client assets for SSR
+
+VVI emits `.vite/internationalization-manifest.json` for client builds. The server
+can import this JSON as build data and use the runtime-independent
+`vite-vue-internationalization/ssr` entry (no Node filesystem or Vue dependency):
+
+```ts
+import { resolveLocaleAssets, type LocaleAssetManifest } from 'vite-vue-internationalization/ssr';
+import clientManifest from '../dist/client/.vite/internationalization-manifest.json';
+
+const context: import('vue/server-renderer').SSRContext = {};
+const html = await renderToString(app, context);
+const assets = resolveLocaleAssets(clientManifest as LocaleAssetManifest, {
+  locale: internationalization.locale,
+  entry: 'src/entry-client.ts',
+  modules: context.modules,
+});
+```
+
+Render `assets.entry.href` as the module script, `assets.stylesheets` as stylesheet
+links, and `assets.modulepreload` as modulepreload links. Each asset includes its
+output `file`, resolved `href`, and available `integrity`. When using integrity on
+modulepreload, add `crossorigin`. Escape attributes with your HTML renderer. The
+entry and all preloaded chunks correspond to the selected locale. Unused dynamic
+imports are omitted; dynamic components included in the Vue SSR context bring in
+their JS and CSS. Cyclic static imports are deduplicated. Unsupported locales,
+unknown entries/modules and missing chunk mappings throw before emitting a page.
+
+An optional `ssrManifest` accepts Vite's SSR manifest for additional module IDs.
+Its asset references must map to the VVI client graph; unmatched references throw
+rather than silently including an asset for another locale. The VVI manifest's
+own module map covers the normal Vue SSR context without requiring that option.
+
+For `base: './'` or `base: ''`, supply `assetBaseUrl` as the absolute deployment
+root URL, for example `https://example.com/application/`. This is independent of
+the current route, so `/application/nested/page` does not change asset resolution.
+A `base` override also supports a root-relative prefix or absolute CDN URL.
+
+### Environment builds
+
+`buildStrategy: 'inline-chunks'` selects the client optimization. Environments
+whose `config.consumer` is `server` always use `virtual`; their names need not be
+`ssr`. VVI keeps collected dictionaries, output hashes, manifests and emitted
+formatter references separately for each environment. Client assets are never
+emitted by the server pipeline.
+
+Build client and server **sequentially within one Node process** with
+`@vitejs/plugin-vue` 6. Its descriptor cache is module-scoped and cannot safely
+hold differently transformed versions of the same SFC at the same time. The VVI
+fixture uses `createBuilder`, then `await builder.build(client)` followed by
+`await builder.build(edge)`, with the same VVI instance and different consumers.
+Separate build processes are also an option. This is a Vue-plugin integration
+constraint, not a requirement to share request state. Keep the filepath scope-ID
+configuration described above in both environments.
+
+The browser locale-selector loader is for client-only pages that select a locale
+on navigation. It honors `data-vvi-locale` when provided. For SSR, use the resolver
+to link the known locale entry directly. Localized chunks reject a conflicting
+`data-vvi-locale`; they do not silently hydrate another language.

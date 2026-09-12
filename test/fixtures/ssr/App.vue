@@ -1,12 +1,16 @@
 <script setup lang="ts">
-import { ref } from 'vue';
+import { defineAsyncComponent, ref } from 'vue';
+const Lazy = defineAsyncComponent(() => import('./Lazy.vue'));
 const count = ref(1);
 </script>
 <template>
+  <p id="global">{{ $locale.env.appName }}</p>
+  <span id="fallback">{{ $locale.sfc.fallback }}</span>
   <button @click="count++">{{ $locale.sfc.title }}: {{ $l.sfc.count({ n: count }) }}</button>
+  <Lazy />
 </template>
 <locale locale="ja-JP" lang="json">
-{ "title": "日本語", "count": "{n} 件" }
+{ "fallback": "共通fallback", "title": "日本語", "count": "{n} 件" }
 </locale>
 <locale locale="en-US" lang="json">
 { "title": "English", "count": "{n} items" }

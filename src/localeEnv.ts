@@ -1,5 +1,5 @@
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
-import { isAbsolute, resolve } from 'node:path';
+import { dirname, isAbsolute, resolve } from 'node:path';
 import { parseLocaleDictionary, parseLocaleDictionaryForDiagnostics, type LocaleDictionaryDiagnostic } from './parse.js';
 import type { LocaleDictionary } from './types.js';
 
@@ -133,6 +133,22 @@ export function expandLocaleEnvSources(root: string, source: string | string[]):
 	}
 
 	return [...files].sort();
+}
+
+/** Matches configured files even when they have just been created or removed. */
+export function matchesLocaleEnvFile(root: string, file: string, source: string | string[]): boolean {
+	return (Array.isArray(source) ? source : [source]).some(entry => {
+		const pattern = normalizePath(resolve(root, entry));
+		return matchGlob(pattern, normalizePath(file));
+	});
+}
+
+/** Watch directories as well as files so recreation and new glob matches are observed. */
+export function localeEnvWatchRoots(root: string, source: string | string[]): string[] {
+	return (Array.isArray(source) ? source : [source]).map(entry => {
+		const pattern = normalizePath(resolve(root, entry));
+		return hasGlob(pattern) ? getGlobBase(pattern) : dirname(pattern);
+	});
 }
 
 function expandLocaleEnvSource(root: string, source: string): string[] {

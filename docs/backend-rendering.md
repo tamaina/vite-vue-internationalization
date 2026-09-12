@@ -96,3 +96,53 @@ server/clientで同じプロジェクトrootを使い、両方の`@vitejs/plugin
 Vueの本番時の既定値は変換後SFCソースをscope IDへ含めるため、VVIのvirtualとinlineで
 異なるIDになり、サーバーHTMLへclient CSSが適用されなくなります。
 filepath設定なら両側で一致します。独自ID生成を使う場合も両側で同じ値を返してください。
+
+## SSR用client assetの解決
+
+clientビルドは`.vite/internationalization-manifest.json`を出力します。
+サーバーはこのJSONをビルドデータとして読み、NodeのfilesystemやVueに依存しない
+`vite-vue-internationalization/ssr`から解決できます。
+
+```ts
+import { resolveLocaleAssets, type LocaleAssetManifest } from 'vite-vue-internationalization/ssr';
+import clientManifest from '../dist/client/.vite/internationalization-manifest.json';
+
+const context: import('vue/server-renderer').SSRContext = {};
+const html = await renderToString(app, context);
+const assets = resolveLocaleAssets(clientManifest as LocaleAssetManifest, {
+  locale: internationalization.locale,
+  entry: 'src/entry-client.ts',
+  modules: context.modules,
+});
+```
+
+`assets.entry.href`をmodule script、`assets.stylesheets`をstylesheet、
+`assets.modulepreload`をmodulepreloadとしてHTMLへ出します。各要素には出力ファイル名
+`file`、URLの`href`、利用可能な`integrity`が含まれます。integrity付きmodulepreloadには
+`crossorigin`も指定し、属性はHTMLレンダラーでエスケープしてください。
+SSRで使用した遅延componentのJS/CSSと静的importを含め、未使用の遅延componentは先読みしません。
+循環importは重複排除します。未対応locale、未知のentry/module、欠落chunkは例外になります。
+
+追加moduleの対応にはVite SSR manifestを`ssrManifest`へ渡せます。
+参照先がVVIのclient graphにない場合は、別localeのassetを黙って採用せず例外にします。
+通常のVue SSR contextはVVI自身のmodule mapで解決できます。
+
+`base: './'`／`base: ''`では、`assetBaseUrl`に配信rootの絶対URL
+（例：`https://example.com/application/`）を指定します。現在の深いrouteではなく配信rootを
+使うため、ページのパスでassetのURLが変わりません。`base`の上書きにはroot相対prefixやCDN URLも使えます。
+
+### 環境別ビルド
+
+`buildStrategy: 'inline-chunks'`はclientの最適化を選びます。
+`config.consumer`が`server`の環境は、名前が`ssr`でなくても常に`virtual`を使います。
+辞書・hash・manifest・formatter参照は環境ごとに保持し、server側にはclient assetを出しません。
+
+`@vitejs/plugin-vue` 6を同一Nodeプロセスで使う場合、client/serverは**順にビルド**してください。
+Vue pluginのdescriptor cacheがモジュール共通で、同じSFCの異なる変換結果を並行保持できないためです。
+fixtureは同じVVI instanceで`createBuilder`を使い、`await builder.build(client)`、
+`await builder.build(edge)`の順で検証しています。別プロセスでビルドする方法もあります。
+これはVue pluginとの統合上の制約です。両環境で前述のfilepathによるscope ID設定も揃えてください。
+
+ブラウザーのlocale selector loaderは、ナビゲーション時にlocaleを選ぶclient-onlyページ向けです。
+`data-vvi-locale`があればそれを優先します。SSRではresolverから既知のlocaleのentryへ直接リンクします。
+locale別chunkは`data-vvi-locale`との不一致を検出して例外にし、別言語でのhydrationを継続しません。

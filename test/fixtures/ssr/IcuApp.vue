@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { ref } from 'vue';
+import { defineAsyncComponent, ref } from 'vue';
+const Lazy = defineAsyncComponent(() => import('./Lazy.vue'));
 const count = ref(1);
 const values = { a: 1, b: 2, n: 1234.5, date: 0 };
 const results = [
@@ -13,13 +14,16 @@ const results = [
 ];
 </script>
 <template>
+  <p id="global">{{ $locale.env.appName }}</p>
+  <span id="fallback">{{ $locale.sfc.fallback }}</span>
   <button @click="count++">{{ $locale.sfc.title }}: {{ $l.sfc.count({ n: count }) }}</button>
   <pre id="parity">{{ JSON.stringify(results) }}</pre>
   <span id="adjacent">{{ $l.sfc.adjacent(values) }}</span>
+  <Lazy />
 </template>
 <locale locale="ja-JP" lang="json">
 {
-  "title": "日本語", "count": "{n} 件",
+  "fallback": "共通fallback", "title": "日本語", "count": "{n} 件",
   "adjacent": "{a}{b}", "number": "{n, number}", "currency": "{n, number, ::currency/USD}",
   "date": "{date, date, ::yyyyMMdd}",
   "ordinal": "{n, selectordinal, one {#st} two {#nd} few {#rd} other {#th}}",

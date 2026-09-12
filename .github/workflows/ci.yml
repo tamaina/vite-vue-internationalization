@@ -35,3 +35,8 @@ jobs:
       - run: node scripts/test-ssr.mjs --inline
       - run: node scripts/test-ssr.mjs --icu --inline
       - run: node scripts/test-inline-hash.mjs
+      - run: node scripts/test-ssr.mjs --icu --inline --relative
+      - run: node scripts/test-hmr.mjs
+      - run: node scripts/test-hmr.mjs --inline
+      - run: node scripts/test-hmr.mjs --all
+      - run: node scripts/test-hmr.mjs --inline --all

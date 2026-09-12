@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, relative, resolve } from 'node:path';
 import ts from 'typescript';
+import { augmentSsrManifest, createAssetManifest, finalizeAssetIntegrity, localizeAssetManifest } from './assetManifest.js';
 import {
 	augmentViteManifestJson,
 	getInlineLocaleHtmlLoaders,
@@ -35,9 +36,10 @@ import {
 	validateLocaleDictionary,
 } from './parse.js';
 import { readTextFile, scanVueFiles, type ScanVueFilesOptions } from './files.js';
-import { loadLocaleEnvDictionary, type LocaleEnvSource, type LocaleEnvSources } from './localeEnv.js';
+import { loadLocaleEnvDictionary, localeEnvWatchRoots, matchesLocaleEnvFile, type LocaleEnvSource, type LocaleEnvSources } from './localeEnv.js';
 import type { LocaleMessageSyntax } from './message.js';
-import type { Plugin } from 'vite';
+import type { Environment, Plugin } from 'vite';
+import type { LocaleAssetManifest } from './ssr.js';
 import type { LocaleDictionary } from './types.js';
 
 export type { LocaleDictionary };
@@ -91,18 +93,40 @@ const TSCONFIG_PLUGIN_NAMES = new Set(['vite-vue-internationalization', 'vite-vu
  * `vite-vue-internationalization/volar` entry from the Vite root `tsconfig.json`.
  */
 export function vueInternationalization(options?: Partial<VueInternationalizationOptions>): Plugin {
-	const modules: ModuleMessages = {};
-	const globalMessages: LocaleMessages = {};
+	type State = {
+		modules: ModuleMessages;
+		globalMessages: LocaleMessages;
+		inlineManifest?: InlineChunkManifest;
+		assetManifest?: LocaleAssetManifest;
+		scanned: boolean;
+		failed?: boolean;
+		icuFormatterReference?: string;
+		localeHash?: string;
+	};
+	const createState = (): State => ({ modules: {}, globalMessages: {}, scanned: false });
+	const states = new WeakMap<Environment, State>();
+	const fallbackState = createState();
 	let root = process.cwd();
 	let command: 'build' | 'serve' = 'serve';
-	let inlineManifest: InlineChunkManifest | undefined;
 	let resolvedOptions: ResolvedVueInternationalizationOptions | undefined;
 	let base = '/';
-	let scanned = false;
-	let icuFormatterReference: string | undefined;
-	let localeHash: string | undefined;
+	let legacyServerBuild = false;
 
-	function collectVueFile(filename: string, code: string): void {
+	function getState(context?: { environment?: Environment }): State {
+		if (!context?.environment) return fallbackState;
+		let state = states.get(context.environment);
+		if (!state) { state = createState(); states.set(context.environment, state); }
+		return state;
+	}
+
+	function environmentOptions(context?: { environment?: Environment }): ResolvedVueInternationalizationOptions {
+		const current = getResolvedOptions(resolvedOptions);
+		const server = context?.environment ? context.environment.config.consumer === 'server' : legacyServerBuild;
+		return server ? { ...current, buildStrategy: 'virtual' } : current;
+	}
+
+	function collectVueFile(state: State, filename: string, code: string): void {
+		const { modules } = state;
 		const parsed = parseVueLocales(code, filename);
 
 		if (parsed.blocks.length === 0 && Object.keys(parsed.scriptMessages).length === 0) {
@@ -126,7 +150,8 @@ export function vueInternationalization(options?: Partial<VueInternationalizatio
 		modules[toRuntimeModuleId(filename, root)] = messages;
 	}
 
-	function loadGlobalMessages(): void {
+	function loadGlobalMessages(state: State): void {
+		const { globalMessages } = state;
 		for (const locale of Object.keys(globalMessages)) {
 			delete globalMessages[locale];
 		}
@@ -147,37 +172,50 @@ export function vueInternationalization(options?: Partial<VueInternationalizatio
 		}
 	}
 
-	function scan(): void {
-		loadGlobalMessages();
+	function scan(state: State): void {
+		for (const key of Object.keys(state.modules)) delete state.modules[key];
+		loadGlobalMessages(state);
 
 		for (const file of scanVueFiles(root, getResolvedOptions(resolvedOptions).scan)) {
-			collectVueFile(file, readTextFile(file));
+			collectVueFile(state, file, readTextFile(file));
 		}
 
-		scanned = true;
+		state.scanned = true;
 	}
 
-	function ensureScanned(): void {
-		if (!scanned) {
-			scan();
+	function ensureScanned(state: State): void {
+		if (!state.scanned) {
+			scan(state);
 		}
 	}
 
 	return {
 		name: 'vite-vue-internationalization',
 		enforce: 'pre',
+		perEnvironmentStartEndDuringDev: true,
+		sharedDuringBuild: true,
 		configResolved(config) {
 			root = config.root;
 			command = config.command;
+			legacyServerBuild = Boolean(config.build.ssr);
 			base = config.base;
 			resolvedOptions = resolveOptions(root, options);
 		},
+		configureServer(server) {
+			for (const source of Object.values(getResolvedOptions(resolvedOptions).global ?? {})) {
+				if (typeof source === 'string' || Array.isArray(source)) server.watcher.add(localeEnvWatchRoots(root, source));
+			}
+		},
 		buildStart() {
-			localeHash = undefined;
-			scan();
-			const currentOptions = getResolvedOptions(resolvedOptions);
+			const state = getState(this);
+			state.localeHash = undefined;
+			state.inlineManifest = undefined;
+			state.assetManifest = undefined;
+			state.icuFormatterReference = undefined;
+			scan(state);
+			const currentOptions = environmentOptions(this);
 			if (command === 'build' && currentOptions.buildStrategy === 'inline-chunks' && currentOptions.messageSyntax === 'icu') {
-				icuFormatterReference = this.emitFile({ type: 'chunk', id: ICU_FORMATTER_ID, name: 'vvi-icu-formatter', preserveSignature: 'strict' });
+				state.icuFormatterReference = this.emitFile({ type: 'chunk', id: ICU_FORMATTER_ID, name: 'vvi-icu-formatter', preserveSignature: 'strict' });
 			}
 		},
 		resolveId(id) {
@@ -193,9 +231,11 @@ export function vueInternationalization(options?: Partial<VueInternationalizatio
 			return null;
 		},
 		load(id) {
+			const state = getState(this);
+			const { modules, globalMessages } = state;
 			if (id === ICU_FORMATTER_ID) return 'export { formatLocaleMessage as format } from "vite-vue-internationalization/runtime";';
-			ensureScanned();
-			const currentOptions = getResolvedOptions(resolvedOptions);
+			ensureScanned(state);
+			const currentOptions = environmentOptions(this);
 
 			if (id === RESOLVED_VIRTUAL_ID) {
 				if (command === 'build' && currentOptions.buildStrategy === 'inline-chunks') {
@@ -217,6 +257,8 @@ export function vueInternationalization(options?: Partial<VueInternationalizatio
 				id: /\.(?:vue|[cm]?[jt]sx?)(?:\?.*)?$/u,
 			},
 			handler(code, id) {
+				const state = getState(this);
+				const { globalMessages } = state;
 				const cleanId = id.split('?')[0] ?? id;
 				const query = new URLSearchParams(id.slice(cleanId.length + 1));
 
@@ -229,7 +271,7 @@ export function vueInternationalization(options?: Partial<VueInternationalizatio
 					return null;
 				}
 
-				const currentOptions = getResolvedOptions(resolvedOptions);
+				const currentOptions = environmentOptions(this);
 
 				if (!cleanId.endsWith('.vue')) {
 					if (command !== 'build' || currentOptions.buildStrategy !== 'inline-chunks') {
@@ -245,7 +287,7 @@ export function vueInternationalization(options?: Partial<VueInternationalizatio
 						};
 				}
 
-				collectVueFile(cleanId, code);
+				collectVueFile(state, cleanId, code);
 				const transformed =
 					command === 'build' && currentOptions.buildStrategy === 'inline-chunks'
 						? transformVueSfcInline(code, cleanId, root, currentOptions.primaryLocale, currentOptions.sfcTransform === 'all')
@@ -267,16 +309,51 @@ export function vueInternationalization(options?: Partial<VueInternationalizatio
 				};
 			},
 		},
-		handleHotUpdate(context) {
-			if (context.file.endsWith('.vue')) {
-				collectVueFile(context.file, readTextFile(context.file));
+		async hotUpdate(context) {
+			const state = getState(this);
+			const currentOptions = environmentOptions(this);
+			const moduleId = toRuntimeModuleId(context.file, root);
+			const sfc = context.file.endsWith('.vue') && (Object.hasOwn(state.modules, moduleId) || scanVueFiles(root, currentOptions.scan).includes(context.file));
+			const global = Object.values(currentOptions.global ?? {}).some(source =>
+				(typeof source === 'string' || Array.isArray(source)) && matchesLocaleEnvFile(root, context.file, source),
+			);
+			if (!sfc && !global) return;
+			const before = serializeLocaleValue([state.modules, state.globalMessages]);
+			const recovering = state.failed;
+			const invalidate = () => {
+				const modules = new Set(context.modules);
+				for (const [id, module] of this.environment.moduleGraph.idToModuleMap) {
+					if (id === RESOLVED_VIRTUAL_ID || id.startsWith(RESOLVED_LOCALE_PREFIX)) modules.add(module);
+				}
+				for (const module of modules) this.environment.moduleGraph.invalidateModule(module, new Set(), context.timestamp, true);
+			};
+			try {
+				if (sfc) {
+					if (context.type === 'delete') delete state.modules[moduleId];
+					else collectVueFile(state, context.file, await context.read());
+				}
+				if (global) loadGlobalMessages(state);
+				state.failed = false;
+			} catch (error) {
+				state.failed = true;
+				state.scanned = false;
+				invalidate();
+				this.environment.hot.send({ type: 'error', err: { message: String(error), stack: error instanceof Error ? error.stack ?? '' : '', plugin: 'vite-vue-internationalization' } });
+				return [];
 			}
+			if (!recovering && before === serializeLocaleValue([state.modules, state.globalMessages])) return;
+			invalidate();
+			if (this.environment.config.consumer === 'client') this.environment.hot.send({ type: 'full-reload' });
+			return [];
 		},
+
 		augmentChunkHash() {
-			const currentOptions = getResolvedOptions(resolvedOptions);
+			const state = getState(this);
+			const { modules, globalMessages } = state;
+			const currentOptions = environmentOptions(this);
 			if (currentOptions.buildStrategy !== 'inline-chunks') return;
-			localeHash ??= createHash('sha256').update(JSON.stringify(
-				[modules, globalMessages, currentOptions.primaryLocale, currentOptions.messageSyntax],
+			state.localeHash ??= createHash('sha256').update(JSON.stringify(
+				['vvi-inline-output-v2', modules, globalMessages, currentOptions.primaryLocale, currentOptions.messageSyntax],
 				(_key, value: unknown) => {
 					if (typeof value === 'function') return { source: value.toString() };
 					if (value && typeof value === 'object' && !Array.isArray(value)) {
@@ -285,14 +362,18 @@ export function vueInternationalization(options?: Partial<VueInternationalizatio
 					return value;
 				},
 			)).digest('hex');
-			return localeHash;
+			return state.localeHash;
 		},
 		generateBundle(_outputOptions, bundle) {
-			ensureScanned();
-			const currentOptions = getResolvedOptions(resolvedOptions);
+			const state = getState(this);
+			const { modules, globalMessages } = state;
+			ensureScanned(state);
+			const currentOptions = environmentOptions(this);
+			const client = this.environment.config.consumer === 'client';
+			const assetManifest = client ? createAssetManifest(bundle, root, base, currentOptions.primaryLocale, getLocales(modules, globalMessages)) : undefined;
 
 			if (currentOptions.buildStrategy === 'inline-chunks') {
-				inlineManifest = inlineLocaleChunks(
+				state.inlineManifest = inlineLocaleChunks(
 					bundle as Record<string, unknown>,
 					getLocales(modules, globalMessages),
 					currentOptions.primaryLocale,
@@ -301,7 +382,7 @@ export function vueInternationalization(options?: Partial<VueInternationalizatio
 					currentOptions.messageSyntax,
 					{
 						base,
-						icuFormatterFile: icuFormatterReference ? this.getFileName(icuFormatterReference) : undefined,
+						icuFormatterFile: state.icuFormatterReference ? this.getFileName(state.icuFormatterReference) : undefined,
 						emitChunk: chunk => {
 							this.emitFile({
 								type: 'asset',
@@ -311,7 +392,7 @@ export function vueInternationalization(options?: Partial<VueInternationalizatio
 						},
 					},
 				);
-				inlineLocaleHtml(bundle as Record<string, unknown>, inlineManifest, {
+				inlineLocaleHtml(bundle as Record<string, unknown>, state.inlineManifest, {
 					base,
 					emitAsset: asset => {
 						this.emitFile({
@@ -322,16 +403,27 @@ export function vueInternationalization(options?: Partial<VueInternationalizatio
 					},
 				});
 			}
+			if (assetManifest) {
+				if (state.inlineManifest) localizeAssetManifest(assetManifest, state.inlineManifest);
+				state.assetManifest = assetManifest;
+				this.emitFile({ type: 'asset', fileName: '.vite/internationalization-manifest.json', source: JSON.stringify(assetManifest, null, 2) + '\n' });
+			}
 		},
 		writeBundle(outputOptions) {
-			const currentOptions = getResolvedOptions(resolvedOptions);
-
-			if (currentOptions.buildStrategy !== 'inline-chunks' || !inlineManifest) {
-				return;
+			const state = getState(this);
+			const outputDir = resolve(root, outputOptions.dir ?? dirname(outputOptions.file ?? 'dist/index.js'));
+			if (state.inlineManifest) {
+				rewriteWrittenHtml(outputDir, state.inlineManifest, base);
+				rewriteWrittenViteManifest(outputDir, state.inlineManifest);
 			}
-
-			rewriteWrittenHtml(resolve(root, outputOptions.dir ?? dirname(outputOptions.file ?? 'dist/index.js')), inlineManifest, base);
-			rewriteWrittenViteManifest(resolve(root, outputOptions.dir ?? dirname(outputOptions.file ?? 'dist/index.js')), inlineManifest);
+			if (state.assetManifest) {
+				finalizeAssetIntegrity(state.assetManifest, outputDir);
+				writeFileSync(resolve(outputDir, '.vite/internationalization-manifest.json'), JSON.stringify(state.assetManifest, null, 2) + '\n');
+			}
+			const ssrManifestPath = resolve(outputDir, '.vite/ssr-manifest.json');
+			if (state.assetManifest && existsSync(ssrManifestPath)) {
+				writeFileSync(ssrManifestPath, augmentSsrManifest(readTextFile(ssrManifestPath), state.assetManifest));
+			}
 		},
 	};
 }

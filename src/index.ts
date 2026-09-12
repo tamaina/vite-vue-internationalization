@@ -62,3 +62,6 @@ export type {
 	LocaleTemplateValues,
 	TypedLocaleLocalizerDictionary,
 } from './runtime.js';
+
+export { resolveLocaleAssets } from './ssr.js';
+export type { LocaleAsset, LocaleAssetChunk, LocaleAssetManifest, ResolvedLocaleAssets, ResolveLocaleAssetsOptions } from './ssr.js';

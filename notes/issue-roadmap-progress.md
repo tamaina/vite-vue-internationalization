@@ -103,3 +103,46 @@ continue to be outstanding. No issues closed and no push/PR yet.
 - CI includes the new fixture. More Phase B work remains: environment isolation,
   general locale asset resolver, SSR manifest/module mapping, nested HTML paths,
   preload metadata for the emitted ICU helper and framework validation.
+
+## Fourth increment: environment-aware SSR assets and translation HMR
+
+- #53: plugin state is keyed by Vite environment, with consumer=server forcing
+  virtual output. A same-instance client/edge builder and an interleaved-hook
+  regression verify dictionary isolation without relying on environment names.
+- Added the dependency-free `vite-vue-internationalization/ssr` resolver and
+  `.vite/internationalization-manifest.json`. Locale entries, static dependencies,
+  used lazy modules, CSS and integrity are resolved together; native Vite SSR
+  manifest module fallback is exercised by the real browser fixture.
+- SRI is finalized from written bytes. The browser caught Vite changing shared
+  chunk bytes after generateBundle; direct entry and preload integrity now pass.
+  Inline formatter imports are included only in the actual importing chunks.
+- SSR Vue/ICU fixtures cover both locales, global dictionaries, primary fallback,
+  lazy components and scoped CSS, concurrent renders, contradictory URL locale,
+  unsupported handoff and wrong inline entry rejection. Relative-base ICU mixed
+  output also hydrates on a nested deployment route. Explicit date formatting is
+  covered in the request-isolation unit test.
+- Same-process client/server builds run sequentially: plugin-vue 6.0.7 has a
+  module-global SFC descriptor cache and concurrent strategy builds contaminated
+  descriptors in the experiment. Documentation records sequential builds or
+  separate processes, as well as the shared filepath component ID requirement.
+- #42: environment-local hotUpdate handles SFC and configured global changes,
+  including outside-root paths and glob add/delete, invalidates runtime/locale
+  modules on server and client, and reloads clients only for dictionary changes.
+  CSS-only updates retain Vue HMR. Malformed dictionary overlay recovers without
+  restarting the server, including when the corrected dictionary is unchanged.
+- Real HMR fixture covers both strategies and both SFC transform modes. External
+  YAML edits also refresh a cached ssrLoadModule result. raw/url SFC imports are
+  included. Its distinct malformed/corrected saves are separated by 75ms to avoid
+  Chokidar's 50ms same-path change-event throttle.
+
+Validation: 10 files / 142 tests pass; typecheck, build and lint pass (7 warnings,
+0 errors). All four SSR combinations and all four HMR combinations passed during
+implementation. After final script changes, inline/all HMR, relative ICU mixed SSR
+(with entry SRI), and real vue-tsc passed again. Hash fixture still passes with
+10 new JS URLs and 4 SRI values; disabling augmentation makes its baseline fail.
+
+Remaining: custom manifest paths, removed CSS-only output chunks, nested HTML
+asset cases and framework integrations still require audit before full #44/#53
+acceptance. AST/scope/maps, original Volar symptom and cache measurements, external
+editor diagnostics, delivery benchmark/prototype and highlighting remain open.
+No remote CI, issue closure, push or PR has been performed yet.

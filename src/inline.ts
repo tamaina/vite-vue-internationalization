@@ -796,6 +796,7 @@ export function inlineLocaleChunks(
 			[primaryLocale]: primaryFileName,
 		};
 		const integrity: Record<string, string> = {};
+		const manifestImports = new Set(originalImports);
 
 		for (const locale of locales) {
 			const localizedChunk: MutableOutputChunk = locale === primaryLocale ? chunk : {
@@ -819,11 +820,14 @@ export function inlineLocaleChunks(
 				options.base === '' || options.base === './',
 			);
 
+			localizedChunk.code = `if (typeof document !== "undefined") { const locale = document.documentElement.getAttribute("data-vvi-locale"); if (locale !== null && locale !== ${JSON.stringify(locale)}) throw new Error("SSR locale does not match the selected inline chunk."); }\n${localizedChunk.code}`;
+
 			if (localizedChunk.code.includes('__VVI_FORMAT_ICU__') && options.icuFormatterFile) {
 				let specifier = relative(dirname(localizedChunk.fileName), options.icuFormatterFile).replaceAll('\\', '/');
 				if (!specifier.startsWith('.')) specifier = `./${specifier}`;
 				localizedChunk.code = `import { format as __VVI_FORMAT_ICU__ } from ${JSON.stringify(specifier)};\n${localizedChunk.code}`;
 				localizedChunk.imports.push(options.icuFormatterFile);
+				manifestImports.add(options.icuFormatterFile);
 			}
 
 			if (options.emitChunk) {
@@ -842,7 +846,7 @@ export function inlineLocaleChunks(
 			facadeModuleId: typeof chunk.facadeModuleId === 'string' ? chunk.facadeModuleId : undefined,
 			isEntry: typeof chunk.isEntry === 'boolean' ? chunk.isEntry : undefined,
 			isDynamicEntry: typeof chunk.isDynamicEntry === 'boolean' ? chunk.isDynamicEntry : undefined,
-			imports: originalImports.length > 0 ? originalImports : undefined,
+			imports: manifestImports.size > 0 ? [...manifestImports] : undefined,
 			dynamicImports: originalDynamicImports.length > 0 ? originalDynamicImports : undefined,
 			css: [...(chunk.viteMetadata?.importedCss ?? [])],
 			locales: localeFiles,
@@ -2633,8 +2637,10 @@ function createLocaleLoaderSource(
 		}))
 		: toPublicLocaleFiles(localeFiles, base);
 	return [
-		`const __vueInternationalizationLocale = new URL(window.location.href).searchParams.get("locale") || ${JSON.stringify(primaryLocale)};`,
+		'const __vueInternationalizationHandoff = typeof document !== "undefined" ? document.documentElement.getAttribute("data-vvi-locale") : null;',
+		`const __vueInternationalizationLocale = __vueInternationalizationHandoff ?? (new URL(window.location.href).searchParams.get("locale") || ${JSON.stringify(primaryLocale)});`,
 		`const __vueInternationalizationEntries = ${JSON.stringify(files)};`,
+		'if (__vueInternationalizationHandoff !== null && !Object.hasOwn(__vueInternationalizationEntries, __vueInternationalizationHandoff)) throw new Error("Unsupported SSR locale.");',
 		`const __vueInternationalizationIntegrity = ${JSON.stringify(integrity ?? {})};`,
 		`const __vueInternationalizationFile = new URL(__vueInternationalizationEntries[__vueInternationalizationLocale] || __vueInternationalizationEntries[${JSON.stringify(primaryLocale)}], import.meta.url).href;`,
 		`const __vueInternationalizationExpectedIntegrity = __vueInternationalizationIntegrity[__vueInternationalizationLocale] || __vueInternationalizationIntegrity[${JSON.stringify(primaryLocale)}];`,
