@@ -1,4 +1,6 @@
+import { SourceMap as InputSourceMap } from 'node:module';
 import { SourceMap } from 'magic-string';
+import type { SourceMapPayload } from 'node:module';
 import type { SourceMapSegment } from 'magic-string';
 
 /** An explicitly retained range of the current source, including its provenance. */
@@ -31,7 +33,9 @@ export class SourceEdits {
 		return this.code;
 	}
 
-	generateMap(): SourceMap {
+	generateMap(upstream?: SourceMapPayload, outputFile = this.filename): SourceMap {
+		const inputMap = upstream ? new InputSourceMap(upstream) : undefined;
+		const sources = upstream ? [...upstream.sources] : [this.filename];
 		const lines: number[] = [];
 		const columns: number[] = [];
 		let line = 0;
@@ -48,12 +52,22 @@ export class SourceEdits {
 		for (let index = 0; index < this.code.length; index++) {
 			const origin = this.origins[index];
 			if (column === 0 || origin !== previous) {
-				mappings[line].push(origin === undefined ? [column] : [column, 0, lines[origin], columns[origin]]);
+				if (origin === undefined) mappings[line].push([column]);
+				else if (inputMap) {
+					const entry = inputMap.findEntry(lines[origin], columns[origin]);
+					if ('originalSource' in entry && entry.originalSource != null) {
+						let source = sources.indexOf(entry.originalSource);
+						if (source < 0) { source = sources.length; sources.push(entry.originalSource); }
+						mappings[line].push([column, source, entry.originalLine, entry.originalColumn]);
+					} else mappings[line].push([column]);
+				} else mappings[line].push([column, 0, lines[origin], columns[origin]]);
 			}
 			previous = origin;
 			if (this.code[index] === '\n') { line++; column = 0; mappings.push([]); } else column++;
 		}
-		return new SourceMap({ file: this.filename, sources: [this.filename], sourcesContent: [this.original], names: [], mappings });
+		const map = new SourceMap({ file: outputFile, sources, sourcesContent: upstream?.sourcesContent ? [...upstream.sourcesContent] : [this.original], names: [], mappings });
+		if (upstream?.sourceRoot) Object.assign(map, { sourceRoot: upstream.sourceRoot });
+		return map;
 	}
 }
 

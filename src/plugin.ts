@@ -357,7 +357,7 @@ export function vueInternationalization(options?: Partial<VueInternationalizatio
 			const currentOptions = environmentOptions(this);
 			if (currentOptions.buildStrategy !== 'inline-chunks') return;
 			state.localeHash ??= createHash('sha256').update(JSON.stringify(
-				['vvi-inline-output-v2', modules, globalMessages, currentOptions.primaryLocale, currentOptions.messageSyntax],
+				['vvi-inline-output-v3', modules, globalMessages, currentOptions.primaryLocale, currentOptions.messageSyntax, this?.environment?.config.build.sourcemap],
 				(_key, value: unknown) => {
 					if (typeof value === 'function') return { source: value.toString() };
 					if (value && typeof value === 'object' && !Array.isArray(value)) {
@@ -387,6 +387,7 @@ export function vueInternationalization(options?: Partial<VueInternationalizatio
 					{
 						base,
 						icuFormatterFile: state.icuFormatterReference ? this.getFileName(state.icuFormatterReference) : undefined,
+						emitAsset: asset => { this.emitFile({ type: 'asset', fileName: asset.fileName, source: asset.source }); },
 						emitChunk: chunk => {
 							this.emitFile({
 								type: 'asset',

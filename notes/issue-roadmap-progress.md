@@ -218,3 +218,26 @@ do not infer a specific diagnostic or confirmed cause from this screenshot.
 - Next: track applyInlineReplacementPlan, import/preload edits and injected headers
   against each original chunk map; emit a map per localized chunk and rewrite its
   sourceMappingURL, then validate both locale maps in the production probe.
+
+## Seventh increment: locale chunk source-map composition (#46/#44)
+
+- Fixed the production-map failure recorded above. Chunk message replacements,
+  import/preload rewrites and added headers now track positions against the input
+  chunk, then compose those positions through its Vite source map.
+- Each locale output emits/selects its own map. External sourceMappingURL names
+  point to the locale file, inline maps remain inline, and hidden maps remain
+  unlinked. Original localized-away maps are removed. sourceRoot and embedded
+  source content survive composition.
+- Production probes pass for virtual + both inline locales, unminified/minified,
+  external/inline/hidden maps. Minified allocation tokens are checked at their
+  actual upstream token position (Error after removal of new).
+- Added pnpm test:maps and CI steps. Output hash version advanced to v3 and includes
+  the Vite sourcemap mode because generated map comments affect JavaScript bytes.
+- 167 unit tests pass; typecheck, lint (11 warnings, 0 errors) and build pass.
+  Hash fixture still verifies deterministic output, 10 new JS URLs, 4 SRI values,
+  old-asset coexistence and lazy CSS. Relative ICU mixed hydration passes again.
+- This completes the reproduced top-level production stack-position defect, not
+  all #46 acceptance. Still audit source positions inside expanded localizer/key
+  expressions, regex literals/comments in call arguments, nested rewrites and
+  unsupported expressions before closing #46. Remaining roadmap issues and remote
+  validation are unchanged; no issue closures or push have been performed.

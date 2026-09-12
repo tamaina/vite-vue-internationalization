@@ -18,6 +18,14 @@ function position(source: string, text: string) {
 }
 
 describe('composed SFC source maps', () => {
+	it('preserves upstream sourceRoot and embedded source content when composing chunk maps', () => {
+		const edits = new SourceEdits('generated();', 'chunk.js');
+		edits.replace(edits.code, 0, 0, '/* injected */\n');
+		const map = new SourceMap(JSON.parse(edits.generateMap({ version: 3, file: 'chunk.js', sources: ['Original.vue'], sourcesContent: ['original'], sourceRoot: '../src/', names: [], mappings: 'AACE' }, 'chunk.en.js').toString()));
+		expect(map.payload.sourceRoot).toBe('../src/');
+		expect(map.payload.sourcesContent).toEqual(['original']);
+		expect(map.findEntry(1, 0)).toMatchObject({ originalLine: 1, originalColumn: 2, originalSource: 'Original.vue' });
+	});
 	it('composes inline template, helper, removal and injection edits', () => {
 		const original = '<locale locale="en">\ntitle: Title\nhello: "Hello {name}"\n</locale>\n<script setup lang="ts">\nimport { useLocale as locale } from "vite-vue-internationalization";\nconst messages = locale(import.meta.url);\nconst name = "test";\nthrow new Error("inline-position");\n</script>\n<template>{{ $locale.sfc.title }} {{ $l.sfc.hello({ name }) }}</template>';
 		const edits = new SourceEdits(original, '/App.vue');

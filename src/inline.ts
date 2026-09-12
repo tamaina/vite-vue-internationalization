@@ -2,14 +2,14 @@ import { existsSync, readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { dirname, isAbsolute, relative, resolve } from 'node:path';
 import { parse as parseSfc } from '@vue/compiler-sfc';
-import MagicString from 'magic-string';
 import ts from 'typescript';
 import { parseSync } from 'rolldown/utils';
 import { ScopeTracker, walk } from 'oxc-walker';
-import { editSource, editSourceRange, type SourceEdits } from './sourceEdits.js';
+import { editSource, editSourceRange, SourceEdits } from './sourceEdits.js';
 import { compileLocaleMessage } from './message.js';
 import { hasLocaleBinding } from './parse.js';
 import { injectScriptSetup } from './scriptSetup.js';
+import type { SourceMapPayload } from 'node:module';
 import type { LocaleMessageSyntax, LocaleMessageToken } from './message.js';
 import type { LocaleDictionary } from './types.js';
 
@@ -209,6 +209,7 @@ type MutableOutputChunk = {
 	type: 'chunk';
 	fileName: string;
 	code: string;
+	map?: SourceMapPayload | null;
 	imports: string[];
 	dynamicImports: string[];
 	viteMetadata?: {
@@ -237,8 +238,8 @@ type InlineChunkSnapshot = {
 };
 type InlineChunkReferenceMap = {
 	localizeFileName(fileName: string, locale: string): string;
-	localizeCodeReferences(code: string, locale: string, importer: string): string;
-	replacePreloadMarkers(code: string, locale: string, importer: string, relativeBase: boolean): string;
+	localizeCodeReferences(code: string, locale: string, importer: string, edits?: SourceEdits): string;
+	replacePreloadMarkers(code: string, locale: string, importer: string, relativeBase: boolean, edits?: SourceEdits): string;
 };
 
 const INLINE_MARKER_PREFIX = '__VUE_INTERNATIONALIZATION_INLINE__:';
@@ -869,6 +870,7 @@ export function inlineLocaleChunks(
 	messageSyntax: LocaleMessageSyntax = 'vue',
 	options: {
 		emitChunk?: InlineLocaleChunkEmitter;
+		emitAsset?: InlineLocaleAssetEmitter;
 		icuFormatterFile?: string;
 		base?: string;
 	} = {},
@@ -897,6 +899,7 @@ export function inlineLocaleChunks(
 	const payloadCache = createInlinePayloadResolverCache(primaryLocale, messageSyntax, modules, globalMessages);
 
 	for (const { chunk, originalCode, plan, originalFileName, originalImports, originalDynamicImports } of localizableChunks) {
+		const originalMap = chunk.map;
 		const primaryFileName = addLocaleToFileName(originalFileName, primaryLocale);
 		const localeFiles: Record<string, string> = {
 			[primaryLocale]: primaryFileName,
@@ -905,6 +908,7 @@ export function inlineLocaleChunks(
 		const manifestImports = new Set(originalImports);
 
 		for (const locale of locales) {
+			const edits = originalMap ? new SourceEdits(originalCode, originalFileName) : undefined;
 			const localizedChunk: MutableOutputChunk = locale === primaryLocale ? chunk : {
 				...chunk,
 				fileName: addLocaleToFileName(originalFileName, locale),
@@ -917,23 +921,39 @@ export function inlineLocaleChunks(
 			);
 			localizedChunk.code = referenceMap.replacePreloadMarkers(
 				referenceMap.localizeCodeReferences(
-					applyInlineReplacementPlan(originalCode, plan, payloadCache.resolve(locale)),
+					applyInlineReplacementPlan(originalCode, plan, payloadCache.resolve(locale), edits),
 					locale,
 					originalFileName,
+					edits,
 				),
 				locale,
 				originalFileName,
 				options.base === '' || options.base === './',
+				edits,
 			);
 
-			localizedChunk.code = `if (typeof document !== "undefined") { const locale = document.documentElement.getAttribute("data-vvi-locale"); if (locale !== null && locale !== ${JSON.stringify(locale)}) throw new Error("SSR locale does not match the selected inline chunk."); }\n${localizedChunk.code}`;
+			localizedChunk.code = editSource(localizedChunk.code, 0, 0, `if (typeof document !== "undefined") { const locale = document.documentElement.getAttribute("data-vvi-locale"); if (locale !== null && locale !== ${JSON.stringify(locale)}) throw new Error("SSR locale does not match the selected inline chunk."); }\n`, edits);
 
 			if (localizedChunk.code.includes('__VVI_FORMAT_ICU__') && options.icuFormatterFile) {
 				let specifier = relative(dirname(localizedChunk.fileName), options.icuFormatterFile).replaceAll('\\', '/');
 				if (!specifier.startsWith('.')) specifier = `./${specifier}`;
-				localizedChunk.code = `import { format as __VVI_FORMAT_ICU__ } from ${JSON.stringify(specifier)};\n${localizedChunk.code}`;
+				localizedChunk.code = editSource(localizedChunk.code, 0, 0, `import { format as __VVI_FORMAT_ICU__ } from ${JSON.stringify(specifier)};\n`, edits);
 				localizedChunk.imports.push(options.icuFormatterFile);
 				manifestImports.add(options.icuFormatterFile);
+			}
+			if (edits && originalMap) {
+				const mapFileName = `${localizedChunk.fileName}.map`;
+				const comment = /\/\/# sourceMappingURL=\S+/.exec(localizedChunk.code);
+				const inlineMap = comment?.[0].includes('sourceMappingURL=data:') === true;
+				if (comment) localizedChunk.code = editSource(localizedChunk.code, comment.index, comment.index + comment[0].length, '', edits);
+				const map = edits.generateMap(originalMap, baseName(localizedChunk.fileName));
+				if (comment) localizedChunk.code = editSource(localizedChunk.code, comment.index, comment.index, `//# sourceMappingURL=${inlineMap ? map.toUrl() : baseName(mapFileName)}`, edits);
+				localizedChunk.map = JSON.parse(map.toString()) as SourceMapPayload;
+				const asset: MutableOutputAsset = { type: 'asset', fileName: mapFileName, source: map.toString() };
+				if (!inlineMap) {
+					if (options.emitAsset) options.emitAsset(asset);
+					else bundle[mapFileName] = asset;
+				}
 			}
 
 			if (options.emitChunk) {
@@ -946,6 +966,7 @@ export function inlineLocaleChunks(
 		}
 
 		delete bundle[originalFileName];
+		if (originalMap) delete bundle[`${originalFileName}.map`];
 		manifest.entries.push({
 			fileName: primaryFileName,
 			originalFileName,
@@ -1279,16 +1300,16 @@ function createInlineChunkReferenceMap(
 		return undefined;
 	}
 
-	function localizeCodeReferences(code: string, locale: string, importer: string): string {
-		const magic = new MagicString(code);
+	function localizeCodeReferences(code: string, locale: string, importer: string, edits?: SourceEdits): string {
+		const changes: SourceEdit[] = [];
 		for (const { node: source, preload } of getChunkImportSources(code)) {
 			const specifier = getStringNodeValue(source);
 			if (!specifier || (!preload && !specifier.startsWith('.'))) continue;
 			const target = resolve(dirname(importer), specifier);
 			const original = [...localizableFiles].find(file => resolve(file) === target);
-			if (original) magic.overwrite(source.start, source.end, JSON.stringify(addLocaleToFileName(specifier, locale)));
+			if (original) changes.push({ start: source.start, end: source.end, replacement: JSON.stringify(addLocaleToFileName(specifier, locale)) });
 		}
-		return magic.toString();
+		return applySourceEdits(code, changes, edits);
 	}
 
 	function collectPreloadDependencies(fileName: string, locale: string, seen = new Set<string>()): string[] {
@@ -1328,14 +1349,16 @@ function createInlineChunkReferenceMap(
 		return [...dependencies];
 	}
 
-	function replacePreloadMarkers(code: string, locale: string, importer: string, relativeBase: boolean): string {
-		return code
+	function replacePreloadMarkers(code: string, locale: string, importer: string, relativeBase: boolean, edits?: SourceEdits): string {
+		const changes: SourceEdit[] = [];
+		code
 			.replace(/(import\(\s*(["'`])\.\/([^"'`]+)\2\s*\)(?:(?!,\s*__VITE_PRELOAD__)[\s\S])*?)(\s*,\s*)__VITE_PRELOAD__/gu, (
 				_match,
 				importExpression: string,
 				_quote: string,
 				specifier: string,
 				separator: string,
+				offset: number,
 			) => {
 				const fileName = findOriginalFileName(specifier, locale);
 				const dependencies = fileName ? collectPreloadDependencies(fileName, locale) : [specifier];
@@ -1344,9 +1367,14 @@ function createInlineChunkReferenceMap(
 					: importExpression;
 
 				const paths = relativeBase ? dependencies.map(file => relative(dirname(importer), file).replaceAll('\\', '/')) : dependencies;
-				return `${preloadTarget}${separator}${JSON.stringify(paths)}`;
-			})
-			.replaceAll('__VITE_PRELOAD__', '[]');
+				changes.push({ start: offset, end: offset + _match.length, replacement: [
+					preloadTarget === importExpression ? { start: offset, end: offset + importExpression.length } : preloadTarget,
+					`${separator}${JSON.stringify(paths)}`,
+				] });
+				return _match;
+			});
+		const next = applySourceEdits(code, changes, edits);
+		return applySourceEdits(next, [...next.matchAll(/__VITE_PRELOAD__/g)].map(match => ({ start: match.index, end: match.index + match[0].length, replacement: '[]' })), edits);
 	}
 
 	return {
@@ -1520,6 +1548,7 @@ function applyInlineReplacementPlan(
 	code: string,
 	plan: InlineReplacementPlan,
 	resolvePayload: InlinePayloadResolver,
+	edits?: SourceEdits,
 ): string {
 	if (plan.code !== code) {
 		return replaceInlineLocaleAccessAst(code, resolvePayload, {
@@ -1530,17 +1559,17 @@ function applyInlineReplacementPlan(
 		});
 	}
 
-	const magic = new MagicString(code);
+	const changes: SourceEdit[] = [];
 
 	for (const operation of plan.operations) {
 		const replacement = getPlannedReplacement(operation, resolvePayload);
 
 		if (replacement !== undefined) {
-			magic.overwrite(operation.start, operation.end, replacement);
+			changes.push({ start: operation.start, end: operation.end, replacement });
 		}
 	}
 
-	return magic.toString();
+	return applySourceEdits(code, changes, edits);
 }
 
 function parseInlineJavaScript(

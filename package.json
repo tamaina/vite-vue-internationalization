@@ -68,7 +68,8 @@
     "test:types": "pnpm build && node scripts/test-types.mjs",
     "test:ssr": "pnpm build && node scripts/test-ssr.mjs && node scripts/test-ssr.mjs --icu && node scripts/test-ssr.mjs --inline && node scripts/test-ssr.mjs --icu --inline && node scripts/test-ssr.mjs --icu --inline --relative",
     "test:inline-hash": "pnpm build && node scripts/test-inline-hash.mjs",
-    "test:hmr": "pnpm build && node scripts/test-hmr.mjs && node scripts/test-hmr.mjs --inline && node scripts/test-hmr.mjs --all && node scripts/test-hmr.mjs --inline --all"
+    "test:hmr": "pnpm build && node scripts/test-hmr.mjs && node scripts/test-hmr.mjs --inline && node scripts/test-hmr.mjs --all && node scripts/test-hmr.mjs --inline --all",
+    "test:maps": "pnpm build && node scripts/test-source-maps.mjs && node scripts/test-source-maps.mjs --minify && node scripts/test-source-maps.mjs --inline-map && node scripts/test-source-maps.mjs --hidden"
   },
   "peerDependencies": {
     "@vue/language-core": "^3.3.0",
