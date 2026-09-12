@@ -66,7 +66,7 @@
     "test": "vitest run",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test:types": "pnpm build && node scripts/test-types.mjs",
-    "test:ssr": "pnpm build && node scripts/test-ssr.mjs && node scripts/test-ssr.mjs --icu && node scripts/test-ssr.mjs --inline && node scripts/test-ssr.mjs --icu --inline && node scripts/test-ssr.mjs --icu --inline --relative",
+    "test:ssr": "pnpm build && node scripts/test-ssr.mjs && node scripts/test-ssr.mjs --icu && node scripts/test-ssr.mjs --inline && node scripts/test-ssr.mjs --icu --inline && node scripts/test-ssr.mjs --icu --inline --relative && node scripts/test-ssr.mjs --icu --inline --relative --custom-manifest",
     "test:inline-hash": "pnpm build && node scripts/test-inline-hash.mjs",
     "test:hmr": "pnpm build && node scripts/test-hmr.mjs && node scripts/test-hmr.mjs --inline && node scripts/test-hmr.mjs --all && node scripts/test-hmr.mjs --inline --all",
     "test:maps": "pnpm build && node scripts/test-source-maps.mjs && node scripts/test-source-maps.mjs --minify && node scripts/test-source-maps.mjs --inline-map && node scripts/test-source-maps.mjs --hidden",

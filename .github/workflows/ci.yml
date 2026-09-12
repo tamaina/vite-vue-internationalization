@@ -47,6 +47,7 @@ jobs:
       - run: node scripts/test-source-maps.mjs --inline-map
       - run: node scripts/test-source-maps.mjs --hidden
       - run: node scripts/test-ssr.mjs --icu --inline --relative
+      - run: node scripts/test-ssr.mjs --icu --inline --relative --custom-manifest
       - run: node scripts/test-hmr.mjs
       - run: node scripts/test-hmr.mjs --inline
       - run: node scripts/test-hmr.mjs --all

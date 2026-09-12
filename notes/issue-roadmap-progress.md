@@ -413,3 +413,24 @@ No Issues have been closed and no changes pushed or published.
 Final #14 checks: all five span tests pass; extension typecheck/build and packaging
 pass (VSIX about 1.89 MB). The expanded actual host test also passes setting
 on/off, block removal/re-addition and ICU disabling. Targeted lint is clean.
+
+## Hash identity and configured manifest paths (#44 / #53)
+
+- Found a structural hash collision: a function and a dictionary with a `source`
+  property equal to its function source produced identical JSON hash input. Every
+  hash node is now tagged by type with sorted object entries. Two focused tests
+  prove the former collision and deterministic key ordering. Version salt is v4.
+- Real A/B/C hash fixture passes after the change: 10 new JS URLs, deterministic
+  repeat, 4 SRI checks, two entries and lazy CSS with old assets retained.
+- writeBundle now uses Vite's configured build.manifest and build.ssrManifest
+  filenames. It previously scanned every *manifest.json and hardcoded the SSR
+  filename. Disabled manifests are untouched; unrelated output files are no
+  longer parsed or rewritten as manifests.
+- A new SSR fixture option uses metadata/client-assets.json and
+  metadata/server-assets.json, and keeps an unrelated invalid-JSON
+  unrelated-manifest.json asset unchanged. Relative-base ICU virtual/inline
+  hydration, native SSR manifest fallback, CSS/preload, DOM and events all pass.
+  The custom-path combination is wired into test:ssr and CI.
+- Typecheck/build and targeted tests/lint pass. Remaining SSR asset edge cases
+  (especially removed CSS-only chunks and nested HTML) and framework acceptance
+  still need final audit. #50 measurement/prototype/decision has not started yet.

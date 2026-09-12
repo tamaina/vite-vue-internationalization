@@ -356,16 +356,7 @@ export function vueInternationalization(options?: Partial<VueInternationalizatio
 			const { modules, globalMessages } = state;
 			const currentOptions = environmentOptions(this);
 			if (currentOptions.buildStrategy !== 'inline-chunks') return;
-			state.localeHash ??= createHash('sha256').update(JSON.stringify(
-				['vvi-inline-output-v3', modules, globalMessages, currentOptions.primaryLocale, currentOptions.messageSyntax, this?.environment?.config.build.sourcemap],
-				(_key, value: unknown) => {
-					if (typeof value === 'function') return { source: value.toString() };
-					if (value && typeof value === 'object' && !Array.isArray(value)) {
-						return Object.fromEntries(Object.entries(value).sort(([a], [b]) => a.localeCompare(b, 'en')));
-					}
-					return value;
-				},
-			)).digest('hex');
+			state.localeHash ??= createLocaleHash(['vvi-inline-output-v4', modules, globalMessages, currentOptions.primaryLocale, currentOptions.messageSyntax, this.environment.config.build.sourcemap]);
 			return state.localeHash;
 		},
 		generateBundle(_outputOptions, bundle) {
@@ -419,14 +410,16 @@ export function vueInternationalization(options?: Partial<VueInternationalizatio
 			const outputDir = resolve(root, outputOptions.dir ?? dirname(outputOptions.file ?? 'dist/index.js'));
 			if (state.inlineManifest) {
 				rewriteWrittenHtml(outputDir, state.inlineManifest, base);
-				rewriteWrittenViteManifest(outputDir, state.inlineManifest);
+				const manifestOption = this.environment.config.build.manifest;
+				if (manifestOption) rewriteWrittenViteManifest(outputDir, state.inlineManifest, typeof manifestOption === 'string' ? manifestOption : '.vite/manifest.json');
 			}
 			if (state.assetManifest) {
 				finalizeAssetIntegrity(state.assetManifest, outputDir);
 				writeFileSync(resolve(outputDir, '.vite/internationalization-manifest.json'), JSON.stringify(state.assetManifest, null, 2) + '\n');
 			}
-			const ssrManifestPath = resolve(outputDir, '.vite/ssr-manifest.json');
-			if (state.assetManifest && existsSync(ssrManifestPath)) {
+			const ssrManifestOption = this.environment.config.build.ssrManifest;
+			const ssrManifestPath = resolve(outputDir, typeof ssrManifestOption === 'string' ? ssrManifestOption : '.vite/ssr-manifest.json');
+			if (ssrManifestOption && state.assetManifest && existsSync(ssrManifestPath)) {
 				writeFileSync(ssrManifestPath, augmentSsrManifest(readTextFile(ssrManifestPath), state.assetManifest));
 			}
 		},
@@ -434,6 +427,7 @@ export function vueInternationalization(options?: Partial<VueInternationalizatio
 }
 
 export const internals = {
+	createLocaleHash,
 	generateLocaleModule,
 	generateInlineRuntimeModule,
 	generateRuntimeModule,
@@ -739,6 +733,19 @@ function generateLocaleModule(locale: string, primaryLocale: string, modules: Mo
 	].join('\n');
 }
 
+// Tag every node, not only functions: a user dictionary can contain any marker key.
+function createLocaleHash(value: unknown): string {
+	function encode(value: unknown): unknown {
+		if (typeof value === 'function') return ['function', value.toString()];
+		if (Array.isArray(value)) return ['array', value.map(encode)];
+		if (value !== null && typeof value === 'object') return ['object', Object.keys(value).sort().map(key => [key, encode((value as Record<string, unknown>)[key])])];
+		if (typeof value === 'number') return ['number', Object.is(value, -0) ? '-0' : String(value)];
+		return [typeof value, value];
+	}
+
+	return createHash('sha256').update(JSON.stringify(encode(value))).digest('hex');
+}
+
 function serializeLocaleValue(value: unknown): string {
 	if (typeof value === 'function') {
 		return `(${value.toString()})`;
@@ -826,15 +833,12 @@ function rewriteWrittenHtml(outDir: string, manifest: InlineChunkManifest, base:
 	}
 }
 
-function rewriteWrittenViteManifest(outDir: string, manifest: InlineChunkManifest): void {
-	for (const file of findManifestFiles(outDir)) {
-		const source = readFileSync(file, 'utf8');
-		const next = augmentViteManifestJson(source, manifest);
-
-		if (next !== source) {
-			writeFileSync(file, next);
-		}
-	}
+function rewriteWrittenViteManifest(outDir: string, manifest: InlineChunkManifest, manifestFile: string): void {
+	const file = resolve(outDir, manifestFile);
+	if (!existsSync(file)) return;
+	const source = readFileSync(file, 'utf8');
+	const next = augmentViteManifestJson(source, manifest);
+	if (next !== source) writeFileSync(file, next);
 }
 
 function findHtmlFiles(dir: string): string[] {
@@ -854,30 +858,6 @@ function findHtmlFiles(dir: string): string[] {
 		}
 
 		if (stat.isFile() && path.endsWith('.html')) {
-			files.push(path);
-		}
-	}
-
-	return files;
-}
-
-function findManifestFiles(dir: string): string[] {
-	if (!existsSync(dir)) {
-		return [];
-	}
-
-	const files: string[] = [];
-
-	for (const entry of readdirSync(dir)) {
-		const path = resolve(dir, entry);
-		const stat = statSync(path);
-
-		if (stat.isDirectory()) {
-			files.push(...findManifestFiles(path));
-			continue;
-		}
-
-		if (stat.isFile() && path.endsWith('manifest.json')) {
 			files.push(path);
 		}
 	}

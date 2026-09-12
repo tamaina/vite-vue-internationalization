@@ -1,7 +1,7 @@
 /* global document, window, getComputedStyle, console, process, URL */
 import assert from 'node:assert/strict';
 import { createServer as createHttpServer } from 'node:http';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { createBuilder } from 'vite';
@@ -14,6 +14,9 @@ const root = resolve('test/fixtures/ssr');
 const icu = process.argv.includes('--icu');
 const inline = process.argv.includes('--inline');
 const relativeBase = process.argv.includes('--relative');
+const customManifest = process.argv.includes('--custom-manifest');
+const viteManifestFile = customManifest ? 'metadata/client-assets.json' : '.vite/manifest.json';
+const ssrManifestFile = customManifest ? 'metadata/server-assets.json' : '.vite/ssr-manifest.json';
 const output = mkdtempSync(resolve('test/fixtures/ssr-output-'));
 const link = resolve(root, 'node_modules');
 mkdirSync(link, { recursive: true });
@@ -21,15 +24,19 @@ symlinkSync(resolve('.'), `${link}/vite-vue-internationalization`, 'dir');
 const options = () => ({ root, base: relativeBase ? './' : '/', configFile: false, logLevel: 'silent', resolve: { alias: icu ? [{ find: './App.vue', replacement: resolve(root, 'IcuApp.vue') }] : [] }, plugins: [vueInternationalization({ primaryLocale: 'ja-JP', global: { 'ja-JP': { appName: '共通辞書' }, 'en-US': { appName: 'Global English' } }, messageSyntax: icu ? 'icu' : 'vue', buildStrategy: inline ? 'inline-chunks' : 'virtual' }), vue({ features: { componentIdGenerator: 'filepath' } })] });
 let http, browser;
 try {
+	if (customManifest) writeFileSync(`${output}/unrelated-manifest.json`, 'Unrelated asset, intentionally not JSON.');
 	const builder = await createBuilder({ ...options(), environments: {
-		client: { build: { outDir: output, emptyOutDir: false, target: 'esnext', manifest: true, ssrManifest: true, rolldownOptions: { input: resolve(root, 'client.ts') } } },
+		client: { build: { outDir: output, emptyOutDir: false, target: 'esnext', manifest: viteManifestFile, ssrManifest: ssrManifestFile, rolldownOptions: { input: resolve(root, 'client.ts') } } },
 		edge: { consumer: 'server', build: { outDir: `${output}/server`, ssr: resolve(root, 'server.ts'), target: 'esnext' } },
 	} });
 	// plugin-vue 6 keeps its SFC descriptor cache at module scope; build the two graphs sequentially.
 	await builder.build(builder.environments.client);
 	await builder.build(builder.environments.edge);
+	if (customManifest) assert.equal(readFileSync(`${output}/unrelated-manifest.json`, 'utf8'), 'Unrelated asset, intentionally not JSON.');
 	const manifest = JSON.parse(readFileSync(`${output}/.vite/internationalization-manifest.json`, 'utf8'));
-	const ssrManifest = JSON.parse(readFileSync(`${output}/.vite/ssr-manifest.json`, 'utf8'));
+	const ssrManifest = JSON.parse(readFileSync(`${output}/${ssrManifestFile}`, 'utf8'));
+	const viteManifest = JSON.parse(readFileSync(`${output}/${viteManifestFile}`, 'utf8'));
+	if (inline) assert.ok(viteManifest['client.ts'].internationalization?.locales['en-US'], 'Configured Vite manifest must include locale entries.');
 	// Force Lazy.vue through the native Vite SSR-manifest integration path.
 	delete manifest.modules['Lazy.vue'];
 
