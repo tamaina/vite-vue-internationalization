@@ -122,3 +122,17 @@ count: "an apple | {n} apples"
 - `<locale>` ブロックや単体メッセージ SFC を整理する場合は [メッセージ定義](./messages.md)
 - ロケールチャンクの出力を確認する場合は [ビルド戦略](./build-strategy.md)
 - 実行時ヘルパーの型を確認する場合は [API リファレンス](./api.md)
+
+## 外部辞書のエディター診断
+
+VS Code 用の別拡張 **Vite Vue Internationalization Tools** を使うと、
+`vueCompilerOptions.plugins` の VVI `global` に指定した YAML / JSON ファイル自身へ
+構文エラー・辞書形式・unsafe key の診断を表示できます。未保存の修正、glob の追加・削除、
+設定の変更で更新され、利用先 SFC の編集や Language Server の再起動は不要です。
+型補完には引き続き Vue - Official と VVI の Volar 設定を使用します。
+
+リポジトリで `pnpm package:editor` を実行し、生成された
+`extensions/vscode/dist/vvi-tools.vsix` を VS Code の **Extensions: Install from VSIX**
+から導入してください。npm パッケージとは別配布です。
+[拡張の設定・検証手順](https://github.com/tamaina/vite-vue-internationalization/tree/develop/extensions/vscode)
+を参照してください。

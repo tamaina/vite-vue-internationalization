@@ -69,7 +69,10 @@
     "test:ssr": "pnpm build && node scripts/test-ssr.mjs && node scripts/test-ssr.mjs --icu && node scripts/test-ssr.mjs --inline && node scripts/test-ssr.mjs --icu --inline && node scripts/test-ssr.mjs --icu --inline --relative",
     "test:inline-hash": "pnpm build && node scripts/test-inline-hash.mjs",
     "test:hmr": "pnpm build && node scripts/test-hmr.mjs && node scripts/test-hmr.mjs --inline && node scripts/test-hmr.mjs --all && node scripts/test-hmr.mjs --inline --all",
-    "test:maps": "pnpm build && node scripts/test-source-maps.mjs && node scripts/test-source-maps.mjs --minify && node scripts/test-source-maps.mjs --inline-map && node scripts/test-source-maps.mjs --hidden"
+    "test:maps": "pnpm build && node scripts/test-source-maps.mjs && node scripts/test-source-maps.mjs --minify && node scripts/test-source-maps.mjs --inline-map && node scripts/test-source-maps.mjs --hidden",
+    "build:editor": "tsc -p extensions/vscode/tsconfig.json && node scripts/build-editor.mjs",
+    "test:editor": "pnpm build:editor && node scripts/test-editor.mjs",
+    "package:editor": "pnpm build:editor && node scripts/package-editor.mjs"
   },
   "peerDependencies": {
     "@vue/language-core": "^3.3.0",
@@ -99,9 +102,12 @@
     "@playwright/test": "^1.60.0",
     "@stylistic/eslint-plugin": "^5.10.0",
     "@types/node": "^24.10.1",
+    "@types/vscode": "1.95.0",
     "@typescript-eslint/eslint-plugin": "^8.59.4",
     "@typescript-eslint/parser": "^8.59.4",
     "@vitejs/plugin-vue": "^6.0.7",
+    "@vscode/test-electron": "2.5.2",
+    "@vscode/vsce": "3.9.2",
     "@vue/language-core": "^3.3.1",
     "esbuild": "^0.28.0",
     "eslint": "^9.39.4",

@@ -3,6 +3,8 @@ import misskey from '@misskey-dev/eslint-plugin';
 export default [
 	{
 		ignores: [
+			'.vscode-test/**',
+			'extensions/*/dist/**',
 			'dist/**',
 			'examples/*/dist/**',
 			'examples/*/.nuxt*/**',

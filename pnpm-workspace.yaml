@@ -3,7 +3,9 @@ packages:
 
 allowBuilds:
   '@parcel/watcher': true
+  '@vscode/vsce-sign': false
   esbuild: true
+  keytar: false
   sharp: true
   workerd: true
 

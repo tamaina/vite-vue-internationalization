@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import ts from 'typescript';
@@ -278,6 +278,32 @@ describe('volar plugin', () => {
 		expect(scriptCode).toContain('env: import("vite-vue-internationalization/runtime").RuntimeLocaleLocalizerDictionary');
 		expect(scriptCode).not.toContain('{ title: "アプリ"; count: "{n} 個"; }');
 		expect(diagnostics).toEqual([]);
+	});
+
+	it('keeps SFC types usable with malformed external dictionaries and uses the consuming config root', () => {
+		const directory = mkdtempSync(resolve(tmpdir(), 'vvi-volar-external-'));
+		try {
+			mkdirSync(resolve(directory, 'nested'));
+			writeFileSync(resolve(directory, 'nested/tsconfig.json'), '{}');
+			const dictionary = resolve(directory, 'global.yaml');
+			const options = getDefaultCompilerOptions();
+			options.plugins = [withConfig(vueInternationalizationVolar, { __moduleConfig: {
+				name: 'vite-vue-internationalization/volar', primaryLocale: 'en', global: { en: 'global.yaml' },
+			} })];
+			const language = createVueLanguagePlugin(ts, { configFilePath: resolve(directory, 'tsconfig.app.json') }, options, String);
+			for (const contents of ['title: [', 'constructor: unsafe', 'title: ExternalRoot']) {
+				writeFileSync(dictionary, contents);
+				const file = resolve(directory, 'nested/App.vue');
+				const code = language.createVirtualCode?.(file, 'vue', ts.ScriptSnapshot.fromString('<script setup lang="ts">const title = $locale.value.sfc.title;</script><template>{{ $locale.sfc.title }}</template><locale locale="en">title: LocalStillValid</locale>'), {} as never);
+				expect(code).toBeDefined();
+				if (!code) throw new Error('Expected Vue virtual code.');
+				const script = [...forEachEmbeddedCode(code)].find(code => code.id === 'script_ts')?.snapshot.getText(0, Number.MAX_SAFE_INTEGER);
+				expect(script).toContain('LocalStillValid');
+				expect(getSemanticDiagnosticMessages(script)).toEqual([]);
+				if (contents.includes('ExternalRoot')) expect(script).toContain('ExternalRoot');
+				language.disposeVirtualCode?.(file, code);
+			}
+		} finally { rmSync(directory, { recursive: true, force: true }); }
 	});
 
 	it('merges multiple locale blocks for editor types with later blocks taking precedence', () => {

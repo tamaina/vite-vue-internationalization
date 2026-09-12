@@ -31,6 +31,12 @@ jobs:
       - run: pnpm exec playwright install --with-deps chromium
       - run: node scripts/test-types.mjs
       - run: node --expose-gc scripts/test-volar-cache-lifecycle.mjs
+      - run: xvfb-run -a pnpm test:editor
+      - run: pnpm package:editor
+      - uses: actions/upload-artifact@v4
+        with:
+          name: vvi-editor-extension
+          path: extensions/vscode/dist/vvi-tools.vsix
       - run: node scripts/test-ssr.mjs
       - run: node scripts/test-ssr.mjs --icu
       - run: node scripts/test-ssr.mjs --inline

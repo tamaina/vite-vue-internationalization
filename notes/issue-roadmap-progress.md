@@ -340,3 +340,45 @@ do not infer a specific diagnostic or confirmed cause from this screenshot.
   separate DiagnosticCollection update path. Local code CLI reports 1.137.0;
   DISPLAY=:0 and Xorg are present for extension-host validation. No extension has
   been installed into the user's profile or published.
+
+## External editor diagnostics (#13), VS Code integration
+
+- Added a separate VS Code extension under `extensions/vscode`. It owns one
+  DiagnosticCollection and reuses the build dictionary validator; external YAML
+  and JSON are never registered as Vue IR or injected into unrelated SFCs.
+- TypeScript reads JSONC/extends with a read-only host. Configured plugin modules
+  are inspected as data, never required/executed. Paths use the consuming config
+  directory, matching Volar. Diagnostics retain the originating file; JSON syntax
+  errors now also use parser offsets where available.
+- Open document buffers, filesystem create/change/delete events, glob roots
+  outside the workspace, config dependencies and workspace changes recalculate
+  diagnostics. Generation checks discard stale asynchronous results; config
+  removal replaces the collection and disposes unused watchers. Unexpected
+  refresh errors go to a dedicated output channel.
+- First actual extension-host run on VS Code 1.95.3 passed: malformed global YAML
+  -> unsaved correction -> no error, external writes, glob add/delete and removing
+  global config. No SFC edits or language-server restart were used. An expanded
+  host fixture adds JSON ranges, second-project isolation and inherited config
+  changes. Unit config tests cover JSONC inheritance, unsaved config changes,
+  unsupported sources and avoiding diagnostics on unrelated TS projects.
+- Root suite passes 188 tests in 15 files; root typecheck and lint pass (11 existing
+  warnings, no errors). VSIX packaging and expanded host acceptance are still
+  being checked below. This is not a claim that all roadmap issues are complete.
+
+Follow-up verification: expanded VS Code host fixture also passes for JSON error
+line, a second project and edits to an outside-workspace inherited config. VSIX
+packaging succeeds (6 files, about 1.86 MB compressed), with no user-profile
+installation or Marketplace publication. CI now builds/tests/packages the addon
+and uploads its VSIX. Japanese/English getting-started docs explain installation.
+
+The installed pnpm store had tslib marked skipped from an earlier optional
+platform subtree, although vsce now requires it through Azure SDK. A forced
+install with optimistic-repeat-install disabled repaired the missing links;
+no runtime dependency override was added. vsce's credential/signing native
+builds are explicitly disabled because this workflow only packages local VSIX.
+
+Additional #13/Volar fix: use the Language Tools compilerOptions.configFilePath
+for global path resolution when available; nearest tsconfig remains the fallback
+for older/unconfigured hosts. A real language-core fixture uses tsconfig.app.json
+with a nested, unrelated tsconfig and malformed -> valid dictionaries, asserting
+SFC types survive and the correct external root is selected.

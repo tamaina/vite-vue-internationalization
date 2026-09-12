@@ -1,0 +1,38 @@
+{
+  "name": "vite-vue-internationalization-tools",
+  "displayName": "Vite Vue Internationalization Tools",
+  "description": "Diagnostics for configured VVI global dictionaries.",
+  "version": "0.1.0",
+  "publisher": "tamaina",
+  "engines": {
+    "vscode": "^1.95.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "main": "./dist/extension.cjs",
+  "activationEvents": [
+    "workspaceContains:**/tsconfig*.json",
+    "onLanguage:vue",
+    "workspaceContains:**/jsconfig.json"
+  ],
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": false
+    }
+  },
+  "contributes": {
+    "commands": [
+      {
+        "command": "vvi.refreshDiagnostics",
+        "title": "VVI: Refresh Dictionary Diagnostics"
+      }
+    ]
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/tamaina/vite-vue-internationalization",
+    "directory": "extensions/vscode"
+  }
+}

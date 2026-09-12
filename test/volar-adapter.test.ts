@@ -8,7 +8,7 @@ describe('Vue Language Tools generated-code adapter', () => {
 	it('reports an unsupported generated shape once without throwing from the language plugin', () => {
 		const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
 		try {
-			const plugin = volar({ config: { sfcTransform: 'all' } } as never);
+			const plugin = volar({ config: { sfcTransform: 'all' }, compilerOptions: {} } as never);
 			if (Array.isArray(plugin) || !plugin.resolveEmbeddedCode) throw new Error('Expected the language plugin.');
 			const ir: Parameters<typeof plugin.resolveEmbeddedCode>[1] = { content: '', customBlocks: [], comments: [], template: undefined, script: undefined, scriptSetup: undefined, styles: [] };
 			for (let update = 0; update < 2; update++) plugin.resolveEmbeddedCode('/App.vue', ir, { id: 'script_ts', content: ['unrecognized upstream shape'] } as never);

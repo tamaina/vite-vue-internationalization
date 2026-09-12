@@ -96,7 +96,9 @@ export function parseLocaleDictionaryForDiagnostics(
 		try {
 			return validateLocaleDictionaryForDiagnostics(JSON.parse(content), sourceLabel);
 		} catch (error) {
-			return createDiagnosticResult(`Failed to parse ${sourceLabel}: ${getErrorMessage(error)}`, 0, Math.max(1, content.length));
+			const syntaxError = ts.parseConfigFileTextToJson(sourceLabel, content).error;
+			const start = syntaxError?.start ?? 0;
+			return createDiagnosticResult(`Failed to parse ${sourceLabel}: ${getErrorMessage(error)}`, start, start + (syntaxError?.length ?? Math.max(1, content.length)));
 		}
 	}
 

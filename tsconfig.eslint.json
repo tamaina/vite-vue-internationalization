@@ -6,6 +6,7 @@
 		"noEmit": true
 	},
 	"include": [
+		"extensions/vscode/src",
 		"eslint.config.js",
 		"playwright.config.ts",
 		"src",

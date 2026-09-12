@@ -39,9 +39,10 @@ export type VueInternationalizationVolarPluginConfig = {
 	sfcTransform?: 'locale-sources' | 'all';
 };
 
-const plugin: VueLanguagePlugin<VueInternationalizationVolarPluginConfig> = ({ config }) => {
+const plugin: VueLanguagePlugin<VueInternationalizationVolarPluginConfig> = ({ config, compilerOptions }) => {
 	const project = createVolarProjectCache();
 	const warned = new BoundedCache<string, true>(256);
+	const configDir = typeof compilerOptions.configFilePath === 'string' ? dirname(compilerOptions.configFilePath) : undefined;
 
 	return {
 		version: 2.2,
@@ -55,7 +56,7 @@ const plugin: VueLanguagePlugin<VueInternationalizationVolarPluginConfig> = ({ c
 
 			const primaryLocale = config.primaryLocale ?? getFirstLocale(ir.customBlocks);
 			const moduleDictionary = getLocaleDictionary(cache, ir.content, fileName, ir.customBlocks, primaryLocale);
-			const globalDictionary = getGlobalDictionary(cache, config, primaryLocale, fileName);
+			const globalDictionary = getGlobalDictionary(cache, config, primaryLocale, fileName, configDir);
 			const generatedTypes = getGeneratedTypes(cache, config, globalDictionary, moduleDictionary);
 			const { localeRefType, localeScopeType, localizerRefType, localizerScopeType, componentLocaleType, componentLocalizerType } = generatedTypes;
 			const declaration = `declare const $locale: ${localeRefType};\ndeclare const $l: ${localizerRefType};\n`;
@@ -598,6 +599,7 @@ function getGlobalDictionary(
 	config: VueInternationalizationVolarPluginConfig,
 	primaryLocale: string | undefined,
 	fileName: string,
+	projectConfigDir?: string,
 ): LocaleDictionary | undefined {
 	const global = config.global;
 
@@ -628,7 +630,7 @@ function getGlobalDictionary(
 		return result.dictionary;
 	}
 
-	const configDir = findConfigDir(fileName);
+	const configDir = projectConfigDir ?? findConfigDir(fileName);
 	return loadLocaleEnvDictionaryForDiagnostics(configDir, primaryLocale, value);
 }
 
