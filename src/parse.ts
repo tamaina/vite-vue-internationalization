@@ -222,9 +222,36 @@ export function injectLocaleBinding(
 }
 
 export function hasLocaleBinding(code: string, name: '$locale' | '$l'): boolean {
-	const escaped = name.replace('$', '\\$');
-	return new RegExp(`\\b(?:const|let|var)\\s+${escaped}\\b`).test(code) ||
-		new RegExp(`\\bimport\\s*\\{[^}]*${escaped}(?:\\s+as\\s+[A-Za-z_$][\\w$]*)?[^}]*\\}\\s*from\\s*["'][^"']+["']`).test(code);
+	const { descriptor } = parseSfc(code);
+	const binds = (binding: ts.BindingName): boolean => ts.isIdentifier(binding)
+		? binding.text === name
+		: binding.elements.some(element => ts.isBindingElement(element) && binds(element.name));
+	// var is scoped to the containing script/setup even when declared in a block.
+	const hasHoistedVar = (node: ts.Node): boolean => {
+		if (ts.isFunctionLike(node) || ts.isClassLike(node)) return false;
+		if (ts.isVariableDeclarationList(node) && !(node.flags & ts.NodeFlags.BlockScoped)
+			&& node.declarations.some(declaration => binds(declaration.name))) return true;
+		return ts.forEachChild(node, hasHoistedVar) ?? false;
+	};
+	for (const script of [descriptor.script, descriptor.scriptSetup]) {
+		if (!script) continue;
+		const source = ts.createSourceFile('binding.tsx', script.content, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+		if (hasHoistedVar(source)) return true;
+		for (const statement of source.statements) {
+			if (ts.isVariableStatement(statement) && statement.declarationList.declarations.some(declaration => binds(declaration.name))) return true;
+			if ((ts.isFunctionDeclaration(statement) || ts.isClassDeclaration(statement) || ts.isEnumDeclaration(statement)) && statement.name?.text === name) return true;
+			if (ts.isImportEqualsDeclaration(statement) && !statement.isTypeOnly && statement.name.text === name) return true;
+			if (!ts.isImportDeclaration(statement)) continue;
+			const clause = statement.importClause;
+			if (!clause || clause.isTypeOnly) continue;
+			if (clause.name?.text === name) return true;
+			const bindings = clause.namedBindings;
+			if (bindings && (ts.isNamespaceImport(bindings)
+				? bindings.name.text === name
+				: bindings.elements.some(element => !element.isTypeOnly && element.name.text === name))) return true;
+		}
+	}
+	return false;
 }
 
 export function transformVueSfc(code: string, filename: string, types: TransformVueSfcOptions = {}): string | undefined {

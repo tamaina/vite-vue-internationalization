@@ -1,4 +1,5 @@
 <script setup lang="ts">
+// const $locale = commentOnly; const $l = commentOnly;
 import { defineAsyncComponent, ref } from 'vue';
 const Lazy = defineAsyncComponent(() => import('./Lazy.vue'));
 const count = ref(1);

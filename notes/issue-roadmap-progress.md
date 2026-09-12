@@ -146,3 +146,16 @@ asset cases and framework integrations still require audit before full #44/#53
 acceptance. AST/scope/maps, original Volar symptom and cache measurements, external
 editor diagnostics, delivery benchmark/prototype and highlighting remain open.
 No remote CI, issue closure, push or PR has been performed yet.
+
+## Fifth increment, part 1: script binding detection (#46)
+
+- Replaced whole-SFC regex declaration checks with TypeScript script AST binding
+  checks. Comments, literals, nested functions, renamed-away imports and type-only
+  imports no longer suppress generated bindings. Destructuring, default/namespace
+  imports, runtime declarations and block-contained hoisted var are recognized.
+- Added 15 focused cases: the original implementation failed 11 of the first 12.
+  Updated fixtures contain misleading declarations in comments; production Vue
+  virtual and ICU mixed relative SSR still hydrate successfully.
+- Parsing/plugin tests pass (90 before the final three scope cases), final parse
+  tests pass (35); typecheck and targeted lint pass. Template AST and source maps
+  are still pending, so this does not complete #46.

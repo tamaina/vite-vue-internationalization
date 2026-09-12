@@ -1,8 +1,31 @@
 import { describe, expect, it } from 'vitest';
 import { compileScript, parse as parseSfc } from '@vue/compiler-sfc';
-import { injectLocaleBinding, parseLocaleDictionary, parseLocaleDictionaryForDiagnostics, parseScriptLocaleDictionaries, stripLocaleBlocks, transformVueSfc } from '../src/parse.js';
+import { hasLocaleBinding, injectLocaleBinding, parseLocaleDictionary, parseLocaleDictionaryForDiagnostics, parseScriptLocaleDictionaries, stripLocaleBlocks, transformVueSfc } from '../src/parse.js';
 
 describe('locale SFC parsing', () => {
+	it.each([
+		'// const $locale = ignored',
+		'const text = "const $locale = ignored"',
+		'function nested() { const $locale = 1; }',
+		'import { $locale as another } from "./helpers"',
+		'import type { $locale } from "./helpers"',
+		'const { $locale: another } = source',
+		'if (enabled) { let $locale = 1; }',
+		'function nested() { var $locale = 1; }',
+	])('ignores non-binding text or nested/renamed/type bindings: %s', (script) => {
+		expect(hasLocaleBinding(`<script setup lang="ts">\n${script}\n</script><template>const $locale = ignored</template>`, '$locale')).toBe(false);
+	});
+	it.each([
+		'const { source: $locale } = value',
+		'const [$locale] = value',
+		'import { source as $locale } from "./helpers"',
+		'import $locale from "./helpers"',
+		'import * as $locale from "./helpers"',
+		'function $locale() {}',
+		'if (enabled) { var $locale = 1; }',
+	])('recognizes real top-level bindings: %s', (script) => {
+		expect(hasLocaleBinding(`<script setup lang="ts">${script}</script>`, '$locale')).toBe(true);
+	});
 	it('parses yaml dictionaries', () => {
 		const dictionary = parseLocaleDictionary('hoge: ほげ\nnested:\n  value: ok', 'yaml', 'fixture');
 
