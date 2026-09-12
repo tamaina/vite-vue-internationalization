@@ -488,3 +488,13 @@ performance thresholds. Remote CI has not yet run.
 Remaining goal: original #39 symptom clarification, full #43/#46 acceptance audit,
 remaining SSR assets/framework edge cases and final broad validation/review. The
 roadmap goal remains active; no issue is closed and nothing has been published.
+
+Next #43 audit targets identified from current code (not yet repaired):
+- runtime resolveLinkedMessage does not pass locale into recursive formatting,
+  potentially differing from inline for nested locale-sensitive case modifiers.
+- bare createLocalizerObjectExpression currently stringifies scalar/non-string
+  entries and returns no callable missing-key fallback, unlike runtime proxies.
+- createInlineLookupExpression returns undefined for a missing raw dynamic key,
+  unlike the runtime dictionary fallback; suffix paths need corresponding checks.
+Use the shared corpus in test/message-parity.test.ts plus production output/browser
+fixtures to establish and fix these cases before claiming #43 complete.
