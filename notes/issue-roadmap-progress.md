@@ -456,3 +456,35 @@ All 199 tests and root typecheck passed before the final AST refinement; the
 focused tests pass after that refinement. Real hash/SRI A/B/C and custom-manifest
 ICU mixed SSR passed during the fix. Output salt advances to v5 to invalidate
 previous emitted bytes. Full #43/#46 parity/provenance audit is still outstanding.
+
+## Delivery granularity investigation (#50)
+
+Added `pnpm benchmark:delivery`, a reproducible fresh-process Vite build and real
+Chromium comparison for small/large applications across virtual, inline-chunks
+and a route-dictionary prototype using explicit runtime instances. Eighteen fresh
+browser contexts verify exact translations for three dynamic keys, global data,
+primary fallback and navigation/back behavior. Input hashes prove the compared
+dictionaries are identical. Each case records actual request file lists, gzip
+body bytes, resource timing, readiness, build duration, process peak RSS and total
+multi-language output, with environment/dependency versions and source hashes.
+
+All six cases completed. Large initial gzip body transfer: virtual 421905 bytes,
+inline 203710, prototype 98017; next route 339 / 165610 / 10532 bytes. Initial
+requests 5 / 5 / 6, transition requests 1 / 1 / 2. All cached returns are zero.
+Virtual initially includes all 40 route dictionaries (39 unused routes), while
+inline/prototype include one. The larger inline output reflects reachable dynamic
+global dictionaries repeated per route and is not a claim about every application.
+
+`notes/delivery-granularity-design.md` records the methodology, complete summary,
+request/waterfall/cache tradeoffs and public API, SSR, HMR, shared/global, fallback,
+types and switching consequences. Decision: do not adopt the prototype or change
+defaults now. Large-app size savings justify further design, but this production
+client prototype does not establish SSR/HMR readiness or a production timing win.
+No new public transport API or migration is shipped. Raw results live in
+`notes/benchmarks/delivery-comparison.json`; all source hashes were checked against
+the worktree. CI runs the comparison and uploads the raw artifact without unstable
+performance thresholds. Remote CI has not yet run.
+
+Remaining goal: original #39 symptom clarification, full #43/#46 acceptance audit,
+remaining SSR assets/framework edge cases and final broad validation/review. The
+roadmap goal remains active; no issue is closed and nothing has been published.

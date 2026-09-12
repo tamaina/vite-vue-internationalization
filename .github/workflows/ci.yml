@@ -52,3 +52,8 @@ jobs:
       - run: node scripts/test-hmr.mjs --inline
       - run: node scripts/test-hmr.mjs --all
       - run: node scripts/test-hmr.mjs --inline --all
+      - run: node scripts/benchmark-delivery.mjs
+      - uses: actions/upload-artifact@v4
+        with:
+          name: vvi-delivery-benchmark
+          path: notes/benchmarks/delivery-comparison.json
