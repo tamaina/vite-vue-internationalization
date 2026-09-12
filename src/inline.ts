@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto';
 import { dirname, isAbsolute, relative, resolve } from 'node:path';
 import { parse as parseSfc } from '@vue/compiler-sfc';
 import MagicString from 'magic-string';
+import ts from 'typescript';
 import { parseSync } from 'rolldown/utils';
 import { ScopeTracker, walk } from 'oxc-walker';
 import { compileLocaleMessage } from './message.js';
@@ -252,7 +253,6 @@ const INLINE_LOCALIZER_RE =
 const LOCALIZER_ACCESS_PREFIX_RE = /\$l(?:\.value)?\.(env|sfc)((?:\.[A-Za-z_$][\w$]*)+)\(/g;
 const VVI_RUNTIME_MODULES = new Set(['virtual:vite-vue-internationalization', 'vite-vue-internationalization']);
 const SCRIPT_LOCALE_ACCESS_RE = /\$(?:locale|l)(?:\.value)?\.(?:env|sfc)\b/;
-const VUE_DEFAULT_IMPORT_RE = /\bimport\s+([A-Za-z_$][\w$]*)\s+from\s+(["'])([^"']+\.vue(?:\?[^"']*)?)\2/g;
 
 export function createInlineLocaleMarker(moduleId: string): string {
 	return `${INLINE_MARKER_PREFIX}${Buffer.from(moduleId, 'utf8').toString('base64')}`;
@@ -364,7 +364,7 @@ export function rewriteInlineComponentLocaleAccess(code: string, filename: strin
 }
 
 /** Only expression identifiers can be translation references, never template text. */
-function templateLocaleReferences(template: string, bindings: Set<string>): Set<number> {
+function templateLocaleReferences(template: string, bindings: Set<string>, names = new Set(['$locale', '$l'])): Set<number> {
 	const prefix = '<template>';
 	const ast = parseSfc(`${prefix}${template}</template>`).descriptor.template?.ast;
 	const references = new Set<number>();
@@ -379,7 +379,7 @@ function templateLocaleReferences(template: string, bindings: Set<string>): Set<
 				enter(node, parent) {
 					const current = toAstNode(node);
 					const member = parent ? toAstNode(parent) : undefined;
-					if (!current || !isIdentifier(current) || !['$locale', '$l'].includes(current.name)
+					if (!current || !isIdentifier(current) || !names.has(current.name)
 						|| !member || !isMemberExpression(member) || member.object !== current
 						|| locals.has(current.name) || scopeTracker.getDeclaration(current.name)) return;
 					references.add(offset - prefix.length + current.start - 1);
@@ -401,11 +401,11 @@ function templateLocaleReferences(template: string, bindings: Set<string>): Set<
 				const { source, value, key, index } = prop.forParseResult;
 				expression(source.loc.source, source.loc.start.offset, inherited);
 				for (const binding of [value, key, index]) {
-					for (const name of binding?.loc.source.match(/\$(?:locale|l)\b/g) ?? []) locals.add(name);
+					for (const name of templateBindingNames(binding?.loc.source)) locals.add(name);
 				}
 			}
 			if (prop.name === 'slot') {
-				for (const name of prop.exp?.loc.source.match(/\$(?:locale|l)\b/g) ?? []) locals.add(name);
+				for (const name of templateBindingNames(prop.exp?.loc.source)) locals.add(name);
 			}
 		}
 		for (const prop of node.props) {
@@ -418,6 +418,20 @@ function templateLocaleReferences(template: string, bindings: Set<string>): Set<
 	};
 	for (const node of ast.children) visit(node, bindings);
 	return references;
+}
+
+function templateBindingNames(content: string | undefined): Set<string> {
+	const names = new Set<string>();
+	if (!content) return names;
+	const source = ts.createSourceFile('binding.ts', `(${content}) => {}`, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+	const statement = source.statements[0];
+	if (!ts.isExpressionStatement(statement) || !ts.isArrowFunction(statement.expression)) return names;
+	const collect = (binding: ts.BindingName) => {
+		if (ts.isIdentifier(binding)) names.add(binding.text);
+		else for (const element of binding.elements) if (ts.isBindingElement(element)) collect(element.name);
+	};
+	for (const parameter of statement.expression.parameters) collect(parameter.name);
+	return names;
 }
 
 function rewriteTemplateLocalizerAccess(template: string, marker: string, bindings: Set<string>): string {
@@ -512,19 +526,11 @@ function createInlineTemplateAccessReplacement(
 }
 
 function rewriteScriptComponentLocaleAccess(code: string, imports: Map<string, string>): string {
-	const template = parseSfc(code).descriptor.template;
-
-	if (!template) {
+	const { descriptor } = parseSfc(code);
+	if (!descriptor.script && !descriptor.scriptSetup && !descriptor.template && descriptor.styles.length === 0 && descriptor.customBlocks.length === 0) {
 		return rewriteComponentLocaleAccess(code, imports, false);
 	}
-
-	const start = template.loc.start.offset;
-	const end = template.loc.end.offset;
-	return [
-		rewriteComponentLocaleAccess(code.slice(0, start), imports, false),
-		code.slice(start, end),
-		rewriteComponentLocaleAccess(code.slice(end), imports, false),
-	].join('');
+	return replaceVueScriptContent(code, script => rewriteComponentLocaleAccess(script, imports, false));
 }
 
 function rewriteTemplateComponentLocaleAccess(code: string, imports: Map<string, string>): string {
@@ -667,15 +673,17 @@ function rewriteComponentLocaleAccess(code: string, imports: Map<string, string>
 }
 
 function rewriteComponentLocaleMemberAccess(code: string, name: string, marker: string, htmlEscaped: boolean): string {
+	const references = componentReferenceOffsets(code, name, htmlEscaped);
 	const stringArgument = htmlEscaped ? createTemplateStringArgument : JSON.stringify;
 	const regexp = new RegExp(`\\b${escapeRegExp(name)}\\.\\$locale((?:\\.[A-Za-z_$][\\w$]*)+)`, 'g');
 
-	return code.replace(regexp, (_match, pathExpression: string) =>
-		`__VUE_INTERNATIONALIZATION_INLINE_TEXT__(${stringArgument(marker)},${stringArgument(`sfc${pathExpression}`)})`,
+	return code.replace(regexp, (match, pathExpression: string, offset: number) =>
+		references.has(offset) ? `__VUE_INTERNATIONALIZATION_INLINE_TEXT__(${stringArgument(marker)},${stringArgument(`sfc${pathExpression}`)})` : match,
 	);
 }
 
 function rewriteComponentLocalizerAccess(code: string, name: string, marker: string, htmlEscaped: boolean): string {
+	const references = componentReferenceOffsets(code, name, htmlEscaped);
 	const stringArgument = htmlEscaped ? createTemplateStringArgument : JSON.stringify;
 	const regexp = new RegExp(`\\b${escapeRegExp(name)}\\.\\$l((?:\\.[A-Za-z_$][\\w$]*)+)\\(`, 'g');
 	let next = '';
@@ -685,7 +693,7 @@ function rewriteComponentLocalizerAccess(code: string, name: string, marker: str
 		const start = match.index;
 		const pathExpression = match[1];
 
-		if (start < cursor || !pathExpression) {
+		if (start < cursor || !pathExpression || !references.has(start)) {
 			continue;
 		}
 
@@ -704,27 +712,51 @@ function rewriteComponentLocalizerAccess(code: string, name: string, marker: str
 	return cursor === 0 ? code : next + code.slice(cursor);
 }
 
+function componentReferenceOffsets(code: string, name: string, template: boolean): Set<number> {
+	if (template) return templateLocaleReferences(code, new Set(), new Set([name]));
+	const offsets = new Set<number>();
+	let parsed: ParsedInlineJavaScript;
+	try {
+		parsed = parseRequiredInlineJavaScript(code);
+	} catch {
+		return offsets;
+	}
+	const scopeTracker = new ScopeTracker();
+	walk(parsed.ast as OxcWalkInput, {
+		scopeTracker,
+		enter(node, parent) {
+			const current = toAstNode(node);
+			const member = parent ? toAstNode(parent) : undefined;
+			if (!current || !isIdentifier(current) || current.name !== name || !member
+				|| !isMemberExpression(member) || member.object !== current) return;
+			if (scopeTracker.getDeclaration(name)?.type === 'Import') offsets.add(current.start);
+		},
+	});
+	return offsets;
+}
+
 function collectVueDefaultImports(code: string, filename: string, root: string): Map<string, string> {
 	const imports = new Map<string, string>();
-
-	for (const match of code.matchAll(VUE_DEFAULT_IMPORT_RE)) {
-		const name = match[1];
-		const source = match[3];
-
-		if (!name || !source) {
-			continue;
-		}
-
-		const resolved = resolveVueImport(filename, source);
-
-		if (!resolved || !isLocaleOnlyVueFile(resolved)) {
-			continue;
-		}
-
-		const moduleId = toRuntimeModuleId(resolved, root);
-
-		if (moduleId) {
-			imports.set(name, moduleId);
+	const { descriptor } = parseSfc(code);
+	const scripts = [descriptor.script, descriptor.scriptSetup].filter(script => script != null).map(script => script.content);
+	if (scripts.length === 0 && !descriptor.template && descriptor.styles.length === 0 && descriptor.customBlocks.length === 0) scripts.push(code);
+	for (const script of scripts) {
+		const ast = ts.createSourceFile(filename, script, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+		for (const statement of ast.statements) {
+			if (!ts.isImportDeclaration(statement) || !ts.isStringLiteral(statement.moduleSpecifier)) continue;
+			const clause = statement.importClause;
+			if (!clause || clause.isTypeOnly) continue;
+			const source = statement.moduleSpecifier.text;
+			if (!source.split('?', 1)[0]?.endsWith('.vue')) continue;
+			const resolved = resolveVueImport(filename, source);
+			if (!resolved || !isLocaleOnlyVueFile(resolved)) continue;
+			const moduleId = toRuntimeModuleId(resolved, root);
+			if (clause.name) imports.set(clause.name.text, moduleId);
+			if (clause.namedBindings && ts.isNamedImports(clause.namedBindings)) {
+				for (const binding of clause.namedBindings.elements) {
+					if (!binding.isTypeOnly && binding.propertyName?.text === 'default') imports.set(binding.name.text, moduleId);
+				}
+			}
 		}
 	}
 

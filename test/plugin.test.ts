@@ -473,6 +473,12 @@ describe('virtual module generation', () => {
 		const code = '<script setup>const $locale = { sfc: { title: "local" } };</script><template>{{ $locale.sfc.title }}</template>';
 		expect(internals.rewriteInlineLocaleTemplateAccess(code, '/App.vue')).toBe(code);
 	});
+	it('distinguishes template destructuring keys from bound names and default strings', () => {
+		const code = '<template><template #default="{ $locale: row, label = \'$locale\' }">{{ $locale.sfc.title }}</template><p v-for="{ item: $locale } in rows">{{ $locale.sfc.title }}</p></template>';
+		const output = internals.rewriteInlineLocaleTemplateAccess(code, '/App.vue');
+		expect(output).toContain('__VUE_INTERNATIONALIZATION_INLINE_TEXT__');
+		expect(output).toContain('<p v-for="{ item: $locale } in rows">{{ $locale.sfc.title }}</p>');
+	});
 	it('does not inject inline bindings twice', () => {
 		const output = internals.transformVueSfcInline([
 			'<template>{{ $locale.env.title }}</template>',
@@ -851,6 +857,26 @@ describe('virtual module generation', () => {
 		expect(code).toContain('__VUE_INTERNATIONALIZATION_INLINE_LOCALIZER__(&quot;__VUE_INTERNATIONALIZATION_INLINE__:L3NyYy9tZXNzYWdlcy52dWU=&quot;,&quot;sfc.body&quot;,{ source: "template" })');
 	});
 
+	it('only rewrites references to the imported locale component binding', () => {
+		const root = mkdtempSync(join(tmpdir(), 'vite-vue-internationalization-'));
+		writeFileSync(join(root, 'messages.vue'), '<locale locale="ja-JP">title: Title</locale>');
+		const preserved = [
+			'const literal = "Messages.$locale.title";',
+			'// Messages.$l.title()',
+			'function nested(Messages) { return Messages.$locale.title; }',
+		];
+		const template = [
+			'<code>Messages.$locale.title</code>',
+			'<p>{{ "Messages.$locale.title" }}</p>',
+			'<p v-for="Messages in rows">{{ Messages.$locale.title }}</p>',
+		];
+		const code = `<script setup>import { default as Messages } from './messages.vue';\n${preserved.join('\n')}\nconst translated = Messages.$locale.title;</script><template>${template.join('')}{{ Messages.$locale.title }}</template><style>.x::after { content: 'Messages.$locale.title'; }</style>`;
+		const output = internals.rewriteInlineComponentLocaleAccess(code, join(root, 'App.vue'), root);
+		for (const fragment of [...preserved, ...template]) expect(output).toContain(fragment);
+		expect(output).toContain('content: \'Messages.$locale.title\'');
+		expect(output).toContain('const translated = __VUE_INTERNATIONALIZATION_INLINE_TEXT__');
+		expect(output).toContain('INLINE_TEXT__(&quot;');
+	});
 	it('replaces locale-only SFC static access markers with localized values', () => {
 		const root = mkdtempSync(join(tmpdir(), 'vite-vue-internationalization-'));
 		mkdirSync(join(root, 'src'), { recursive: true });

@@ -181,3 +181,16 @@ script setup TypeScript, withDefaults(defineProps<...>), useTemplateRef,
 defineExpose, scoped slot/v-for and global $locale.env.noNotes. No diagnostic
 message or version is visible. Asked the user for the actual observed symptom;
 do not infer a specific diagnostic or confirmed cause from this screenshot.
+
+## Fifth increment, part 3: component references and destructuring (#46)
+
+- Template binding patterns now use TypeScript binding ASTs: aliased property keys
+  and default-value strings no longer incorrectly hide a real translation access.
+- Locale-only component imports are read from script ASTs, including
+  `import { default as Messages }`. Script rewriting is confined to script blocks
+  and actual imported references under Oxc scopes. Template component references
+  use the same expression/binding boundaries as local locale references.
+- Regression cases retain strings, comments, style content, v-for names and
+  shadowing function parameters while translating the real imported accesses.
+- 161 tests, typecheck and build pass; targeted lint was fixed; Vue mixed and ICU
+  relative mixed hydration pass. Source-map work remains the next #46 gate.
