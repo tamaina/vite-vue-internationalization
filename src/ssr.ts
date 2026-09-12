@@ -53,7 +53,8 @@ function normalizeModule(id: string): string {
 
 /** Resolves only the selected locale's entry, used modules, static imports and CSS. */
 export function resolveLocaleAssets(manifest: LocaleAssetManifest, options: ResolveLocaleAssetsOptions): ResolvedLocaleAssets {
-	if (manifest.version !== 1) throw new Error('Unsupported VVI asset manifest version.');
+	// JSON artifacts may come from a different package version despite the TS type.
+	if ((manifest.version as unknown) !== 1) throw new Error('Unsupported VVI asset manifest version.');
 	if (!manifest.locales.includes(options.locale)) throw new Error(`Unsupported locale "${options.locale}".`);
 	const entryKey = own(manifest.entries, normalizeModule(options.entry)) ?? (Object.hasOwn(manifest.chunks, options.entry) ? options.entry : undefined);
 	if (!entryKey) throw new Error(`Client entry "${options.entry}" is not in the VVI asset manifest.`);

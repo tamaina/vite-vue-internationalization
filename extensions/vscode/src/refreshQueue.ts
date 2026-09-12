@@ -2,20 +2,21 @@
 export function createRefreshQueue(prepare: () => Promise<() => void>) {
 	let revision = 0;
 	let applied = -1;
-	let disposed = false;
+	const lifecycle = new AbortController();
 	let running: Promise<void> | undefined;
 	return {
 		invalidate() { revision++; },
 		refresh(): Promise<void> {
-			if (disposed) return Promise.resolve();
+			if (lifecycle.signal.aborted) return Promise.resolve();
 			revision++;
 			if (running) return running;
 			running = (async () => {
 				try {
-					while (!disposed && applied !== revision) {
+					while (!lifecycle.signal.aborted && applied !== revision) {
 						const token = revision;
 						const commit = await prepare();
-						if (disposed || token !== revision) continue;
+						// dispose() also advances revision, so a cancelled scan cannot commit.
+						if (token !== revision) continue;
 						commit();
 						applied = token;
 					}
@@ -23,6 +24,6 @@ export function createRefreshQueue(prepare: () => Promise<() => void>) {
 			})();
 			return running;
 		},
-		dispose() { disposed = true; revision++; },
+		dispose() { lifecycle.abort(); revision++; },
 	};
 }

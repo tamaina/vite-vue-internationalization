@@ -27,8 +27,8 @@ export function createAssetManifest(bundle: OutputBundle, root: string, base: st
 /** Attaches rewritten locale files and their final integrity values to the graph. */
 export function localizeAssetManifest(manifest: LocaleAssetManifest, inline: InlineChunkManifest): void {
 	for (const entry of inline.entries) {
+		if (!Object.hasOwn(manifest.chunks, entry.originalFileName)) throw new Error(`Missing original chunk "${entry.originalFileName}".`);
 		const chunk = manifest.chunks[entry.originalFileName];
-		if (!chunk) throw new Error(`Missing original chunk "${entry.originalFileName}".`);
 		chunk.locales = Object.fromEntries(Object.entries(entry.locales).map(([locale, file]) => [locale, { file, integrity: entry.integrity?.[locale] }]));
 		// Includes any formatter import added after Vite's graph capture.
 		chunk.imports = [...(entry.imports ?? [])];

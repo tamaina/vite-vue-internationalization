@@ -216,16 +216,18 @@ export function createInternationalization(options: InternationalizationRuntimeO
 			const promise = Promise.resolve().then(async () => {
 				const loader = options.loaders[locale];
 				if (!loader) throw new Error(`Locale "${locale}" is not available.`);
-				const loaded = await loader();
+				// Loader results cross a runtime boundary, including untyped app code.
+				const loaded: unknown = await loader();
 				if (!loaded || typeof loaded !== 'object') throw new Error(`Invalid locale bundle for "${locale}".`);
 				const bundle = 'default' in loaded ? loaded.default : loaded;
 				if (!bundle || typeof bundle !== 'object' || Array.isArray(bundle)) throw new Error(`Invalid locale bundle for "${locale}".`);
-				for (const dictionary of [bundle.global, bundle.modules, ...Object.values(bundle.modules ?? {})]) {
+				const data = bundle as LocaleBundle;
+				for (const dictionary of [data.global, data.modules, ...Object.values(data.modules ?? {})] as unknown[]) {
 					if (dictionary !== undefined && (!dictionary || typeof dictionary !== 'object' || Array.isArray(dictionary))) {
 						throw new Error(`Invalid locale dictionary for "${locale}".`);
 					}
 				}
-				state.bundles[locale] = { global: bundle.global ?? {}, modules: bundle.modules ?? {} };
+				state.bundles[locale] = { global: data.global ?? {}, modules: data.modules ?? {} };
 			}).finally(() => { pending.delete(locale); });
 			pending.set(locale, promise);
 			return promise;

@@ -79,7 +79,7 @@ describe('composed SFC source maps', () => {
 			if (!failure) throw new Error('Expected an SSR exception.');
 			server.ssrFixStacktrace(failure);
 			const [line, column] = position(original, 'new Error');
-			expect(failure?.stack).toContain(`${filename}:${line + 1}:${column + 1}`);
+			expect(failure.stack).toContain(`${filename}:${line + 1}:${column + 1}`);
 		} finally {
 			await server.close();
 			rmSync(root, { recursive: true, force: true });

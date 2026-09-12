@@ -55,7 +55,7 @@ export class SourceEdits {
 				if (origin === undefined) mappings[line].push([column]);
 				else if (inputMap) {
 					const entry = inputMap.findEntry(lines[origin], columns[origin]);
-					if ('originalSource' in entry && entry.originalSource != null) {
+					if ('originalSource' in entry) {
 						let source = sources.indexOf(entry.originalSource);
 						if (source < 0) { source = sources.length; sources.push(entry.originalSource); }
 						mappings[line].push([column, source, entry.originalLine, entry.originalColumn]);

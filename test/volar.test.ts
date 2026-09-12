@@ -622,8 +622,8 @@ function getCorruptedMappedSegments(
 
 	return mappings.flatMap((mapping) =>
 		mapping.generatedOffsets.flatMap((generatedOffset, index) => {
-			const sourceOffset = mapping.sourceOffsets[index];
-			const length = mapping.lengths[index];
+			const sourceOffset = mapping.sourceOffsets.at(index);
+			const length = mapping.lengths.at(index);
 
 			if (sourceOffset === undefined || length === undefined || length <= 0) {
 				return [];
