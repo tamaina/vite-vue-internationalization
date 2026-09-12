@@ -69,7 +69,12 @@ exports.run = async function () {
 	await replaceVue('<template>Locale removed</template>');
 	assert.deepEqual(api.getHighlights(vue.uri), [], 'Removing the locale block must clear existing decorations.');
 	await replaceVue(messageSource);
-	await fs.writeFile(path.join(root, 'tsconfig.json'), JSON.stringify({ vueCompilerOptions: { plugins: [{ name: 'vite-vue-internationalization/volar', messageSyntax: 'icu' }] } }));
-	await api.refresh();
-	assert.deepEqual(api.getHighlights(vue.uri), [], 'ICU projects must not receive Vue message decorations.');
+	// Keep a clean config document open while changing it externally: its editor
+	// buffer may lag disk, and watcher events may invalidate an in-flight scan.
+	await vscode.workspace.openTextDocument(vscode.Uri.file(path.join(root, 'tsconfig.json')));
+	for (const messageSyntax of ['icu', 'vue', 'icu', 'vue', 'icu']) {
+		await fs.writeFile(path.join(root, 'tsconfig.json'), JSON.stringify({ vueCompilerOptions: { plugins: [{ name: 'vite-vue-internationalization/volar', messageSyntax }] } }));
+		await api.refresh();
+		assert.equal(api.getHighlights(vue.uri).length, messageSyntax === 'icu' ? 0 : 3, `${messageSyntax} project decorations must be current when refresh resolves.`);
+	}
 };
