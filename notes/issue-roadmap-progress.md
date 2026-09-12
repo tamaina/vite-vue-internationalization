@@ -255,3 +255,25 @@ do not infer a specific diagnostic or confirmed cause from this screenshot.
 - 173 tests, typecheck and build pass; targeted lint was run. Broader #46 audits
   (nested expression provenance/composition and unsupported syntax handling) remain
   recorded above. No roadmap issue is declared complete solely from these cases.
+
+## Ninth increment: bounded Volar cache and parse reuse (#49)
+
+- File dictionary and diagnostic entries now replace their previous revision.
+  Generated types use a 256-entry LRU, file caches are capped at 256 files, and
+  inline global dictionaries at 32 entries. Cache hits precede script parsing.
+- Diagnostic identity includes the current module dictionary so script-defined
+  message edits cannot reuse stale linked-message diagnostics from equal blocks.
+- Added internal benchmark access and scripts/benchmark-volar-cache.mjs. Run
+  `pnpm build && node --expose-gc scripts/benchmark-volar-cache.mjs 1000`.
+- Instrumented baseline (404beff plus counters) for 1000 revisions / two dictionary
+  reads each: script parses 2000; dictionary/diagnostic/type entries 1000/1000/1000.
+  Updated: parses 1000, entries 1/1/256. Tests assert retention, reuse, latest
+  dictionary values, type regeneration after eviction and LRU/delete/clear behavior.
+- Exploratory no-GC heap deltas were 18,140,128 bytes before and 24,009,864 after;
+  they do not prove reduced memory. Updated forced-GC run on Node v24.18.0:
+  313.92ms, retained heap delta 4,747,040 bytes. A matched forced-GC baseline is
+  still needed before making a memory or timing improvement claim.
+- 12 existing Volar tests and 2 cache tests pass; typecheck/targeted lint/build and
+  real vue-tsc documented/compact ICU acceptance pass. #49 remains open for actual
+  file-deletion/config/project lifecycle verification and matched measurements.
+  This cache change does not resolve the unconfirmed original #39 symptom.

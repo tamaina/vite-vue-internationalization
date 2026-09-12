@@ -2,6 +2,7 @@ import { existsSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { resolve } from 'node:path';
 import { allCodeFeatures } from '@vue/language-core';
+import { BoundedCache } from './boundedCache.js';
 import {
 	createComponentLocaleType,
 	createComponentLocalizerType,
@@ -58,7 +59,7 @@ const plugin: VueLanguagePlugin<VueInternationalizationVolarPluginConfig> = ({ c
 			const setupExposure = '$locale: typeof $locale;\n$l: typeof $l;\n';
 
 			embeddedFile.content.unshift(declaration);
-			pushLocaleDiagnostics(embeddedFile.content, getLocaleDiagnostics(cache, ir.customBlocks, primaryLocale, moduleDictionary));
+			pushLocaleDiagnostics(embeddedFile.content, getLocaleDiagnostics(cache, ir.customBlocks, primaryLocale, moduleDictionary, fileName));
 			insertAfter(
 				embeddedFile.content,
 				'type __VLS_SetupExposed = import(\'vue\').ShallowUnwrapRef<{\n',
@@ -86,6 +87,9 @@ const plugin: VueLanguagePlugin<VueInternationalizationVolarPluginConfig> = ({ c
 
 export default plugin;
 
+/** Internal diagnostics for reproducible cache benchmarks. */
+export const volarInternals = { createVolarCache, getLocaleDictionary, getGeneratedTypes, getLocaleDiagnostics };
+
 type GeneratedTypes = {
 	localeRefType: string;
 	localeScopeType: string;
@@ -96,9 +100,10 @@ type GeneratedTypes = {
 };
 
 type VolarCache = {
+	stats: { scriptParses: number };
 	globalDictionaries: Map<string, LocaleDictionary | undefined>;
-	moduleDictionaries: Map<string, LocaleDictionary>;
-	moduleDiagnostics: Map<string, LocaleBlockDiagnostic[]>;
+	moduleDictionaries: Map<string, { key: string; dictionary: LocaleDictionary }>;
+	moduleDiagnostics: Map<string, { key: string; diagnostics: LocaleBlockDiagnostic[] }>;
 	generatedTypes: Map<string, GeneratedTypes>;
 };
 
@@ -116,10 +121,11 @@ type LocaleBlockDiagnostic = LocaleDictionaryDiagnostic & {
 
 function createVolarCache(): VolarCache {
 	return {
-		globalDictionaries: new Map(),
-		moduleDictionaries: new Map(),
-		moduleDiagnostics: new Map(),
-		generatedTypes: new Map(),
+		stats: { scriptParses: 0 },
+		globalDictionaries: new BoundedCache(32),
+		moduleDictionaries: new BoundedCache(256),
+		moduleDiagnostics: new BoundedCache(256),
+		generatedTypes: new BoundedCache(256),
 	};
 }
 
@@ -408,10 +414,16 @@ function getLocaleDictionary(
 	primaryLocale: string | undefined,
 ): LocaleDictionary {
 	const localeBlocks = customBlocks.filter((block) => block.type === 'locale' && typeof block.attrs.locale === 'string');
+	const key = JSON.stringify([primaryLocale, content, localeBlocks]);
+	const cached = cache.moduleDictionaries.get(fileName);
+	if (cached?.key === key) return cached.dictionary;
+	cache.stats.scriptParses++;
 	const scriptMessages = parseScriptLocaleDictionaries(content, fileName);
 
 	if (localeBlocks.length === 0 && Object.keys(scriptMessages).length === 0) {
-		return {};
+		const dictionary = {};
+		cache.moduleDictionaries.set(fileName, { key, dictionary });
+		return dictionary;
 	}
 
 	const primaryBlock = localeBlocks.find((item) => item.attrs.locale === primaryLocale);
@@ -420,20 +432,6 @@ function getLocaleDictionary(
 	const scriptLocale = primaryLocale && scriptMessages[primaryLocale] ? primaryLocale : String(Object.keys(scriptMessages)[0]);
 	const locale = primaryBlockLocale ?? blockLocale ?? scriptLocale;
 	const blocks = localeBlocks.filter((item) => item.attrs.locale === locale);
-	const key = [
-		String(primaryLocale ?? ''),
-		locale,
-		content,
-		...blocks.map((block) => [
-			block.lang ?? 'yaml',
-			block.content,
-		].join('\n')),
-	].join('\n');
-	const cached = cache.moduleDictionaries.get(key);
-
-	if (cached) {
-		return cached;
-	}
 
 	const dictionary = mergeLocaleDictionaries(
 		...blocks.map((block) =>
@@ -444,7 +442,7 @@ function getLocaleDictionary(
 			).dictionary),
 		scriptMessages[locale] ?? {},
 	);
-	cache.moduleDictionaries.set(key, dictionary);
+	cache.moduleDictionaries.set(fileName, { key, dictionary });
 	return dictionary;
 }
 
@@ -453,6 +451,7 @@ function getLocaleDiagnostics(
 	customBlocks: readonly LocaleCustomBlock[],
 	primaryLocale: string | undefined,
 	moduleDictionary: LocaleDictionary,
+	fileName = '<anonymous>',
 ): LocaleBlockDiagnostic[] {
 	const localeBlocks = customBlocks.filter((block) => block.type === 'locale' && typeof block.attrs.locale === 'string');
 	const key = localeBlocks
@@ -463,11 +462,11 @@ function getLocaleDiagnostics(
 			block.lang ?? 'yaml',
 			block.content,
 		].join('\n'))
-		.join('\n---\n');
-	const cached = cache.moduleDiagnostics.get(key);
+		.join('\n---\n') + stableStringify(moduleDictionary);
+	const cached = cache.moduleDiagnostics.get(fileName);
 
-	if (cached) {
-		return cached;
+	if (cached?.key === key) {
+		return cached.diagnostics;
 	}
 
 	const diagnostics = localeBlocks.flatMap((block) => {
@@ -485,7 +484,7 @@ function getLocaleDiagnostics(
 	const linkedDiagnostics = getLinkedMessageDiagnostics(localeBlocks, primaryLocale, moduleDictionary);
 
 	const allDiagnostics = [...diagnostics, ...linkedDiagnostics];
-	cache.moduleDiagnostics.set(key, allDiagnostics);
+	cache.moduleDiagnostics.set(fileName, { key, diagnostics: allDiagnostics });
 	return allDiagnostics;
 }
 
