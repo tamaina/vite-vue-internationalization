@@ -5,6 +5,8 @@ const Lazy = defineAsyncComponent(() => import('./Lazy.vue'));
 const count = ref(1);
 </script>
 <template>
+  <code id="literal-text">$locale.sfc.title</code>
+  <code id="literal-expression">{{ '$locale.sfc.title' }}</code>
   <p id="global">{{ $locale.env.appName }}</p>
   <span id="fallback">{{ $locale.sfc.fallback }}</span>
   <button @click="count++">{{ $locale.sfc.title }}: {{ $l.sfc.count({ n: count }) }}</button>

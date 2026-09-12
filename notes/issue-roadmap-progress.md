@@ -159,3 +159,25 @@ No remote CI, issue closure, push or PR has been performed yet.
 - Parsing/plugin tests pass (90 before the final three scope cases), final parse
   tests pass (35); typecheck and targeted lint pass. Template AST and source maps
   are still pending, so this does not complete #46.
+
+## Fifth increment, part 2: template reference boundaries (#46)
+
+- Locale/localizer template rewriting now gates matches through Vue expression
+  ranges and Oxc identifier/scope analysis. Plain text, fixed attributes, string
+  literals, member property names, arrow parameters and user setup bindings are
+  preserved. v-for/slot-bound names are conservatively excluded.
+- Added regression cases and the original literal example to production SSR
+  fixtures. 159 tests, typecheck, targeted lint and build pass. Vue mixed and ICU
+  mixed relative browser hydration preserve both literal text and literal
+  interpolation, with explicit assertions.
+- This is an incremental boundary fix, not complete #46: component-import access
+  still has regex paths; unsupported expression handling, exact destructured
+  template binding analysis, nested rewrite composition and source maps remain.
+
+#39 evidence: downloaded and inspected the original attachment successfully at
+https://github.com/user-attachments/assets/4e5b2099-7ebe-4b69-a72b-b7db1877f21c
+(local scratch /tmp/vvi-issue39.png). It shows frontend-embed EmNotes.vue with
+script setup TypeScript, withDefaults(defineProps<...>), useTemplateRef,
+defineExpose, scoped slot/v-for and global $locale.env.noNotes. No diagnostic
+message or version is visible. Asked the user for the actual observed symptom;
+do not infer a specific diagnostic or confirmed cause from this screenshot.

@@ -454,6 +454,25 @@ describe('virtual module generation', () => {
 		expect(output).toContain('return useLocale(import.meta.url);');
 	});
 
+	it('preserves template text, literals and locally bound locale names', () => {
+		const preserved = [
+			'<code>$locale.sfc.title</code>',
+			'<p title="$locale.sfc.title">{{ \'$locale.sfc.title\' }}</p>',
+			'<p>{{ \'$l.sfc.title({})\' }}</p>',
+			'<p v-for="$locale in rows">{{ $locale.sfc.title }}</p>',
+			'<template #default="{ $l }">{{ $l.sfc.title({}) }}</template>',
+			'<p>{{ rows.map(($locale) => $locale.sfc.title) }}</p>',
+			'<p>{{ object.$locale.sfc.title }}</p>',
+		];
+		const code = `<template>${preserved.join('')}<p>{{ $locale.sfc.title }}</p></template>`;
+		const output = internals.rewriteInlineLocaleTemplateAccess(code, '/App.vue');
+		for (const fragment of preserved) expect(output).toContain(fragment);
+		expect(output).toContain('__VUE_INTERNATIONALIZATION_INLINE_TEXT__');
+	});
+	it('preserves template access to user-provided setup bindings', () => {
+		const code = '<script setup>const $locale = { sfc: { title: "local" } };</script><template>{{ $locale.sfc.title }}</template>';
+		expect(internals.rewriteInlineLocaleTemplateAccess(code, '/App.vue')).toBe(code);
+	});
 	it('does not inject inline bindings twice', () => {
 		const output = internals.transformVueSfcInline([
 			'<template>{{ $locale.env.title }}</template>',

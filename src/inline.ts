@@ -278,9 +278,10 @@ export function injectInlineLocaleBinding(code: string, moduleId: string): strin
 
 export function rewriteInlineLocaleTemplateAccess(code: string, moduleId: string): string {
 	const marker = createInlineLocaleMarker(moduleId);
+	const bindings = new Set(['$locale', '$l'].filter(name => hasLocaleBinding(code, name as '$locale' | '$l')));
 
 	return replaceVueTemplateContent(code, (template) =>
-		rewriteTemplateLocaleAccess(rewriteTemplateLocalizerAccess(template, marker), marker),
+		rewriteTemplateLocaleAccess(rewriteTemplateLocalizerAccess(template, marker, bindings), marker, bindings),
 	);
 }
 
@@ -362,7 +363,65 @@ export function rewriteInlineComponentLocaleAccess(code: string, filename: strin
 	);
 }
 
-function rewriteTemplateLocalizerAccess(template: string, marker: string): string {
+/** Only expression identifiers can be translation references, never template text. */
+function templateLocaleReferences(template: string, bindings: Set<string>): Set<number> {
+	const prefix = '<template>';
+	const ast = parseSfc(`${prefix}${template}</template>`).descriptor.template?.ast;
+	const references = new Set<number>();
+	if (!ast) return references;
+	type Node = typeof ast.children[number];
+	const expression = (content: string, offset: number, locals: Set<string>) => {
+		try {
+			const parsed = parseRequiredInlineJavaScript(`(${content})`);
+			const scopeTracker = new ScopeTracker();
+			walk(parsed.ast as OxcWalkInput, {
+				scopeTracker,
+				enter(node, parent) {
+					const current = toAstNode(node);
+					const member = parent ? toAstNode(parent) : undefined;
+					if (!current || !isIdentifier(current) || !['$locale', '$l'].includes(current.name)
+						|| !member || !isMemberExpression(member) || member.object !== current
+						|| locals.has(current.name) || scopeTracker.getDeclaration(current.name)) return;
+					references.add(offset - prefix.length + current.start - 1);
+				},
+			});
+		} catch {
+			// Unsupported expressions retain the normal injected binding path.
+		}
+	};
+	const visit = (node: Node, inherited: Set<string>) => {
+		if (node.type === 5 && node.content.type === 4) {
+			expression(node.content.loc.source, node.content.loc.start.offset, inherited);
+		}
+		if (node.type !== 1) return;
+		const locals = new Set(inherited);
+		for (const prop of node.props) {
+			if (prop.type !== 7) continue;
+			if (prop.name === 'for' && prop.forParseResult) {
+				const { source, value, key, index } = prop.forParseResult;
+				expression(source.loc.source, source.loc.start.offset, inherited);
+				for (const binding of [value, key, index]) {
+					for (const name of binding?.loc.source.match(/\$(?:locale|l)\b/g) ?? []) locals.add(name);
+				}
+			}
+			if (prop.name === 'slot') {
+				for (const name of prop.exp?.loc.source.match(/\$(?:locale|l)\b/g) ?? []) locals.add(name);
+			}
+		}
+		for (const prop of node.props) {
+			if (prop.type !== 7 || prop.name === 'for' || prop.name === 'slot') continue;
+			const scope = prop.name === 'if' || prop.name === 'else-if' ? inherited : locals;
+			if (prop.exp) expression(prop.exp.loc.source, prop.exp.loc.start.offset, scope);
+			if (prop.arg?.type === 4 && !prop.arg.isStatic) expression(prop.arg.loc.source, prop.arg.loc.start.offset, scope);
+		}
+		for (const child of node.children) visit(child, locals);
+	};
+	for (const node of ast.children) visit(node, bindings);
+	return references;
+}
+
+function rewriteTemplateLocalizerAccess(template: string, marker: string, bindings: Set<string>): string {
+	const references = templateLocaleReferences(template, bindings);
 	let next = '';
 	let cursor = 0;
 
@@ -371,7 +430,7 @@ function rewriteTemplateLocalizerAccess(template: string, marker: string): strin
 		const scope = match[1] as PublicLocaleScope | undefined;
 		const pathExpression = match[2];
 
-		if (start < cursor || !scope || !pathExpression) {
+		if (start < cursor || !scope || !pathExpression || !references.has(start)) {
 			continue;
 		}
 
@@ -390,7 +449,8 @@ function rewriteTemplateLocalizerAccess(template: string, marker: string): strin
 	return cursor === 0 ? template : next + template.slice(cursor);
 }
 
-function rewriteTemplateLocaleAccess(template: string, marker: string): string {
+function rewriteTemplateLocaleAccess(template: string, marker: string, bindings: Set<string>): string {
+	const references = templateLocaleReferences(template, bindings);
 	let next = '';
 	let cursor = 0;
 
@@ -398,7 +458,7 @@ function rewriteTemplateLocaleAccess(template: string, marker: string): string {
 		const start = match.index;
 		const scope = match[1] as PublicLocaleScope | undefined;
 
-		if (start < cursor || !scope) {
+		if (start < cursor || !scope || !references.has(start)) {
 			continue;
 		}
 

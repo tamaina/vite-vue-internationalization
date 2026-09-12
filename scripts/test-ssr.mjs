@@ -65,6 +65,8 @@ try {
 		assert.equal(await page.locator('#lazy').textContent(), locale === 'en-US' ? 'Lazy English' : '遅延日本語', JSON.stringify({ errors, manifest, html: await page.content() }));
 		assert.equal(await page.locator('#global').textContent(), locale === 'en-US' ? 'Global English' : '共通辞書');
 		assert.equal(await page.locator('#fallback').textContent(), '共通fallback');
+		assert.equal(await page.locator('#literal-text').textContent(), '$locale.sfc.title');
+		assert.equal(await page.locator('#literal-expression').textContent(), '$locale.sfc.title');
 		assert.equal(await page.evaluate(() => window.ssrContent === document.querySelector('#app').textContent), true);
 		assert.equal(await page.locator('#lazy').evaluate(element => getComputedStyle(element).color), 'rgb(60, 40, 20)');
 		assert.equal(await page.locator('button').textContent(), locale === 'en-US' ? 'English: 1 items' : '日本語: 1 件');
