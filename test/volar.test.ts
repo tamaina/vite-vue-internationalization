@@ -84,11 +84,48 @@ describe('volar plugin', () => {
 		});
 		expect(scriptCode).toContain('ComponentPublicInstance & { $locale: import("vite-vue-internationalization/runtime").LocaleScope<');
 		expect(scriptCode).toContain('$l: { env:');
-		expect(scriptCode).toContain('export default {} as typeof __VLS_export & { $locale: { hoge: string; count: string; }; $l: { hoge: () => string; count: (values: { n: import("vite-vue-internationalization/runtime").LocaleTemplateValue; }) => string; }; };');
+		expect(scriptCode).toContain('export default {} as typeof __VLS_export & { $locale: {\n');
 		expect(scriptCode).toContain('__VLS_ctx.$locale.sfc.hoge');
 		expect(scriptCode).toContain('__VLS_ctx.$l.sfc.count');
 		expect(scriptCode).toContain('// @ts-expect-error: ts-plugin(2339)\n( __VLS_ctx.$locale.sfc.noTranslation );');
 		expect(scriptSetupRaw?.trim()).toBe('const title = $locale.value.sfc.hoge;\nconst count = $l.value.sfc.count({ n: 1 });');
+	});
+
+	it.each(['', '<script setup lang="ts"></script>'])('preserves imported locale documentation with script %s', (scriptBlock) => {
+		const vueOptions = getDefaultCompilerOptions();
+		vueOptions.plugins = [withConfig(vueInternationalizationVolar, {
+			__moduleConfig: { primaryLocale: 'ja' },
+		})];
+		const plugin = createVueLanguagePlugin(ts, {}, vueOptions, String);
+		const source = `${scriptBlock}
+<locale locale="ja" lang="json">${JSON.stringify({ title: 'タイトル', nested: { text: '複数行\n閉じる */ 記号' }, count: 3 })}</locale>
+<locale locale="en" lang="json">{"title":"Title"}</locale>`;
+		const root = plugin.createVirtualCode?.(resolve('Messages.vue'), 'vue', ts.ScriptSnapshot.fromString(source), {} as never);
+		if (!root) throw new Error('Expected Vue virtual code.');
+		const script = [...forEachEmbeddedCode(root)]
+			.find((code) => code.id === 'script_ts')?.snapshot.getText(0, Number.MAX_SAFE_INTEGER);
+		if (!script) throw new Error('Expected generated TypeScript.');
+		const dir = mkdtempSync(resolve('node_modules/.vvi-hover-'));
+		try {
+			const file = resolve(dir, 'Messages.vue.ts');
+			writeFileSync(file, script);
+			const consumer = `import Messages from ${JSON.stringify(file)};
+Messages.$locale.title;
+Messages.$locale.nested.text;
+Messages.$locale.count;`;
+			expect(getQuickInfo(consumer, 'Messages.$locale.title')).toEqual({
+				documentation: 'Primary locale text:\nタイトル',
+				display: '(property) title: string',
+				tags: [],
+			});
+			expect(getQuickInfo(consumer, 'Messages.$locale.nested.text')).toMatchObject({
+				documentation: 'Primary locale text:\n複数行\n閉じる *\\/ 記号',
+				display: '(property) text: string',
+			});
+			expect(getQuickInfo(consumer, 'Messages.$locale.count')).toMatchObject({ display: '(property) count: number' });
+		} finally {
+			rmSync(dir, { recursive: true, force: true });
+		}
 	});
 
 	it('injects global setup bindings into SFCs without locale sources when enabled', () => {
@@ -232,7 +269,7 @@ describe('volar plugin', () => {
 			?.snapshot.getText(0, Number.MAX_SAFE_INTEGER);
 
 		expect(scriptCode).toContain('$l: { env: import("vite-vue-internationalization/runtime").LocaleLocalizerDictionary; sfc: { count:');
-		expect(scriptCode).not.toContain('Primary locale text:');
+		expect(scriptCode?.split('export default')[0]).not.toContain('Primary locale text:');
 		expect(scriptCode).not.toContain('@example');
 	});
 
