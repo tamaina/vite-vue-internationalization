@@ -207,6 +207,12 @@ export function vueInternationalization(options?: Partial<VueInternationalizatio
 			},
 			handler(code, id) {
 				const cleanId = id.split('?')[0] ?? id;
+				const query = new URLSearchParams(id.slice(cleanId.length + 1));
+
+				// These requests contain a block or an asset representation, not an SFC.
+				if (query.has('vue') || query.has('raw') || query.has('url')) {
+					return null;
+				}
 
 				if (!existsSync(cleanId)) {
 					return null;
@@ -526,6 +532,11 @@ function generateRuntimeModule(primaryLocale: string, locales: string[], message
 		`export const locales = ${JSON.stringify(locales)};`,
 		`export const localeLoaders = {\n  ${loaderEntries}\n};`,
 		'export function resolveInitialLocale() {',
+		'  const handedOff = typeof document !== "undefined" ? document.documentElement.getAttribute("data-vvi-locale") : null;',
+		'  if (handedOff !== null) {',
+		'    if (!locales.includes(handedOff)) throw new Error(`Unsupported SSR locale: ${handedOff}`);',
+		'    return handedOff;',
+		'  }',
 		'  if (typeof window !== "undefined") {',
 		'    const locale = new URL(window.location.href).searchParams.get("locale");',
 		'    if (locale && locales.includes(locale)) return locale;',
@@ -560,6 +571,11 @@ function generateInlineRuntimeModule(primaryLocale: string, locales: string[], m
 		`export const localeLoaders = {\n  ${loaderEntries}\n};`,
 		'export { Internationalization, createComponentLocale, createComponentLocalizer, defineInternationalization, setActiveInternationalization, useDateTimeFormat, useInternationalization, useLocale, useLocalizer, useNumberFormat };',
 		'export function resolveInitialLocale() {',
+		'  const handedOff = typeof document !== "undefined" ? document.documentElement.getAttribute("data-vvi-locale") : null;',
+		'  if (handedOff !== null) {',
+		'    if (!locales.includes(handedOff)) throw new Error(`Unsupported SSR locale: ${handedOff}`);',
+		'    return handedOff;',
+		'  }',
 		'  if (typeof window === "undefined") return primaryLocale;',
 		'  const locale = new URL(window.location.href).searchParams.get("locale");',
 		'  return locale && locales.includes(locale) ? locale : primaryLocale;',

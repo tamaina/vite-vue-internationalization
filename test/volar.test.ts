@@ -179,6 +179,26 @@ describe('volar plugin', () => {
 		expect(getCorruptedMappedSegments(source, scriptCode, scriptEmbeddedCode?.mappings ?? [])).toEqual([]);
 	});
 
+	it.each([true, false])('uses ICU argument types in script and template (documentation=%s)', (localizerDocumentation) => {
+		const vueCompilerOptions = getDefaultCompilerOptions();
+		const messages = { count: '{n, number}', choice: '{kind, select, yes {Yes} other {No}}', plural: '{n, plural, one {One} other {#}}' };
+		vueCompilerOptions.plugins = [withConfig(vueInternationalizationVolar, {
+			__moduleConfig: { primaryLocale: 'en', messageSyntax: 'icu', localizerDocumentation, global: { en: messages } },
+		})];
+		const plugin = createVueLanguagePlugin(ts, {}, vueCompilerOptions, String);
+		const source = `<template>{{ $l.sfc.count({ n: 1 }) }} {{ $l.env.choice({ kind: 'yes' }) }}</template>
+<script setup lang="ts">const count = $l.value.sfc.count({ n: 1 });</script>
+<locale locale="en" lang="json">${JSON.stringify(messages)}</locale>`;
+		const root = plugin.createVirtualCode?.(resolve('examples/vue/src/IcuTypes.vue'), 'vue', ts.ScriptSnapshot.fromString(source), {} as never);
+		if (!root) throw new Error('Expected Vue virtual code.');
+		const code = [...forEachEmbeddedCode(root)].find((item) => item.id === 'script_ts')?.snapshot.getText(0, Number.MAX_SAFE_INTEGER);
+		expect(getSemanticDiagnosticMessages(code)).toEqual([]);
+		const scriptInfo = getQuickInfo(code, '$l.value.sfc.count');
+		const templateInfo = getQuickInfo(code, '__VLS_ctx.$l.sfc.count');
+		expect(templateInfo?.display).toBe(scriptInfo?.display);
+		expect(templateInfo?.display).toContain('n:');
+	});
+
 	it('can skip verbose localizer documentation in generated editor types', () => {
 		const vueCompilerOptions = getDefaultCompilerOptions();
 		vueCompilerOptions.plugins = [

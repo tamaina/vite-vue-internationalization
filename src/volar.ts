@@ -380,10 +380,12 @@ function getGeneratedTypes(
 			? createLocalizerScopeType({
 				global: globalDictionary,
 				module: moduleDictionary,
+				messageSyntax: config.messageSyntax ?? 'vue',
 			}, globalTypeOptions)
 			: createLocalizerDocumentationScopeType({
 				global: globalDictionary,
 				module: moduleDictionary,
+				messageSyntax: config.messageSyntax ?? 'vue',
 			}, globalTypeOptions),
 		componentLocaleType: createComponentLocaleType({
 			module: moduleDictionary,
