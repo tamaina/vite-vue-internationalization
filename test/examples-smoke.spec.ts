@@ -165,8 +165,55 @@ for (const example of nuxtExamples) {
 		await expect(page.getByText(example.greetingText, { exact: true })).toBeVisible();
 		await expect(page.getByText(example.bodyText, { exact: true })).toBeVisible();
 		await expect(page.getByText(example.countText, { exact: true })).toBeVisible();
+		await page.getByRole('button', { name: '+1', exact: true }).click();
+		await expect(page.getByTestId('count')).toHaveText(example.url.includes('en-US') ? '4 items' : '項目が 4 件あります');
 
 		expect(problems).toEqual([]);
+	});
+}
+
+// Response interception changes Chromium's network-address-space classification;
+// use production for this case so it does not interfere with dev HMR WebSockets.
+for (const port of [3006]) {
+	test(`nuxt ${port} hydrates the server locale even if the browser URL changes`, async ({ page }) => {
+		const problems = collectPageProblems(page);
+		await page.route(`http://127.0.0.1:${port}/?locale=en-US`, async (route) => {
+			const response = await route.fetch();
+			const html = await response.text();
+			expect(html).toContain('VVI with Nuxt');
+			await route.fulfill({ response, body: html.replace('</body>', `<script>
+window.__vviSsrHeading = document.querySelector('h1');
+window.__vviSsrText = window.__vviSsrHeading.firstChild;
+history.replaceState(null, '', '/?locale=ja-JP');
+</script></body>`) });
+		});
+		await page.goto(`http://127.0.0.1:${port}/?locale=en-US`, { waitUntil: 'networkidle' });
+		await expect(page.locator('html')).toHaveAttribute('lang', 'en-US');
+		await expect(page.getByRole('heading', { level: 1 })).toHaveText('VVI with Nuxt');
+		expect(await page.evaluate(() => {
+			const state = window as unknown as { __vviSsrHeading: Node; __vviSsrText: Node };
+			return state.__vviSsrHeading === document.querySelector('h1') && state.__vviSsrText === document.querySelector('h1')?.firstChild;
+		})).toBe(true);
+		await page.getByRole('button', { name: '+1', exact: true }).click();
+		await expect(page.getByTestId('count')).toHaveText('4 items');
+		expect(problems).toEqual([]);
+	});
+}
+
+for (const port of [3005, 3006, 4175]) {
+	test(`SSR ${port} keeps concurrent locale responses separate`, async ({ request }) => {
+		await Promise.all(Array.from({ length: 12 }, async (_, index) => {
+			const locale = index % 2 ? 'en-US' : 'ja-JP';
+			const response = await request.get(`http://127.0.0.1:${port}/?locale=${locale}`);
+			expect(response.ok()).toBe(true);
+			const html = await response.text();
+			const expected = port === 4175
+				? locale === 'en-US' ? 'Email rendered on the backend' : 'バックエンドで描画したメール'
+				: locale === 'en-US' ? 'VVI with Nuxt' : 'Nuxt で VVI';
+			expect(html).toMatch(new RegExp(`<html[^>]*lang="${locale}"`));
+			expect(html).toContain(expected);
+			if (port === 4175) expect(html).not.toContain('<script');
+		}));
 	});
 }
 
@@ -190,7 +237,7 @@ function collectPageProblems(page: Page): string[] {
 	const problems: string[] = [];
 
 	page.on('console', (message) => {
-		if (message.type() === 'error') {
+		if (message.type() === 'error' || message.type() === 'warning' && /hydration/iu.test(message.text())) {
 			problems.push(`console error: ${message.text()}`);
 		}
 	});

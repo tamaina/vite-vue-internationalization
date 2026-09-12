@@ -16,8 +16,8 @@ defineInternationalization({
 </script>
 
 <script setup lang="ts">
-const route = useRoute();
-const currentLocale = computed(() => typeof route.query.locale === 'string' ? route.query.locale : 'ja-JP');
+const currentLocale = useState<string>('vvi-locale');
+const count = ref(3);
 </script>
 
 <template>
@@ -25,7 +25,8 @@ const currentLocale = computed(() => typeof route.query.locale === 'string' ? ro
     <h1>{{ $locale.sfc.title }}</h1>
     <p>{{ $l.sfc.script.greeting({ name: 'VVI' }) }}</p>
     <p>{{ $locale.sfc.description }}</p>
-    <p>{{ $l.sfc.count({ count: 3 }, 3) }}</p>
+    <p data-testid="count">{{ $l.sfc.count({ count }, count) }}</p>
+    <button type="button" @click="count++">+1</button>
     <nav>
       <a href="?locale=ja-JP" :aria-current="currentLocale === 'ja-JP' ? 'page' : undefined">
         日本語

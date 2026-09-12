@@ -96,6 +96,18 @@ The framework-independent `test/fixtures/ssr` fixture is exercised by
 `pnpm test:ssr` with a production client and server build and Chromium hydration.
 The Workers example above remains an HTML-only example.
 
+`pnpm examples:smoke` checks concurrent Japanese/English requests in the local
+Workers runtime and Nuxt development/production servers. Nuxt stores only the
+selected locale in its SSR payload with `useState('vvi-locale')`, then creates a
+new client instance from that value. Tests preserve the original DOM/text nodes
+even if the browser URL changes before hydration, and verify translated content
+after a click. Language links perform a full navigation.
+
+The Nuxt example supports `virtual` on both sides. Nuxt/Nitro owns the HTML entry,
+client manifest, preloads and route assets, so changing `buildStrategy` alone does
+not integrate `inline-chunks`. A Nuxt-specific adapter connecting those assets to
+the locale asset resolver is not included in this example.
+
 ### Scoped CSS with mixed strategies
 
 Use the same project root and configure `@vitejs/plugin-vue` in both builds with
@@ -132,6 +144,8 @@ entry and all preloaded chunks correspond to the selected locale. Unused dynamic
 imports are omitted; dynamic components included in the Vue SSR context bring in
 their JS and CSS. Cyclic static imports are deduplicated. Unsupported locales,
 unknown entries/modules and missing chunk mappings throw before emitting a page.
+Style-only modules resolve to stylesheets without preloading empty JS that Vite
+removed during CSS extraction.
 
 An optional `ssrManifest` accepts Vite's SSR manifest for additional module IDs.
 Its asset references must map to the VVI client graph; unmatched references throw

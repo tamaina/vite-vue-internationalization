@@ -89,6 +89,17 @@ fallbackやformat設定も両側で揃えてください。属性がない場合
 `pnpm test:ssr`は`test/fixtures/ssr`の本番client/serverビルドとChromiumでhydrationを検証します。
 上記Workers exampleはHTML生成専用の例です。
 
+`pnpm examples:smoke`はWorkersのローカルruntimeとNuxt dev/productionで日本語・英語の
+並行requestを検証します。Nuxt exampleは`useState('vvi-locale')`で確定localeだけを
+SSR payloadへ保存し、clientでもその値から新しいinstanceを作ります。URLの再判定による
+言語変更を避け、元のDOM/text nodeを保持したhydrationとクリック後の翻訳も検証します。
+言語リンクはページ全体をnavigationします。
+
+Nuxt exampleの対応構成はserver/clientとも`virtual`です。Nuxt/NitroはHTML entry、
+client manifest、preload、route assetを管理するため、`buildStrategy`を変えるだけでは
+`inline-chunks`への統合は完了しません。それらをlocale asset resolverへ接続する
+Nuxt専用adapterは、このexampleには含まれていません。
+
 ### mixed strategyとscoped CSS
 
 server/clientで同じプロジェクトrootを使い、両方の`@vitejs/plugin-vue`を
@@ -122,6 +133,7 @@ const assets = resolveLocaleAssets(clientManifest as LocaleAssetManifest, {
 `crossorigin`も指定し、属性はHTMLレンダラーでエスケープしてください。
 SSRで使用した遅延componentのJS/CSSと静的importを含め、未使用の遅延componentは先読みしません。
 循環importは重複排除します。未対応locale、未知のentry/module、欠落chunkは例外になります。
+CSSだけのmoduleはstylesheetとして解決し、Viteが削除した空のJSをpreloadしません。
 
 追加moduleの対応にはVite SSR manifestを`ssrManifest`へ渡せます。
 参照先がVVIのclient graphにない場合は、別localeのassetを黙って採用せず例外にします。

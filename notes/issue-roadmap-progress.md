@@ -555,3 +555,21 @@ HTML tests cover root and nested fallback asset injection. The final nested brow
 hash/SRI fixture passes: 10 new JS URLs, deterministic repeat, 4 SRI checks,
 two entries and lazy CSS with old assets retained. Typecheck and 75 focused tests
 pass; lint reports no errors (2 existing warnings).
+
+## Framework validation (#53 Phase C)
+
+Nuxt now hands off the request-selected locale through its `useState` SSR payload,
+and creates a fresh VVI instance from that value on the client. Navigation links
+use the selected state; an interactive plural counter verifies hydration events.
+The smoke suite adds concurrent locale requests to Nuxt dev/production and the
+local Workers runtime, plus production DOM/text identity when the browser URL is
+changed before hydration. The URL-response-interception case is production-only:
+Chromium classifies intercepted responses differently and blocks the dev HMR
+WebSocket through its local-network access policy. Normal dev hydration and
+concurrent request tests remain enabled, and hydration warnings remain failures.
+
+Workers has an explicit HTML-only README pointing to the independent mixed-strategy
+hydration fixture. Nuxt's example uses virtual/virtual; its ownership of HTML,
+client manifests, preload and route assets requires a separate Nuxt/Nitro adapter
+for inline-chunks. No such adapter is claimed here. Both framework smoke suites
+are included in CI. Public JP/EN backend docs describe these boundaries.
