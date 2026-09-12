@@ -305,3 +305,21 @@ do not infer a specific diagnostic or confirmed cause from this screenshot.
   real vue-tsc and the lifecycle subprocess pass. Cache lifecycle/measurement
   evidence is now available; original #39 diagnosis and external diagnostics #13
   still require separate work. No issue closure/push has occurred.
+
+## Eleventh increment: observable Volar adapter failures (#39)
+
+- Moved generated-only insertion/replacement into src/volarAdapter.ts. Operations
+  return whether an insertion point matched, preserve mapped user-code segments,
+  and handle generated text split across multiple segments.
+- The plugin detects missing context/setup or export insertion and emits a bounded,
+  once-per-file language-server warning identifying the incomplete shape. It does
+  not throw from resolveEmbeddedCode. JP/EN configuration docs describe this
+  handling and the actually tested Language Tools/vue-tsc 3.3.1 combination.
+- Four tests cover matching, nonmatching, mapped-user-code exclusion and a live
+  plugin callback reporting unsupported generated code without throwing/repeating.
+  Existing 12 Volar tests, typecheck, targeted lint, build, real vue-tsc and the
+  cache lifecycle subprocess pass. No unsupported-shape warnings appeared in the
+  real supported fixtures.
+- Original screenshot symptom/version information remains unknown; logging an
+  adapter failure is not an editor diagnostic or proof that the original report
+  is fixed. #39 still needs that evidence, plus the wider acceptance audit.

@@ -3,6 +3,7 @@ import { dirname } from 'node:path';
 import { resolve } from 'node:path';
 import { allCodeFeatures } from '@vue/language-core';
 import { BoundedCache } from './boundedCache.js';
+import { insertAfter, replaceFirstGeneratedOnly } from './volarAdapter.js';
 import {
 	createComponentLocaleType,
 	createComponentLocalizerType,
@@ -40,6 +41,7 @@ export type VueInternationalizationVolarPluginConfig = {
 
 const plugin: VueLanguagePlugin<VueInternationalizationVolarPluginConfig> = ({ config }) => {
 	const project = createVolarProjectCache();
+	const warned = new BoundedCache<string, true>(256);
 
 	return {
 		version: 2.2,
@@ -61,26 +63,30 @@ const plugin: VueLanguagePlugin<VueInternationalizationVolarPluginConfig> = ({ c
 
 			embeddedFile.content.unshift(declaration);
 			pushLocaleDiagnostics(embeddedFile.content, getLocaleDiagnostics(cache, ir.customBlocks, primaryLocale, moduleDictionary, fileName));
-			insertAfter(
+			const setupInserted = insertAfter(
 				embeddedFile.content,
 				'type __VLS_SetupExposed = import(\'vue\').ShallowUnwrapRef<{\n',
 				setupExposure,
 			);
-			insertAfter(
+			const contextExtended = insertAfter(
 				embeddedFile.content,
 				'...{} as import(\'vue\').ComponentPublicInstance,\n',
 				`...{} as { $locale: ${localeScopeType}; $l: ${localizerScopeType}; },\n`,
 			);
-			replaceFirstGeneratedOnly(
+			const contextReplaced = replaceFirstGeneratedOnly(
 				embeddedFile.content,
 				'const __VLS_ctx = {} as import(\'vue\').ComponentPublicInstance;',
 				`const __VLS_ctx = {} as import('vue').ComponentPublicInstance & { $locale: ${localeScopeType}; $l: ${localizerScopeType}; };`,
 			);
-			replaceFirstGeneratedOnly(
+			const exportExtended = replaceFirstGeneratedOnly(
 				embeddedFile.content,
 				'export default {} as typeof __VLS_export;',
 				`export default {} as typeof __VLS_export & { $locale: ${componentLocaleType}; $l: ${componentLocalizerType}; };`,
 			);
+			if ((!setupInserted && !contextExtended && !contextReplaced || !exportExtended) && !warned.has(fileName)) {
+				warned.set(fileName, true);
+				console.warn(`[vite-vue-internationalization/volar] Incomplete type injection for ${fileName}. Vue Language Tools generated an unsupported shape (setup=${setupInserted}, context=${contextExtended || contextReplaced}, export=${exportExtended}). Check the supported Vue Language Tools version.`);
+			}
 			applyTemplateTsDirectives(ir.content, embeddedFile.content);
 		},
 	};
@@ -164,46 +170,6 @@ function shouldInjectLocaleTypes(
 
 function hasLocaleSources(content: string, customBlocks: readonly { type: string }[]): boolean {
 	return customBlocks.some((block) => block.type === 'locale') || content.includes('defineInternationalization');
-}
-
-function insertAfter(content: Code[], marker: string, insertion: string): void {
-	replaceFirstGeneratedOnly(content, marker, `${marker}${insertion}`);
-}
-
-function replaceFirstGeneratedOnly(content: Code[], search: string, replacement: string): void {
-	let runStart = 0;
-
-	while (runStart < content.length) {
-		while (runStart < content.length && typeof content[runStart] !== 'string') {
-			runStart++;
-		}
-
-		let runEnd = runStart;
-
-		while (runEnd < content.length && typeof content[runEnd] === 'string') {
-			runEnd++;
-		}
-
-		if (runStart === runEnd) {
-			continue;
-		}
-
-		const text = content.slice(runStart, runEnd).join('');
-		const start = text.indexOf(search);
-
-		if (start >= 0) {
-			content.splice(
-				runStart,
-				runEnd - runStart,
-				text.slice(0, start),
-				replacement,
-				text.slice(start + search.length),
-			);
-			return;
-		}
-
-		runStart = runEnd + 1;
-	}
 }
 
 function insertGeneratedText(content: Code[], start: number, insertion: string): void {
