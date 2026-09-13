@@ -91,7 +91,9 @@ When message functions are extracted or emitted into inline chunks, their source
 - `virtual`: default strategy. Locale payloads are loaded through virtual modules and dynamic imports.
 - `inline-chunks`: build-only strategy. Localizable chunks are duplicated per locale and static `$locale` / `$l` access is replaced with locale-specific output where possible. Static accesses emit only the referenced value or subtree. Helper objects that survive static replacement (for example when passed through `unref` or another function) retain the locale-specific dictionary needed at runtime; unused objects can be pruned.
 
-In `inline-chunks`, the plugin still only starts from localizable Vue SFC modules. Ordinary `.ts` files are not rewritten as localization modules.
+In `inline-chunks`, Vue and ordinary TS/JS consumers of statically imported Vue dictionaries are transformed even without their own locale sources and with `sfcTransform: 'locale-sources'`. `Messages.$locale` / `Messages.$l` references use the imported SFC dictionary; this does not inject implicit bindings in the consumer. Both locale-only and regular Vue components are supported, including script-defined dictionaries. Dynamic keys, dictionary/localizer aliases, and destructuring retain runtime dictionaries/functions when needed. Component aliases retain the component dictionary path and original imports preserve side effects.
+
+Imported Vue paths use Vite resolution, including `resolve.alias`; TypeScript `paths` need a corresponding Vite resolver. Directly imported dictionaries are collected outside the initial scan scope too. Type-only, raw/url, external, and virtual imports are excluded. Barrel re-exports and dynamic imports are not traced for this optimization.
 
 ## Configuration
 

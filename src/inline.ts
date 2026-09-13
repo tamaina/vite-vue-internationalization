@@ -358,12 +358,14 @@ function collectRuntimeLocaleHelperReplacements(ast: AstNode): RuntimeLocaleHelp
 	return replacements;
 }
 
-export function rewriteInlineComponentLocaleAccess(code: string, filename: string, root: string, edits?: SourceEdits): string {
-	const imports = collectVueDefaultImports(code, filename, root);
+export function rewriteInlineComponentLocaleAccess(code: string, filename: string, root: string, edits?: SourceEdits, resolvedImports?: Map<string, string>): string {
+	const imports = resolvedImports ?? collectVueDefaultImports(code, filename, root);
 
 	if (imports.size === 0) {
 		return code;
 	}
+
+	if (!filename.endsWith('.vue')) return rewriteComponentLocaleAccess(code, imports, false, edits, filename);
 
 	return rewriteScriptComponentLocaleAccess(
 		rewriteTemplateComponentLocaleAccess(code, imports, edits),
@@ -373,7 +375,7 @@ export function rewriteInlineComponentLocaleAccess(code: string, filename: strin
 }
 
 /** Only expression identifiers can be translation references, never template text. */
-function templateLocaleReferences(template: string, bindings: Set<string>, names = new Set(['$locale', '$l'])): Set<number> {
+function templateLocaleReferences(template: string, bindings: Set<string>, names = new Set(['$locale', '$l']), onMember?: (member: AstMemberExpression, offset: number) => void): Set<number> {
 	const prefix = '<template>';
 	const ast = parseSfc(`${prefix}${template}</template>`).descriptor.template?.ast;
 	const references = new Set<number>();
@@ -392,6 +394,7 @@ function templateLocaleReferences(template: string, bindings: Set<string>, names
 						|| !member || !isMemberExpression(member) || member.object !== current
 						|| locals.has(current.name) || scopeTracker.getDeclaration(current.name)) return;
 					references.add(offset - prefix.length + current.start - 1);
+					onMember?.(member, offset - prefix.length - 1);
 				},
 			});
 		} catch {
@@ -552,7 +555,7 @@ function rewriteScriptComponentLocaleAccess(code: string, imports: Map<string, s
 	if (!descriptor.script && !descriptor.scriptSetup && !descriptor.template && descriptor.styles.length === 0 && descriptor.customBlocks.length === 0) {
 		return rewriteComponentLocaleAccess(code, imports, false, edits);
 	}
-	return replaceVueScriptContent(code, (script, _filename, child) => rewriteComponentLocaleAccess(script, imports, false, child), edits);
+	return replaceVueScriptContent(code, (script, _filename, child) => rewriteComponentLocaleAccess(script, imports, false, child, _filename), edits);
 }
 
 function rewriteTemplateComponentLocaleAccess(code: string, imports: Map<string, string>, edits?: SourceEdits): string {
@@ -681,90 +684,43 @@ function parseStaticPropertyKey(expression: string): string | undefined {
 	}
 }
 
-function rewriteComponentLocaleAccess(code: string, imports: Map<string, string>, htmlEscaped: boolean, edits?: SourceEdits): string {
-	let next = code;
-
-	for (const [name, moduleId] of imports) {
+function rewriteComponentLocaleAccess(code: string, imports: Map<string, string>, htmlEscaped: boolean, edits?: SourceEdits, parserFilename = 'inline.ts'): string {
+	const changes: SourceEdit[] = [];
+	const replaceMember = (member: AstMemberExpression, offset: number) => {
+		if (!isIdentifier(member.object)) return;
+		const moduleId = imports.get(member.object.name);
+		const property = member.computed ? getStringNodeValue(member.property) : isIdentifier(member.property) ? member.property.name : undefined;
+		if (!moduleId || property !== '$locale' && property !== '$l') return;
 		const marker = createInlineLocaleMarker(moduleId);
-		next = rewriteComponentLocalizerAccess(next, name, marker, htmlEscaped, edits);
-		next = rewriteComponentLocaleMemberAccess(next, name, marker, htmlEscaped, edits);
-	}
-
-	return next;
-}
-
-function rewriteComponentLocaleMemberAccess(code: string, name: string, marker: string, htmlEscaped: boolean, edits?: SourceEdits): string {
-	const references = componentReferenceOffsets(code, name, htmlEscaped);
-	const stringArgument = htmlEscaped ? createTemplateStringArgument : JSON.stringify;
-	const regexp = new RegExp(`\\b${escapeRegExp(name)}\\.\\$locale((?:\\.[A-Za-z_$][\\w$]*)+)`, 'g');
-
-	const changes: SourceEdit[] = [];
-	for (const match of code.matchAll(regexp)) {
-		if (references.has(match.index)) changes.push({ start: match.index, end: match.index + match[0].length, replacement: `__VUE_INTERNATIONALIZATION_INLINE_TEXT__(${stringArgument(marker)},${stringArgument(`sfc${match[1]}`)})` });
+		const helper = property === '$locale' ? INLINE_LOCALE_CALL : INLINE_LOCALIZERS_CALL;
+		const argument = htmlEscaped ? createTemplateStringArgument(marker) : JSON.stringify(marker);
+		changes.push({ start: offset + member.start, end: offset + member.end, replacement: `${helper}(${argument}).sfc` });
+	};
+	if (htmlEscaped) {
+		templateLocaleReferences(code, new Set(), new Set(imports.keys()), replaceMember);
+	} else {
+		const parsed = parseRequiredInlineJavaScript(code, parserFilename);
+		const scopeTracker = new ScopeTracker();
+		walk(parsed.ast as OxcWalkInput, {
+			scopeTracker,
+			enter(node) {
+				const member = toAstNode(node);
+				if (member && isMemberExpression(member) && isIdentifier(member.object)
+					&& scopeTracker.getDeclaration(member.object.name)?.type === 'Import') replaceMember(member, 0);
+			},
+		});
 	}
 	return applySourceEdits(code, changes, edits);
 }
 
-function rewriteComponentLocalizerAccess(code: string, name: string, marker: string, htmlEscaped: boolean, edits?: SourceEdits): string {
-	const references = componentReferenceOffsets(code, name, htmlEscaped);
-	const stringArgument = htmlEscaped ? createTemplateStringArgument : JSON.stringify;
-	const regexp = new RegExp(`\\b${escapeRegExp(name)}\\.\\$l((?:\\.[A-Za-z_$][\\w$]*)+)\\(`, 'g');
-	const changes: SourceEdit[] = [];
-	let cursor = 0;
-
-	for (const match of code.matchAll(regexp)) {
-		const start = match.index;
-		const pathExpression = match[1];
-
-		if (start < cursor || !pathExpression || !references.has(start)) {
-			continue;
-		}
-
-		const valuesStart = start + match[0].length;
-		const callEnd = findBalancedExpressionEnd(code, valuesStart, '(', ')');
-
-		if (callEnd === undefined) {
-			continue;
-		}
-
-		changes.push({ start, end: callEnd + 1, replacement: [
-			`__VUE_INTERNATIONALIZATION_INLINE_LOCALIZER__(${stringArgument(marker)},${stringArgument(`sfc${pathExpression}`)},`,
-			{ start: valuesStart, end: callEnd }, ')',
-		] });
-		cursor = callEnd + 1;
-	}
-
-	return applySourceEdits(code, changes, edits);
-}
-
-function componentReferenceOffsets(code: string, name: string, template: boolean): Set<number> {
-	if (template) return templateLocaleReferences(code, new Set(), new Set([name]));
-	const offsets = new Set<number>();
-	let parsed: ParsedInlineJavaScript;
-	try {
-		parsed = parseRequiredInlineJavaScript(code);
-	} catch {
-		return offsets;
-	}
-	const scopeTracker = new ScopeTracker();
-	walk(parsed.ast as OxcWalkInput, {
-		scopeTracker,
-		enter(node, parent) {
-			const current = toAstNode(node);
-			const member = parent ? toAstNode(parent) : undefined;
-			if (!current || !isIdentifier(current) || current.name !== name || !member
-				|| !isMemberExpression(member) || member.object !== current) return;
-			if (scopeTracker.getDeclaration(name)?.type === 'Import') offsets.add(current.start);
-		},
-	});
-	return offsets;
-}
-
-function collectVueDefaultImports(code: string, filename: string, root: string): Map<string, string> {
+/** Default imports to resolve through Vite before deciding whether they own a dictionary. */
+export function collectInlineComponentImports(code: string, filename: string): Map<string, string> {
 	const imports = new Map<string, string>();
-	const { descriptor } = parseSfc(code);
-	const scripts = [descriptor.script, descriptor.scriptSetup].filter(script => script != null).map(script => script.content);
-	if (scripts.length === 0 && !descriptor.template && descriptor.styles.length === 0 && descriptor.customBlocks.length === 0) scripts.push(code);
+	const descriptor = filename.endsWith('.vue') ? parseSfc(code).descriptor : undefined;
+	const scripts = descriptor
+		? [descriptor.script, descriptor.scriptSetup].filter(script => script != null).map(script => script.content)
+		: [code];
+	if (scripts.length === 0 && descriptor && !descriptor.template && descriptor.styles.length === 0 && descriptor.customBlocks.length === 0) scripts.push(code);
 	for (const script of scripts) {
 		const ast = ts.createSourceFile(filename, script, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
 		for (const statement of ast.statements) {
@@ -772,19 +728,29 @@ function collectVueDefaultImports(code: string, filename: string, root: string):
 			const clause = statement.importClause;
 			if (!clause || clause.isTypeOnly) continue;
 			const source = statement.moduleSpecifier.text;
-			if (!source.split('?', 1)[0]?.endsWith('.vue')) continue;
-			const resolved = resolveVueImport(filename, source);
-			if (!resolved || !isLocaleOnlyVueFile(resolved)) continue;
-			const moduleId = toRuntimeModuleId(resolved, root);
-			if (clause.name) imports.set(clause.name.text, moduleId);
+			if (clause.name) imports.set(clause.name.text, source);
 			if (clause.namedBindings && ts.isNamedImports(clause.namedBindings)) {
 				for (const binding of clause.namedBindings.elements) {
-					if (!binding.isTypeOnly && binding.propertyName?.text === 'default') imports.set(binding.name.text, moduleId);
+					if (!binding.isTypeOnly && binding.propertyName?.text === 'default') imports.set(binding.name.text, source);
 				}
 			}
 		}
 	}
+	return imports;
+}
 
+function collectVueDefaultImports(code: string, filename: string, root: string): Map<string, string> {
+	const imports = new Map<string, string>();
+	for (const [name, source] of collectInlineComponentImports(code, filename)) {
+		if (!source.endsWith('.vue')) continue;
+		const resolved = resolveVueImport(filename, source);
+		if (resolved && existsSync(resolved)) {
+			const content = readFileSync(resolved, 'utf8');
+			if (parseSfc(content).descriptor.customBlocks.some(block => block.type === 'locale') || content.includes('defineInternationalization')) {
+				imports.set(name, toRuntimeModuleId(resolved, root));
+			}
+		}
+	}
 	return imports;
 }
 
@@ -806,19 +772,6 @@ function toRuntimeModuleId(filename: string, root: string): string {
 	const relativePath = relative(resolve(root), filename);
 
 	return `/${normalizePath(relativePath)}`;
-}
-
-function isLocaleOnlyVueFile(filename: string): boolean {
-	if (!existsSync(filename)) {
-		return false;
-	}
-
-	const descriptor = parseSfc(readFileSync(filename, 'utf8'), { filename }).descriptor;
-
-	return !descriptor.template &&
-		!descriptor.script &&
-		!descriptor.scriptSetup &&
-		descriptor.customBlocks.some((block) => block.type === 'locale');
 }
 
 function createTemplateStringArgument(value: string): string {
@@ -926,7 +879,8 @@ export function inlineLocaleChunks(
 			}
 			if (edits && originalMap) {
 				const mapFileName = `${localizedChunk.fileName}.map`;
-				const comment = /\/\/# sourceMappingURL=\S+/.exec(localizedChunk.code);
+				// Only rewrite the emitted trailing comment, never matching text inside a string.
+				const comment = /^\/\/# sourceMappingURL=\S+(?=\s*$)/m.exec(localizedChunk.code);
 				const inlineMap = comment?.[0].includes('sourceMappingURL=data:') === true;
 				if (comment) localizedChunk.code = editSource(localizedChunk.code, comment.index, comment.index + comment[0].length, '', edits);
 				const map = edits.generateMap(originalMap, baseName(localizedChunk.fileName));
@@ -1657,8 +1611,8 @@ function parseInlineJavaScript(
 	}
 }
 
-function parseRequiredInlineJavaScript(code: string): ParsedInlineJavaScript {
-	const parsed = parseInlineJavaScript(code, undefined, {});
+function parseRequiredInlineJavaScript(code: string, parserFilename?: string): ParsedInlineJavaScript {
+	const parsed = parseInlineJavaScript(code, undefined, {}, parserFilename);
 
 	if (typeof parsed === 'string') {
 		throw new Error('Expected inline JavaScript parser to return an AST.');
@@ -1923,19 +1877,21 @@ function getLocalizerBindingCallReplacementOperation(
 	}
 
 	const access = readMemberAccess(node.callee);
+	const inlineCallAccess = access ? undefined : readInlineLocaleCallMemberAccess(node.callee, INLINE_LOCALIZERS_CALL);
+	const properties = access?.properties ?? inlineCallAccess?.properties;
 	const values = node.arguments.at(0);
 
-	if (!access) {
+	if (!properties) {
 		return undefined;
 	}
 
-	const marker = localizerBindings.get(access.root);
+	const marker = access ? localizerBindings.get(access.root) : inlineCallAccess?.marker;
 
 	if (!marker) {
 		return undefined;
 	}
 
-	const normalized = normalizeInlineAccessPath(access.properties);
+	const normalized = normalizeInlineAccessPath(properties);
 
 	if (!normalized) {
 		return undefined;
@@ -1948,7 +1904,7 @@ function getLocalizerBindingCallReplacementOperation(
 		start: node.start,
 		end: node.end,
 		marker,
-		properties: access.properties,
+		properties,
 		valuesExpression: values ? code.slice(values.start, values.end) : '{}',
 		pluralExpression: plural ? code.slice(plural.start, plural.end) : undefined,
 		sourceExpressions: { valuesExpression: values, pluralExpression: plural },
@@ -2262,12 +2218,12 @@ function readDynamicMemberAccess(code: string, node: AstNode): { root: string; s
 	};
 }
 
-function readInlineLocaleCallMemberAccess(node: AstNode): { marker: string; properties: string[] } | undefined {
+function readInlineLocaleCallMemberAccess(node: AstNode, helper = INLINE_LOCALE_CALL): { marker: string; properties: string[] } | undefined {
 	if (!isMemberExpression(node) || node.computed || !isIdentifier(node.property)) {
 		return undefined;
 	}
 
-	if (isCallExpression(node.object) && getCalleeName(node.object.callee) === INLINE_LOCALE_CALL) {
+	if (isCallExpression(node.object) && getCalleeName(node.object.callee) === helper) {
 		const marker = getStringArgument(node.object, 0);
 
 		return marker && isInlineLocaleMarker(marker)
@@ -2275,7 +2231,7 @@ function readInlineLocaleCallMemberAccess(node: AstNode): { marker: string; prop
 			: undefined;
 	}
 
-	const parent = readInlineLocaleCallMemberAccess(node.object);
+	const parent = readInlineLocaleCallMemberAccess(node.object, helper);
 
 	if (!parent) {
 		return undefined;
