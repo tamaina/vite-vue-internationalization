@@ -15,17 +15,17 @@ describe('SFC request boundaries', () => {
 		const plugin = vueInternationalization({ primaryLocale: 'en', sfcTransform });
 		const server = await createServer({ root, configFile: false, plugins: [plugin, vue()], server: { middlewareMode: true }, logLevel: 'silent' });
 		try {
-			const transform = (plugin.transform as { handler: (code: string, id: string) => unknown }).handler;
+			const transform = (plugin.transform as { handler: (code: string, id: string) => Promise<unknown> }).handler;
 			const load = plugin.load as (id: string) => string;
-			transform(source, filename);
+			await transform(source, filename);
 			const before = load('\0virtual:vite-vue-internationalization/locale/en');
 			expect(before).toContain('English title');
 			for (const query of ['vue&type=style&index=0&lang.css', 'vue&type=script', 'vue&type=template', 'vue&type=custom&blockType=locale', 'raw', 'url']) {
-				expect(transform('p { color: blue }', `${filename}?${query}`)).toBeNull();
+				expect(await transform('p { color: blue }', `${filename}?${query}`)).toBeNull();
 				expect(load('\0virtual:vite-vue-internationalization/locale/en')).toBe(before);
 			}
-			expect(transform(source, `${filename}?v=123`)).not.toBeNull();
-			transform('<template><p>removed</p></template>', filename);
+			expect(await transform(source, `${filename}?v=123`)).not.toBeNull();
+			await transform('<template><p>removed</p></template>', filename);
 			expect(load('\0virtual:vite-vue-internationalization/locale/en')).not.toContain('English title');
 		} finally {
 			await server.close();

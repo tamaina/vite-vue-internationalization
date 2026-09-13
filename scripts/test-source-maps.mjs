@@ -23,6 +23,14 @@ hello: "こんにちは {name}"
 items: {one: 一}
 </locale>
 <script setup>
+import Messages from './Messages.vue';
+const mapCommentText = '//# sourceMappingURL=keep-this-string';
+function importedFail() {
+  return Messages.$l.hello({name: (() => { throw new Error("map-imported-position"); })()});
+}
+function importedKeyFail() {
+  return Messages.$locale.items[(() => { throw new Error("map-imported-key-position"); })()];
+}
 function fail() {
   throw new Error("production-map-position");
 }
@@ -37,12 +45,13 @@ function nestedFail() {
 }
 </script>
 <template>
+  <span>{{ mapCommentText }}</span><button @click="importedFail">Imported</button><button @click="importedKeyFail">Imported key</button>
   <button @click="fail">{{ $locale.sfc.title }}</button>
   <button @click="argumentsFail">Arguments</button>
   <button @click="keyFail">Key</button>
   <button @click="nestedFail">Nested</button>
 </template>`;
-const labels = ['production-map-position', 'map-values-position', 'map-plural-position', 'map-key-position', 'map-nested-position'];
+const labels = ['production-map-position', 'map-values-position', 'map-plural-position', 'map-key-position', 'map-nested-position', 'map-imported-position', 'map-imported-key-position'];
 
 try {
 	mkdirSync(`${root}/node_modules`);
@@ -50,6 +59,7 @@ try {
 	writeFileSync(`${root}/index.html`, '<div id="app"></div><script type="module" src="/client.ts"></script>');
 	writeFileSync(`${root}/client.ts`, 'import {createApp} from "vue"; import App from "./App.vue"; createApp(App).mount("#app");');
 	writeFileSync(`${root}/App.vue`, source);
+	writeFileSync(`${root}/Messages.vue`, '<locale locale="en">hello: "Hello {name}"\nitems: {one: One}</locale><locale locale="ja">hello: "こんにちは {name}"\nitems: {one: 一}</locale>');
 	for (const buildStrategy of ['virtual', 'inline-chunks']) {
 		const outDir = `${root}/${buildStrategy}`;
 		await build({ root, configFile: false, logLevel: 'silent', plugins: [vueInternationalization({ primaryLocale: 'en', buildStrategy }), vue()], build: { outDir, minify, sourcemap } });
@@ -59,7 +69,8 @@ try {
 			const code = readFileSync(filename, 'utf8');
 			const error = /(?:new\s+)?Error\s*\(\s*["'`]production-map-position["'`]\s*\)/.exec(code);
 			if (!error) continue;
-			const mapFile = /\/\/# sourceMappingURL=(\S+)/.exec(code)?.[1];
+			assert.ok(code.includes('//# sourceMappingURL=keep-this-string'), 'source map comments inside strings must survive');
+			const mapFile = /^\/\/# sourceMappingURL=(\S+)(?=\s*$)/m.exec(code)?.[1];
 			if (sourcemap === 'hidden') assert.equal(mapFile, undefined);
 			else assert.ok(mapFile, `${buildStrategy}/${name}: missing sourceMappingURL`);
 			if (sourcemap === 'inline') assert.ok(mapFile.startsWith('data:'));

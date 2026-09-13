@@ -17,6 +17,7 @@ import {
 	replaceInlineLocaleHtml,
 	replaceInlineLocaleMarkers,
 	replaceInlineLocaleTextAccess,
+	collectInlineComponentImports,
 	rewriteInlineComponentLocaleAccess,
 	rewriteInlineLocaleTemplateAccess,
 	rewriteInlineRuntimeLocaleAccess,
@@ -257,7 +258,7 @@ export function vueInternationalization(options?: Partial<VueInternationalizatio
 			filter: {
 				id: /\.(?:vue|[cm]?[jt]sx?)(?:\?.*)?$/u,
 			},
-			handler(code, id) {
+			async handler(code, id) {
 				const state = getState(this);
 				const { globalMessages } = state;
 				const cleanId = id.split('?')[0] ?? id;
@@ -273,6 +274,24 @@ export function vueInternationalization(options?: Partial<VueInternationalizatio
 				}
 
 				const currentOptions = environmentOptions(this);
+				const importedDictionaries = new Map<string, string>();
+				if (command === 'build' && currentOptions.buildStrategy === 'inline-chunks' && /\$(?:locale|l)\b/.test(code)) {
+					for (const [name, source] of collectInlineComponentImports(code, cleanId)) {
+						const sourceQuery = new URLSearchParams(source.split('?')[1]);
+						if (['raw', 'url', 'vue'].some(key => sourceQuery.has(key))) continue;
+						const resolved = await this.resolve(source, cleanId, { skipSelf: true });
+						if (!resolved || resolved.external || resolved.id.startsWith('\0')) continue;
+						const [file, queryString] = resolved.id.split('?');
+						const resolvedQuery = new URLSearchParams(queryString);
+						if (!file.endsWith('.vue') || ['raw', 'url', 'vue'].some(key => resolvedQuery.has(key)) || !existsSync(file)) continue;
+						collectVueFile(state, file, readTextFile(file));
+						const moduleId = toRuntimeModuleId(file, root);
+						if (state.modules[moduleId]) {
+							this.addWatchFile(file);
+							importedDictionaries.set(name, moduleId);
+						}
+					}
+				}
 
 				if (!cleanId.endsWith('.vue')) {
 					if (command !== 'build' || currentOptions.buildStrategy !== 'inline-chunks') {
@@ -280,7 +299,8 @@ export function vueInternationalization(options?: Partial<VueInternationalizatio
 					}
 
 					const edits = new SourceEdits(code, cleanId);
-					const transformed = rewriteInlineRuntimeLocaleAccess(code, toRuntimeModuleId(cleanId, root), cleanId, edits);
+					const imported = rewriteInlineComponentLocaleAccess(code, cleanId, root, edits, importedDictionaries);
+					const transformed = rewriteInlineRuntimeLocaleAccess(imported, toRuntimeModuleId(cleanId, root), cleanId, edits);
 					return transformed === code
 						? null
 						: {
@@ -293,7 +313,7 @@ export function vueInternationalization(options?: Partial<VueInternationalizatio
 				const sourceEdits = new SourceEdits(code, cleanId);
 				const transformed =
 					command === 'build' && currentOptions.buildStrategy === 'inline-chunks'
-						? transformVueSfcInline(code, cleanId, root, currentOptions.primaryLocale, currentOptions.sfcTransform === 'all', sourceEdits)
+						? transformVueSfcInline(code, cleanId, root, currentOptions.primaryLocale, currentOptions.sfcTransform === 'all', sourceEdits, importedDictionaries)
 						: transformVueSfc(code, id, {
 							primaryLocale: currentOptions.primaryLocale,
 							global: globalMessages[currentOptions.primaryLocale],
@@ -356,7 +376,7 @@ export function vueInternationalization(options?: Partial<VueInternationalizatio
 			const { modules, globalMessages } = state;
 			const currentOptions = environmentOptions(this);
 			if (currentOptions.buildStrategy !== 'inline-chunks') return;
-			state.localeHash ??= createLocaleHash(['vvi-inline-output-v8', modules, globalMessages, currentOptions.primaryLocale, currentOptions.messageSyntax, this.environment.config.build.sourcemap]);
+			state.localeHash ??= createLocaleHash(['vvi-inline-output-v9', modules, globalMessages, currentOptions.primaryLocale, currentOptions.messageSyntax, this.environment.config.build.sourcemap]);
 			return state.localeHash;
 		},
 		generateBundle(_outputOptions, bundle) {
@@ -773,7 +793,7 @@ function toRuntimeModuleId(filename: string, root: string): string {
 	return `/${relativePath}`;
 }
 
-function transformVueSfcInline(code: string, filename: string, root: string, primaryLocale?: string, transformAll = false, edits?: SourceEdits): string | undefined {
+function transformVueSfcInline(code: string, filename: string, root: string, primaryLocale?: string, transformAll = false, edits?: SourceEdits, importedDictionaries?: Map<string, string>): string | undefined {
 	if (hasInjectedLocaleBinding(code) || code.includes('__VUE_INTERNATIONALIZATION_INLINE_LOCALE__')) {
 		return undefined;
 	}
@@ -781,13 +801,14 @@ function transformVueSfcInline(code: string, filename: string, root: string, pri
 	const parsed = parseVueLocales(code, filename);
 
 	if (!transformAll && parsed.blocks.length === 0 && Object.keys(parsed.scriptMessages).length === 0) {
-		return undefined;
+		const rewritten = rewriteInlineComponentLocaleAccess(code, filename, root, edits, importedDictionaries);
+		return rewritten === code ? undefined : rewritten;
 	}
 
 	const moduleId = toRuntimeModuleId(filename, root);
 	const marker = createInlineLocaleMarker(moduleId);
 	const stripped = stripLocaleBlocks(code, filename, edits);
-	const rewrittenComponentAccess = rewriteInlineComponentLocaleAccess(stripped, filename, root, edits);
+	const rewrittenComponentAccess = rewriteInlineComponentLocaleAccess(stripped, filename, root, edits, importedDictionaries);
 	const rewrittenLocaleAccess = rewriteInlineLocaleTemplateAccess(rewrittenComponentAccess, moduleId, edits);
 	const rewrittenRuntimeAccess = rewriteVueScriptRuntimeLocaleAccess(rewrittenLocaleAccess, moduleId, edits);
 	const moduleDictionary = getPrimaryLocaleDictionary(parsed.blocks, primaryLocale, parsed.scriptMessages);

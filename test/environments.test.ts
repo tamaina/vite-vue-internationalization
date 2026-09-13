@@ -15,13 +15,13 @@ it('keeps module collection and strategy separate for differently named environm
 	const browser = { environment: { name: 'browser', config: { consumer: 'client' } }, emitFile: vi.fn() };
 	const worker = { environment: { name: 'edge-worker', config: { consumer: 'server' } }, emitFile: vi.fn() };
 	const start = plugin.buildStart as (...args: never[]) => unknown;
-	const transform = (plugin.transform as { handler: (code: string, id: string) => { code: string } }).handler;
+	const transform = (plugin.transform as { handler: (code: string, id: string) => Promise<{ code: string }> }).handler;
 	const load = plugin.load as (id: string) => string;
 	try {
 		start.call(browser as never);
 		start.call(worker as never);
-		const clientOutput = transform.call(browser as never, source('client'), file);
-		const serverOutput = transform.call(worker as never, source('server'), file);
+		const clientOutput = await transform.call(browser as never, source('client'), file);
+		const serverOutput = await transform.call(worker as never, source('server'), file);
 		expect(clientOutput.code).toContain('__VUE_INTERNATIONALIZATION_INLINE_');
 		expect(serverOutput.code).not.toContain('__VUE_INTERNATIONALIZATION_INLINE_');
 		expect(serverOutput.code).toContain('virtual:vite-vue-internationalization');

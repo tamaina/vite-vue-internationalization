@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
@@ -861,10 +861,10 @@ describe('virtual module generation', () => {
 			'</template>',
 		].join('\n'), join(root, 'src/App.vue'), root);
 
-		expect(code).toContain('__VUE_INTERNATIONALIZATION_INLINE_TEXT__("__VUE_INTERNATIONALIZATION_INLINE__:L3NyYy9tZXNzYWdlcy52dWU=","sfc.title")');
-		expect(code).toContain('__VUE_INTERNATIONALIZATION_INLINE_LOCALIZER__("__VUE_INTERNATIONALIZATION_INLINE__:L3NyYy9tZXNzYWdlcy52dWU=","sfc.body",{ source: "script" })');
-		expect(code).toContain('__VUE_INTERNATIONALIZATION_INLINE_TEXT__(&quot;__VUE_INTERNATIONALIZATION_INLINE__:L3NyYy9tZXNzYWdlcy52dWU=&quot;,&quot;sfc.title&quot;)');
-		expect(code).toContain('__VUE_INTERNATIONALIZATION_INLINE_LOCALIZER__(&quot;__VUE_INTERNATIONALIZATION_INLINE__:L3NyYy9tZXNzYWdlcy52dWU=&quot;,&quot;sfc.body&quot;,{ source: "template" })');
+		expect(code).toContain('__VUE_INTERNATIONALIZATION_INLINE_LOCALE__("__VUE_INTERNATIONALIZATION_INLINE__:L3NyYy9tZXNzYWdlcy52dWU=").sfc.title');
+		expect(code).toContain('__VUE_INTERNATIONALIZATION_INLINE_LOCALIZERS__("__VUE_INTERNATIONALIZATION_INLINE__:L3NyYy9tZXNzYWdlcy52dWU=").sfc.body({ source: "script" })');
+		expect(code).toContain('__VUE_INTERNATIONALIZATION_INLINE_LOCALE__(&quot;__VUE_INTERNATIONALIZATION_INLINE__:L3NyYy9tZXNzYWdlcy52dWU=&quot;).sfc.title');
+		expect(code).toContain('__VUE_INTERNATIONALIZATION_INLINE_LOCALIZERS__(&quot;__VUE_INTERNATIONALIZATION_INLINE__:L3NyYy9tZXNzYWdlcy52dWU=&quot;).sfc.body({ source: "template" })');
 	});
 
 	it('only rewrites references to the imported locale component binding', () => {
@@ -884,8 +884,8 @@ describe('virtual module generation', () => {
 		const output = internals.rewriteInlineComponentLocaleAccess(code, join(root, 'App.vue'), root);
 		for (const fragment of [...preserved, ...template]) expect(output).toContain(fragment);
 		expect(output).toContain('content: \'Messages.$locale.title\'');
-		expect(output).toContain('const translated = __VUE_INTERNATIONALIZATION_INLINE_TEXT__');
-		expect(output).toContain('INLINE_TEXT__(&quot;');
+		expect(output).toContain('const translated = __VUE_INTERNATIONALIZATION_INLINE_LOCALE__');
+		expect(output).toContain('INLINE_LOCALE__(&quot;');
 	});
 	it('replaces locale-only SFC static access markers with localized values', () => {
 		const root = mkdtempSync(join(tmpdir(), 'vite-vue-internationalization-'));
@@ -975,7 +975,7 @@ describe('virtual module generation', () => {
 		expect(replaced).not.toContain('__VUE_INTERNATIONALIZATION_INLINE_');
 	});
 
-	it('does not rewrite static access for component SFC imports with script setup', () => {
+	it('rewrites component dictionaries while retaining the component import', () => {
 		const root = mkdtempSync(join(tmpdir(), 'vite-vue-internationalization-'));
 		mkdirSync(join(root, 'src'), { recursive: true });
 		writeFileSync(join(root, 'src/Panel.vue'), [
@@ -992,7 +992,57 @@ describe('virtual module generation', () => {
 		].join('\n');
 		const code = internals.rewriteInlineComponentLocaleAccess(input, join(root, 'src/App.vue'), root);
 
-		expect(code).toBe(input);
+		expect(code).toContain('import Panel from "./Panel.vue";');
+		expect(code).toContain('INLINE_LOCALE__');
+		expect(code).not.toContain('Panel.$locale');
+	});
+
+	it('uses the same dictionary fallback for imported dynamic and aliased access', () => {
+		const root = mkdtempSync(join(tmpdir(), 'vvi-imported-'));
+		try {
+			writeFileSync(join(root, 'Messages.vue'), '<locale locale="en">title: Title</locale>');
+			const source = `import Messages from './Messages.vue';
+const texts = Messages.$locale;
+const { nested } = Messages.$locale;
+const format = Messages.$l.greeting;
+const localizers = Messages.$l;
+let calls = 0;
+const key = () => { calls++; return 'title'; };
+const result = [Messages.$locale[key()], texts.title, nested.text,
+Messages['$locale']['title'], Messages.$l[formatKey]({ name: 'A' }),
+format({ name: 'B' }), localizers.greeting({ name: 'C' }), calls];`;
+			const imported = internals.rewriteInlineComponentLocaleAccess(source, join(root, 'consumer.ts'), root);
+			const own = source.replace('import Messages from \'./Messages.vue\';', '')
+				.replaceAll('Messages.$locale', '$locale.sfc').replaceAll('Messages[\'$locale\']', '$locale.sfc').replaceAll('Messages.$l', '$l.sfc');
+			const marker = internals.injectInlineLocaleBinding('<script setup></script>', '/Messages.vue');
+			const bindings = marker.slice(marker.indexOf('>') + 1, marker.lastIndexOf('</script>'));
+			for (const locale of ['ja', 'en']) {
+				const modules = { '/Messages.vue': {
+					ja: { title: 'タイトル', nested: { text: '本文' }, greeting: 'こんにちは {name}' },
+					en: { title: 'Title', nested: { text: 'Body' }, greeting: 'Hello {name}' },
+				} };
+				const replace = (input: string) => internals.replaceInlineLocaleMarkers(input, locale, 'ja', 'vue', modules, {});
+				const compiled = replace(imported).replace(/^import[^;]+;/, '');
+				expect(compiled).not.toContain('__VUE_INTERNATIONALIZATION_INLINE_');
+				const execute = (input: string) => new Function('formatKey', `${input};return result;`)('greeting');
+				expect(execute(compiled)).toEqual(execute(replace(bindings + own)));
+			}
+		} finally {
+			rmSync(root, { recursive: true, force: true });
+		}
+	});
+
+	it('rewrites imported dictionaries without injecting implicit local bindings', () => {
+		const root = mkdtempSync(join(tmpdir(), 'vvi-imported-'));
+		try {
+			writeFileSync(join(root, 'Messages.vue'), '<locale locale="en">title: Title</locale>');
+			const output = internals.transformVueSfcInline('<script setup>import Messages from \'./Messages.vue\';</script><template>{{ Messages.$locale[key] }}</template>', join(root, 'App.vue'), root, 'en');
+			expect(output).toContain('INLINE_LOCALE__');
+			expect(output).not.toContain('const $locale');
+			expect(output).not.toContain('const $l');
+		} finally {
+			rmSync(root, { recursive: true, force: true });
+		}
 	});
 
 	it('replaces compiled template attribute locale markers', () => {
