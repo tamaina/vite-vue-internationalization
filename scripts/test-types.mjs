@@ -2,14 +2,16 @@
 import { execFileSync, spawnSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import process from 'node:process';
 
+const packageRoot = resolve(process.env.VVI_PACKAGE_ROOT ?? '.');
 const fixture = resolve('test/fixtures/types');
 const source = readFileSync(`${fixture}/App.vue`, 'utf8');
 const config = JSON.parse(readFileSync(`${fixture}/tsconfig.json`, 'utf8'));
 const temporary = mkdtempSync(resolve('test/fixtures/types-run-'));
 try {
 	mkdirSync(`${temporary}/node_modules`);
-	symlinkSync(resolve('.'), `${temporary}/node_modules/vite-vue-internationalization`, 'dir');
+	symlinkSync(packageRoot, `${temporary}/node_modules/vite-vue-internationalization`, 'dir');
 	for (const localizerDocumentation of [true, false]) {
 		config.vueCompilerOptions.plugins[0].localizerDocumentation = localizerDocumentation;
 		writeFileSync(`${temporary}/tsconfig.json`, JSON.stringify(config));

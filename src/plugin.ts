@@ -3,6 +3,7 @@ import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from '
 import { dirname, relative, resolve } from 'node:path';
 import ts from 'typescript';
 import { SourceEdits } from './sourceEdits.js';
+import { collectHtmlEntries, addHtmlEntries } from './htmlEntries.js';
 import { augmentSsrManifest, createAssetManifest, finalizeAssetIntegrity, localizeAssetManifest } from './assetManifest.js';
 import {
 	augmentViteManifestJson,
@@ -40,7 +41,7 @@ import {
 import { readTextFile, scanVueFiles, type ScanVueFilesOptions } from './files.js';
 import { loadLocaleEnvDictionary, localeEnvWatchRoots, matchesLocaleEnvFile, type LocaleEnvSource, type LocaleEnvSources } from './localeEnv.js';
 import type { LocaleMessageSyntax } from './message.js';
-import type { Environment, Plugin } from 'vite';
+import type { Environment, LibraryOptions, Plugin } from 'vite';
 import type { LocaleAssetManifest } from './ssr.js';
 import type { LocaleDictionary } from './types.js';
 
@@ -100,12 +101,13 @@ export function vueInternationalization(options?: Partial<VueInternationalizatio
 		globalMessages: LocaleMessages;
 		inlineManifest?: InlineChunkManifest;
 		assetManifest?: LocaleAssetManifest;
+		cssModules: Map<string, string[]>;
 		scanned: boolean;
 		failed?: boolean;
 		icuFormatterReference?: string;
 		localeHash?: string;
 	};
-	const createState = (): State => ({ modules: {}, globalMessages: {}, scanned: false });
+	const createState = (): State => ({ modules: {}, globalMessages: {}, scanned: false, cssModules: new Map() });
 	const states = new WeakMap<Environment, State>();
 	const fallbackState = createState();
 	let root = process.cwd();
@@ -213,6 +215,7 @@ export function vueInternationalization(options?: Partial<VueInternationalizatio
 			state.localeHash = undefined;
 			state.inlineManifest = undefined;
 			state.assetManifest = undefined;
+			state.cssModules.clear();
 			state.icuFormatterReference = undefined;
 			scan(state);
 			const currentOptions = environmentOptions(this);
@@ -372,6 +375,15 @@ export function vueInternationalization(options?: Partial<VueInternationalizatio
 			return [];
 		},
 
+		renderChunk: {
+			order: 'post',
+			handler(_code, chunk) {
+				const ids = Object.keys(chunk.modules);
+				if (chunk.exports.length || !ids.length || !ids.every(id => /\.(?:css|less|sass|scss|styl|stylus|pcss|postcss)(?:$|\?)/iu.test(id) || /[?&]type=style(?:&|$)/u.test(id))) return;
+				const metadata = chunk as typeof chunk & { viteMetadata?: { importedCss?: Set<string> } };
+				for (const id of ids) getState(this).cssModules.set(relative(root, id).replaceAll('\\', '/'), [...(metadata.viteMetadata?.importedCss ?? [])]);
+			},
+		},
 		augmentChunkHash() {
 			const state = getState(this);
 			const { modules, globalMessages } = state;
@@ -380,63 +392,76 @@ export function vueInternationalization(options?: Partial<VueInternationalizatio
 			state.localeHash ??= createLocaleHash(['vvi-inline-output-v9', modules, globalMessages, currentOptions.primaryLocale, currentOptions.messageSyntax, this.environment.config.build.sourcemap]);
 			return state.localeHash;
 		},
-		generateBundle(_outputOptions, bundle) {
-			const state = getState(this);
-			const { modules, globalMessages } = state;
-			ensureScanned(state);
-			const currentOptions = environmentOptions(this);
-			const client = this.environment.config.consumer === 'client';
-			const assetManifest = client ? createAssetManifest(bundle, root, base, currentOptions.primaryLocale, getLocales(modules, globalMessages)) : undefined;
+		generateBundle: {
+			order: 'post',
+			handler(_outputOptions, bundle) {
+				const state = getState(this);
+				const { modules, globalMessages } = state;
+				ensureScanned(state);
+				const currentOptions = environmentOptions(this);
+				const client = this.environment.config.consumer === 'client';
+				const assetManifest = client ? createAssetManifest(bundle, root, base, currentOptions.primaryLocale, getLocales(modules, globalMessages)) : undefined;
+				const htmlEntries = client ? collectHtmlEntries(bundle, base) : [];
+				if (assetManifest) {
+					for (const [module, css] of state.cssModules) {
+						if (Object.hasOwn(assetManifest.modules, module)) continue;
+						const key = `css:${module}`;
+						assetManifest.chunks[key] = { file: key, cssOnly: true, imports: [], dynamicImports: [], css };
+						assetManifest.modules[module] = [key];
+					}
+				}
 
-			if (currentOptions.buildStrategy === 'inline-chunks') {
-				state.inlineManifest = inlineLocaleChunks(
-					bundle as Record<string, unknown>,
-					getLocales(modules, globalMessages),
-					currentOptions.primaryLocale,
-					modules,
-					globalMessages,
-					currentOptions.messageSyntax,
-					{
+				if (currentOptions.buildStrategy === 'inline-chunks') {
+					state.inlineManifest = inlineLocaleChunks(
+						bundle as Record<string, unknown>,
+						getLocales(modules, globalMessages),
+						currentOptions.primaryLocale,
+						modules,
+						globalMessages,
+						currentOptions.messageSyntax,
+						{
+							base,
+							icuFormatterFile: state.icuFormatterReference ? this.getFileName(state.icuFormatterReference) : undefined,
+							emitAsset: asset => { this.emitFile({ type: 'asset', fileName: asset.fileName, source: asset.source }); },
+							emitChunk: chunk => {
+								this.emitFile({
+									type: 'asset',
+									fileName: chunk.fileName,
+									source: chunk.code,
+								});
+							},
+						},
+					);
+					inlineLocaleHtml(bundle as Record<string, unknown>, state.inlineManifest, {
 						base,
-						icuFormatterFile: state.icuFormatterReference ? this.getFileName(state.icuFormatterReference) : undefined,
-						emitAsset: asset => { this.emitFile({ type: 'asset', fileName: asset.fileName, source: asset.source }); },
-						emitChunk: chunk => {
+						emitAsset: asset => {
 							this.emitFile({
 								type: 'asset',
-								fileName: chunk.fileName,
-								source: chunk.code,
+								fileName: asset.fileName,
+								source: asset.source,
 							});
 						},
-					},
-				);
-				inlineLocaleHtml(bundle as Record<string, unknown>, state.inlineManifest, {
-					base,
-					emitAsset: asset => {
-						this.emitFile({
-							type: 'asset',
-							fileName: asset.fileName,
-							source: asset.source,
-						});
-					},
-				});
-			}
-			if (assetManifest) {
-				if (state.inlineManifest) localizeAssetManifest(assetManifest, state.inlineManifest);
-				state.assetManifest = assetManifest;
-				this.emitFile({ type: 'asset', fileName: '.vite/internationalization-manifest.json', source: JSON.stringify(assetManifest, null, 2) + '\n' });
-			}
+					});
+				}
+				if (assetManifest) {
+					if (state.inlineManifest) localizeAssetManifest(assetManifest, state.inlineManifest);
+					addHtmlEntries(assetManifest, htmlEntries);
+					state.assetManifest = assetManifest;
+					this.emitFile({ type: 'asset', fileName: '.vite/internationalization-manifest.json', source: JSON.stringify(assetManifest, null, 2) + '\n' });
+				}
+			},
 		},
 		writeBundle(outputOptions, bundle) {
 			const state = getState(this);
 			const outputDir = resolve(root, outputOptions.dir ?? dirname(outputOptions.file ?? 'dist/index.js'));
+			if (state.assetManifest) {
+				finalizeAssetIntegrity(state.assetManifest, outputDir, bundle, this.environment.config.build.cssCodeSplit, aggregateCssName(root, this.environment.config.build.lib));
+				writeFileSync(resolve(outputDir, '.vite/internationalization-manifest.json'), JSON.stringify(state.assetManifest, null, 2) + '\n');
+			}
 			if (state.inlineManifest) {
 				rewriteWrittenHtml(outputDir, state.inlineManifest, base);
 				const manifestOption = this.environment.config.build.manifest;
-				if (manifestOption) rewriteWrittenViteManifest(outputDir, state.inlineManifest, typeof manifestOption === 'string' ? manifestOption : '.vite/manifest.json');
-			}
-			if (state.assetManifest) {
-				finalizeAssetIntegrity(state.assetManifest, outputDir, bundle);
-				writeFileSync(resolve(outputDir, '.vite/internationalization-manifest.json'), JSON.stringify(state.assetManifest, null, 2) + '\n');
+				if (manifestOption) rewriteWrittenViteManifest(outputDir, state.inlineManifest, typeof manifestOption === 'string' ? manifestOption : '.vite/manifest.json', root, state.assetManifest);
 			}
 			const ssrManifestOption = this.environment.config.build.ssrManifest;
 			const ssrManifestPath = resolve(outputDir, typeof ssrManifestOption === 'string' ? ssrManifestOption : '.vite/ssr-manifest.json');
@@ -855,11 +880,11 @@ function rewriteWrittenHtml(outDir: string, manifest: InlineChunkManifest, base:
 	}
 }
 
-function rewriteWrittenViteManifest(outDir: string, manifest: InlineChunkManifest, manifestFile: string): void {
+function rewriteWrittenViteManifest(outDir: string, manifest: InlineChunkManifest, manifestFile: string, root: string, clientManifest?: LocaleAssetManifest): void {
 	const file = resolve(outDir, manifestFile);
 	if (!existsSync(file)) return;
 	const source = readFileSync(file, 'utf8');
-	const next = augmentViteManifestJson(source, manifest);
+	const next = augmentViteManifestJson(source, manifest, root, clientManifest);
 	if (next !== source) writeFileSync(file, next);
 }
 
@@ -885,4 +910,22 @@ function findHtmlFiles(dir: string): string[] {
 	}
 
 	return files;
+}
+
+/** Follows Vite's aggregate CSS asset name, including library-mode overrides. */
+function aggregateCssName(root: string, lib: false | LibraryOptions): string {
+	if (!lib) return 'style.css';
+	if (typeof lib.cssFileName === 'string') return `${lib.cssFileName}.css`;
+	if (typeof lib.fileName === 'string') return `${lib.fileName}.css`;
+	let directory = root;
+	for (;;) {
+		const path = resolve(directory, 'package.json');
+		if (existsSync(path)) {
+			const { name } = JSON.parse(readTextFile(path)) as { name?: string };
+			if (name) return `${name.split('/').at(-1)}.css`;
+		}
+		const parent = dirname(directory);
+		if (parent === directory) return 'style.css';
+		directory = parent;
+	}
 }

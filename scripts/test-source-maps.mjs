@@ -6,6 +6,7 @@ import { SourceMap } from 'node:module';
 import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { build } from 'vite';
+import { parseSync } from 'rolldown/utils';
 import vue from '@vitejs/plugin-vue';
 import { vueInternationalization } from '../dist/index.js';
 
@@ -25,6 +26,9 @@ items: {one: 一}
 <script setup>
 import Messages from './Messages.vue';
 const mapCommentText = '//# sourceMappingURL=keep-this-string';
+const rawMapCommentText = String.raw\`before
+//# sourceMappingURL=keep-this-raw-string
+after\`;
 function importedFail() {
   return Messages.$l.hello({name: (() => { throw new Error("map-imported-position"); })()});
 }
@@ -45,7 +49,7 @@ function nestedFail() {
 }
 </script>
 <template>
-  <span>{{ mapCommentText }}</span><button @click="importedFail">Imported</button><button @click="importedKeyFail">Imported key</button>
+  <span>{{ mapCommentText }} {{ rawMapCommentText }}</span><button @click="importedFail">Imported</button><button @click="importedKeyFail">Imported key</button>
   <button @click="fail">{{ $locale.sfc.title }}</button>
   <button @click="argumentsFail">Arguments</button>
   <button @click="keyFail">Key</button>
@@ -70,7 +74,9 @@ try {
 			const error = /(?:new\s+)?Error\s*\(\s*["'`]production-map-position["'`]\s*\)/.exec(code);
 			if (!error) continue;
 			assert.ok(code.includes('//# sourceMappingURL=keep-this-string'), 'source map comments inside strings must survive');
-			const mapFile = /^\/\/# sourceMappingURL=(\S+)(?=\s*$)/m.exec(code)?.[1];
+			assert.ok(code.includes('before\n//# sourceMappingURL=keep-this-raw-string\nafter'), 'multiline raw string bytes must survive');
+			const mapComment = parseSync(name, code).comments.findLast(comment => comment.type === 'Line' && comment.value.startsWith('# sourceMappingURL=') && code.slice(comment.end).trim() === '');
+			const mapFile = mapComment?.value.slice('# sourceMappingURL='.length);
 			if (sourcemap === 'hidden') assert.equal(mapFile, undefined);
 			else assert.ok(mapFile, `${buildStrategy}/${name}: missing sourceMappingURL`);
 			if (sourcemap === 'inline') assert.ok(mapFile.startsWith('data:'));

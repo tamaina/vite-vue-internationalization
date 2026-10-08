@@ -57,6 +57,9 @@ export function resolveLocaleAssets(manifest: LocaleAssetManifest, options: Reso
 	if ((manifest.version as unknown) !== 1) throw new Error('Unsupported VVI asset manifest version.');
 	if (!manifest.locales.includes(options.locale)) throw new Error(`Unsupported locale "${options.locale}".`);
 	const entryKey = own(manifest.entries, normalizeModule(options.entry)) ?? (Object.hasOwn(manifest.chunks, options.entry) ? options.entry : undefined);
+	if (!entryKey && /\.html?$/iu.test(options.entry) && own(manifest.modules, normalizeModule(options.entry))) {
+		throw new Error(`HTML client entry "${options.entry}" cannot be resolved as one SSR hydration entry: it contains multiple independent or unsupported module scripts. Use a client entry module with one executable script, or render the original Vite HTML.`);
+	}
 	if (!entryKey) throw new Error(`Client entry "${options.entry}" is not in the VVI asset manifest.`);
 	if (own(manifest.chunks, entryKey)?.cssOnly) throw new Error('A CSS-only asset cannot be used as the hydration entry.');
 	const base = options.base ?? manifest.base;
@@ -92,8 +95,8 @@ export function resolveLocaleAssets(manifest: LocaleAssetManifest, options: Reso
 		visited.add(key);
 		const result = selected(key);
 		if (key !== entryKey && !result.chunk.cssOnly) preloads.set(result.asset.file, result.asset);
-		for (const css of result.chunk.css) styles.set(css, asset(css));
 		for (const dependency of result.chunk.imports) visit(dependency);
+		for (const css of result.chunk.css) styles.set(css, asset(css));
 	}
 
 	visit(entryKey);

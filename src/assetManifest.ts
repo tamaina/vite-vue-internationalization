@@ -17,7 +17,7 @@ export function createAssetManifest(bundle: OutputBundle, root: string, base: st
 			imports: [...chunk.imports], dynamicImports: [...chunk.dynamicImports], css: [...(metadata.viteMetadata?.importedCss ?? [])],
 		};
 		const moduleIds = Object.keys(chunk.modules);
-		if (manifest.chunks[chunk.fileName].css.length && chunk.exports.length === 0 && moduleIds.length && moduleIds.every(id => /\.(?:css|less|sass|scss|styl|stylus|pcss|postcss)(?:$|\?)/iu.test(id) || /[?&]type=style(?:&|$)/u.test(id))) manifest.chunks[chunk.fileName].cssOnly = true;
+		if (chunk.exports.length === 0 && moduleIds.length && moduleIds.every(id => /\.(?:css|less|sass|scss|styl|stylus|pcss|postcss)(?:$|\?)/iu.test(id) || /[?&]type=style(?:&|$)/u.test(id))) manifest.chunks[chunk.fileName].cssOnly = true;
 		if (chunk.isEntry && chunk.facadeModuleId) manifest.entries[moduleId(chunk.facadeModuleId)] = chunk.fileName;
 		for (const id of Object.keys(chunk.modules)) (manifest.modules[moduleId(id)] ??= []).push(chunk.fileName);
 	}
@@ -48,8 +48,8 @@ export function augmentSsrManifest(source: string, manifest: LocaleAssetManifest
 			const chunk = manifest.chunks[key];
 			const selected = chunk.locales?.[manifest.primaryLocale] ?? chunk;
 			if (!chunk.cssOnly) files.add(selected.file);
-			for (const css of chunk.css) files.add(css);
 			for (const dependency of chunk.imports) visit(dependency);
+			for (const css of chunk.css) files.add(css);
 		}
 
 		for (const key of chunks) visit(key);
@@ -59,12 +59,17 @@ export function augmentSsrManifest(source: string, manifest: LocaleAssetManifest
 }
 
 /** Hashes final written bytes, after Vite's remaining output hooks. */
-export function finalizeAssetIntegrity(manifest: LocaleAssetManifest, outputDir: string, bundle: OutputBundle): void {
+export function finalizeAssetIntegrity(manifest: LocaleAssetManifest, outputDir: string, bundle: OutputBundle, cssCodeSplit = true, cssBundleName = 'style.css'): void {
+	// Match Vite's named aggregate stylesheet, not unrelated CSS imported with ?url.
+	const aggregateCss = cssCodeSplit ? [] : Object.values(bundle).filter(asset => asset.type === 'asset' && asset.names.includes(cssBundleName)).map(asset => asset.fileName);
 	for (const chunk of Object.values(manifest.chunks)) {
+		chunk.css = [...new Set([...aggregateCss, ...chunk.css])];
+		for (const css of chunk.css) {
+			if (!Object.hasOwn(bundle, css) || !existsSync(resolve(outputDir, css))) throw new Error(`Missing CSS output "${css}".`);
+		}
 		if (chunk.cssOnly) {
 			if (Object.hasOwn(bundle, chunk.file)) delete chunk.cssOnly;
 			else {
-				for (const css of chunk.css) if (!Object.hasOwn(bundle, css)) throw new Error(`Missing CSS output "${css}".`);
 				continue;
 			}
 		}

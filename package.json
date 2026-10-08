@@ -75,6 +75,7 @@
     "test:editor": "pnpm build:editor && node scripts/test-editor.mjs",
     "package:editor": "pnpm build:editor && node scripts/package-editor.mjs",
     "benchmark:delivery": "pnpm build && node scripts/benchmark-delivery.mjs",
+    "test:client-graph": "pnpm build && node scripts/test-client-graph.mjs",
     "test:asset-preloads": "pnpm build && node scripts/test-asset-preloads.mjs"
   },
   "peerDependencies": {

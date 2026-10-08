@@ -135,6 +135,8 @@ SSRで使用した遅延componentのJS/CSSと静的importを含め、未使用�
 循環importは重複排除します。未対応locale、未知のentry/module、欠落chunkは例外になります。
 CSSだけのmoduleはstylesheetとして解決し、Viteが削除した空のJSをpreloadしません。
 
+HTML entry は Vite の最終出力に実行可能な module script が一つある場合に対応します。複数の HTML が同じ JS を共有する構成も対応します。同じ script の重複参照、CSS-only 出力、modulepreload、静的依存は独立した entry として数えません。複数の独立した module script（または外部／async module script）を含む HTML は、一つの hydration entry として解決できないため例外になります。通常の client ビルドでは元の script 要素と独立した実行を維持します。SSR では一つの client entry module を指定するか、元の Vite HTML を描画してください。
+
 追加moduleの対応にはVite SSR manifestを`ssrManifest`へ渡せます。
 参照先がVVIのclient graphにない場合は、別localeのassetを黙って採用せず例外にします。
 通常のVue SSR contextはVVI自身のmodule mapで解決できます。

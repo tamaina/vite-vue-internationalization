@@ -157,6 +157,8 @@ root URL, for example `https://example.com/application/`. This is independent of
 the current route, so `/application/nested/page` does not change asset resolution.
 A `base` override also supports a root-relative prefix or absolute CDN URL.
 
+An HTML entry is supported when Vite’s final output has one executable module script. Multiple HTML pages may share that script. Duplicate references to the same script, CSS-only outputs, modulepreload hints and static dependencies do not count as independent entries. HTML with multiple independent module scripts (or external/async module scripts) cannot resolve to a single hydration entry and throws an actionable error. Ordinary client builds preserve the original script elements and independent execution. For SSR, supply one client entry module or render the original Vite HTML.
+
 ### Environment builds
 
 `buildStrategy: 'inline-chunks'` selects the client optimization. Environments

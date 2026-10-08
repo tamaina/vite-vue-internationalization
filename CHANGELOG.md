@@ -2,6 +2,8 @@
 
 ### Changes
 
+- fix: Preserve linked-message cycle handling, final Vite client/CSS/preload mappings, SSR stylesheet cascade, and source-map comments inside multiline strings. Reject multi-script HTML entries in the single-entry SSR resolver while preserving ordinary client execution.
+
 - feat: Add dependency-free SSR locale asset resolution and per-environment locale refresh, with Vue SSR and Nuxt integration examples.
 - feat: Add VS Code diagnostics and message highlighting for locale values, and bound Volar caches to file revisions.
 - feat: Show primary-locale translation text as hover documentation for imported Vue SFC dictionaries, and unify their inline-chunks dictionary expansion.
