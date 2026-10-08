@@ -60,6 +60,7 @@
     "lint": "eslint .",
     "prepublishOnly": "pnpm test && pnpm typecheck && pnpm lint && pnpm build",
     "test": "vitest run",
+    "test:asset-preloads": "pnpm build && node scripts/test-asset-preloads.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "peerDependencies": {

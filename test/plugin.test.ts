@@ -1291,7 +1291,7 @@ describe('virtual module generation', () => {
 
 		expect(bundle['assets/App.ja-JP.js'].code).toContain('Promise.resolve({})');
 		expect(bundle['assets/App.ja-JP.js'].code).toContain('"assets/style.css"');
-		expect(bundle['assets/App.ja-JP.js'].code).toContain('"assets/font.woff2"');
+		expect(bundle['assets/App.ja-JP.js'].code).not.toContain('font.woff2');
 		expect(bundle['assets/App.ja-JP.js'].code).not.toContain('style-proxy');
 	});
 

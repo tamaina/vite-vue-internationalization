@@ -207,6 +207,12 @@ export function vueInternationalization(options?: Partial<VueInternationalizatio
 			},
 			handler(code, id) {
 				const cleanId = id.split('?')[0] ?? id;
+				const query = new URLSearchParams(id.slice(cleanId.length + 1));
+
+				// These requests contain a block or an asset representation, not an SFC.
+				if (query.has('vue') || query.has('raw') || query.has('url')) {
+					return null;
+				}
 
 				if (!existsSync(cleanId)) {
 					return null;
