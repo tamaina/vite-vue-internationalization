@@ -2,7 +2,8 @@
 
 ### Changes
 
--
+- fix: Exclude images and fonts from inline chunk JavaScript preloads while preserving CSS and JavaScript dependencies.
+- fix: Preserve SFC dictionaries when Vue block, raw, and URL subrequests are transformed.
 
 
 ## 1.1.3

@@ -20,7 +20,7 @@ describe('SFC request boundaries', () => {
 			await transform(source, filename);
 			const before = load('\0virtual:vite-vue-internationalization/locale/en');
 			expect(before).toContain('English title');
-			for (const query of ['vue&type=style&index=0&lang.css', 'vue&type=script', 'vue&type=template', 'vue&type=custom&blockType=locale', 'raw', 'url']) {
+			for (const query of ['vue&type=style&index=0&lang.css', 'vue&type=script', 'vue&type=script&setup=true&lang.ts', 'vue&type=template', 'vue&type=custom&blockType=locale', 'raw', 'url']) {
 				expect(await transform('p { color: blue }', `${filename}?${query}`)).toBeNull();
 				expect(load('\0virtual:vite-vue-internationalization/locale/en')).toBe(before);
 			}

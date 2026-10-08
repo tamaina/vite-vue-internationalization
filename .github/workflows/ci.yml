@@ -58,3 +58,4 @@ jobs:
         with:
           name: vvi-delivery-benchmark
           path: notes/benchmarks/delivery-comparison.json
+      - run: node scripts/test-asset-preloads.mjs

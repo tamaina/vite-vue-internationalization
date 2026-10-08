@@ -1271,9 +1271,8 @@ function createInlineChunkReferenceMap(
 			dependencies.add(css);
 		}
 
-		for (const asset of chunk.chunk.viteMetadata?.importedAssets ?? []) {
-			dependencies.add(asset);
-		}
+		// Vite's async preload helper treats every non-CSS dependency as a
+		// JavaScript module. Images and fonts must be loaded by their consumers.
 
 		for (const importedFileName of chunk.originalImports) {
 			dependencies.add(localizeFileName(importedFileName, locale));
