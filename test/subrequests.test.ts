@@ -42,16 +42,16 @@ it.each(['component.ts', 'component.js'])('rewrites executable external Vue scri
 		writeFileSync(filename, source);
 		const plugin = vueInternationalization({ primaryLocale: 'en', buildStrategy: 'inline-chunks' });
 		await resolveConfig({ root, configFile: false, plugins: [plugin] }, 'build');
-		const transform = (plugin.transform as { handler: (code: string, id: string) => { code: string } | null }).handler;
+		const transform = (plugin.transform as { handler: (code: string, id: string) => Promise<{ code: string } | null> }).handler;
 		const extension = name.split('.').at(-1);
 		for (const query of ['', '?v=123', `?vue&type=script&src=true&lang.${extension}`]) {
-			const result = transform(source, `${filename}${query}`);
+			const result = await transform(source, `${filename}${query}`);
 			expect(result, query).not.toBeNull();
 			expect(result?.code).toContain('__VUE_INTERNATIONALIZATION_INLINE_LOCALE__');
 			expect(result?.code).not.toContain('useLocale(import.meta.url)');
 		}
 		for (const query of ['?raw', '?url', '?vue&type=script&src=true&raw', '?vue&type=script&src=true&url']) {
-			expect(transform(source, `${filename}${query}`)).toBeNull();
+			expect(await transform(source, `${filename}${query}`)).toBeNull();
 		}
 	} finally {
 		rmSync(root, { recursive: true, force: true });
