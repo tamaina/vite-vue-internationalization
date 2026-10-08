@@ -137,6 +137,8 @@ CSSだけのmoduleはstylesheetとして解決し、Viteが削除した空のJS�
 
 HTML entry は Vite の最終出力に実行可能な module script が一つある場合に対応します。複数の HTML が同じ JS を共有する構成も対応します。同じ script の重複参照、CSS-only 出力、modulepreload、静的依存は独立した entry として数えません。複数の独立した module script（または外部／async module script）を含む HTML は、一つの hydration entry として解決できないため例外になります。通常の client ビルドでは元の script 要素と独立した実行を維持します。SSR では一つの client entry module を指定するか、元の Vite HTML を描画してください。
 
+resolver は Vite が生成した CSS を返します。publicDir からコピーした CSS と外部 stylesheet は元の HTML head に残り、生成 CSS の graph には含めません。SSR で独自の HTML を描画する場合は、それらの link と属性を元の head から別途引き継いでください。HTML ごとの生成 CSS とその順序は、共有 JS の CSS に混ぜずに保持します。
+
 追加moduleの対応にはVite SSR manifestを`ssrManifest`へ渡せます。
 参照先がVVIのclient graphにない場合は、別localeのassetを黙って採用せず例外にします。
 通常のVue SSR contextはVVI自身のmodule mapで解決できます。

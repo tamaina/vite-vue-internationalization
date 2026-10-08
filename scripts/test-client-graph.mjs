@@ -92,7 +92,7 @@ document.documentElement.dataset.ready='true';`);
 				await build({ root, configFile: false, logLevel: 'silent', plugins: [vueInternationalization({ primaryLocale: 'en', buildStrategy: strategy, global: { en: { title: 'English' }, ja: { title: '日本語' } } })], build: { target: 'esnext', manifest: true, cssCodeSplit, assetsInlineLimit: 0, rolldownOptions: { input } } });
 				const m = manifest();
 				verifyFiles(m);
-				if (entries === 'shared') assert.equal(m.entries['index.html'], m.entries['shared.html']);
+				if (entries === 'shared') assert.equal(m.chunks[m.entries['index.html']].file, m.chunks[m.entries['shared.html']].file);
 				for (const locale of ['en', 'ja']) {
 					const assets = resolveLocaleAssets(m, { locale, entry: 'index.html', modules: ['lazy.ts'] });
 					assert.ok(assets.stylesheets.length, 'Static and dynamic CSS must be represented');
@@ -115,6 +115,71 @@ document.documentElement.dataset.ready='true';`);
 					await closeServer();
 				}
 			}
+		}
+	}
+	// Shared executable bytes must not union page-specific stylesheets.
+	source('head-client.ts', `import { createApp } from 'vue';
+import { createInternationalization, useLocale } from 'virtual:vite-vue-internationalization';
+const i18n=createInternationalization({initialLocale:'en'});
+await i18n.ready;
+createApp({}).use(i18n);
+const target=document.querySelector('.probe');
+if(target)target.textContent=useLocale(import.meta.url).value.env.title;
+document.documentElement.dataset.headReady='true';`);
+	for (const [name, color] of [['one', 'rgb(255,0,0)'], ['two', 'rgb(0,0,255)']]) {
+		source(`${name}.css`, `.probe{color:${color}}`);
+		source(`${name}.html`, `<p class="probe">page</p><link rel="stylesheet" href="/${name}.css"><script type="module" src="/head-client.ts"></script>`);
+	}
+	for (const strategy of ['virtual', 'inline-chunks']) {
+		await build({ root, configFile: false, logLevel: 'silent', plugins: [vueInternationalization({ primaryLocale: 'en', buildStrategy: strategy, global: { en: { title: 'Title' } } })], build: { manifest: true, rolldownOptions: { input: ['one', 'two'].map(name => resolve(root, `${name}.html`)) } } });
+		const m = manifest();
+		verifyFiles(m);
+		assert.equal(m.chunks[m.entries['one.html']].file, m.chunks[m.entries['two.html']].file);
+		for (const [name, color] of [['one', 'rgb(255, 0, 0)'], ['two', 'rgb(0, 0, 255)']]) {
+			const assets = resolveLocaleAssets(m, { locale: 'en', entry: `${name}.html` });
+			assert.equal(assets.stylesheets.length, 1);
+			assert.ok(assets.stylesheets[0].file.includes(name));
+			await serve(assets.stylesheets.map(asset => `<link rel="stylesheet" href="${asset.href}">`).join('') + `<p class="probe">page</p><script type="module" src="${assets.entry.href}" integrity="${assets.entry.integrity}" crossorigin></script>`);
+			for (const route of [`${name}.html`, 'ssr.html']) {
+				const page = await browser.newPage();
+				await page.goto(`http://127.0.0.1:${server.address().port}/${route}`);
+				await page.waitForFunction(() => globalThis.document.documentElement.dataset.headReady === 'true');
+				assert.equal(await page.locator('.probe').textContent(), 'Title');
+				assert.equal(await page.locator('.probe').evaluate(element => globalThis.getComputedStyle(element).color), color, `${strategy}/${route} page-specific CSS`);
+				await page.close();
+			}
+			await closeServer();
+		}
+	}
+	// Public and external stylesheet links remain owned by the original HTML
+	// head. The resolver describes bundled CSS, without probing hrefs on disk.
+	mkdirSync(`${root}/public`);
+	mkdirSync(`${root}/static`);
+	for (const dir of ['public', 'static']) source(`${dir}/site.css`, '.public-probe{color:rgb(10,20,30)}');
+	source('public.html', '<link rel="stylesheet" href="/site.css"><link rel="stylesheet" href="https://example.invalid/remote.css"><link rel="stylesheet" href="//example.invalid/other.css"><p class="public-probe">public</p><p class="remote-probe">remote</p><script type="module" src="/head-client.ts"></script>');
+	for (const strategy of ['virtual', 'inline-chunks']) {
+		for (const publicDir of ['public', 'static', false]) {
+			await build({ root, publicDir, configFile: false, logLevel: 'silent', plugins: [vueInternationalization({ primaryLocale: 'en', buildStrategy: strategy, global: { en: { title: 'Title' } } })], build: { manifest: true, rolldownOptions: { input: resolve(root, 'public.html') } } });
+			const m = manifest();
+			verifyFiles(m);
+			assert.deepEqual(resolveLocaleAssets(m, { locale: 'en', entry: 'public.html' }).stylesheets, []);
+			assert.ok(read('public.html').includes('href="/site.css"'));
+			assert.ok(read('public.html').includes('href="https://example.invalid/remote.css"'));
+			assert.ok(read('public.html').includes('href="//example.invalid/other.css"'));
+			if (publicDir === false) continue;
+			assert.ok(read('site.css').includes('10,20,30'));
+			await serve('');
+			const page = await browser.newPage();
+			await page.route(/example\.invalid/u, route => route.fulfill({ contentType: 'text/css', body: '.remote-probe{color:rgb(40,50,60)}' }));
+			const errors = [];
+			page.on('pageerror', error => errors.push(String(error)));
+			page.on('response', response => { if (response.status() >= 400) errors.push(response.url()); });
+			await page.goto(`http://127.0.0.1:${server.address().port}/public.html`);
+			assert.equal(await page.locator('.public-probe').evaluate(element => globalThis.getComputedStyle(element).color), 'rgb(10, 20, 30)');
+			assert.equal(await page.locator('.remote-probe').evaluate(element => globalThis.getComputedStyle(element).color), 'rgb(40, 50, 60)');
+			assert.deepEqual(errors, []);
+			await page.close();
+			await closeServer();
 		}
 	}
 	// Aggregate asset names also follow Vite's library cssFileName/fileName/package rules.
@@ -156,7 +221,7 @@ document.documentElement.dataset.ready='true';`);
 			await closeServer();
 		}
 	}
-	console.log('Final client graph: SPA/shared MPA/cascade, static + dynamic CSS with both split settings and strategies, locale preloads/SRI, independent script await/failure and explicit SSR ambiguity verified.');
+	console.log('Final client graph: SPA/shared MPA/cascade, static + dynamic CSS with both split settings and strategies, locale preloads/SRI, independent script await/failure, per-page CSS, public/external HTML stylesheets and explicit SSR ambiguity verified.');
 } finally {
 	await browser?.close();
 	if (server) await closeServer();

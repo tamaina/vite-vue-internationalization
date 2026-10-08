@@ -11,8 +11,11 @@ function attributes(source: string): Map<string, string> {
 }
 
 function outputPath(url: string, html: string, base: string): string | undefined {
+	const external = /^(?:[a-z][a-z\d+.-]*:|\/\/)/iu.test(url);
+	const externalBase = /^(?:[a-z][a-z\d+.-]*:|\/\/)/iu.test(base);
+	if (external && !externalBase) return undefined;
 	if (base !== '' && base !== './' && url.startsWith(base)) return url.slice(base.length);
-	if (/^(?:[a-z][a-z\d+.-]*:|\/\/)/iu.test(url)) return undefined;
+	if (external) return undefined;
 	return url.startsWith('/') ? url.slice(1) : posix.normalize(posix.join(posix.dirname(html), url));
 }
 
@@ -39,7 +42,9 @@ export function collectHtmlEntries(bundle: OutputBundle, base: string): HtmlEntr
 			const attrs = attributes(match[1]);
 			const href = attrs.get('href');
 			const file = href && outputPath(href, asset.fileName, base);
-			return attrs.get('rel') === 'stylesheet' && file ? [file] : [];
+			// Public/external stylesheets belong to the original HTML head, not
+			// the bundler's client graph. Do not probe arbitrary hrefs on disk.
+			return attrs.get('rel') === 'stylesheet' && file && Object.hasOwn(bundle, file) && bundle[file].type === 'asset' ? [file] : [];
 		});
 		result.push({ html: asset.fileName, scripts: [...new Set(scripts)], css, supported: !unsupported && new Set(semantics).size === 1 });
 	}
@@ -55,8 +60,12 @@ export function addHtmlEntries(manifest: LocaleAssetManifest, entries: HtmlEntry
 		manifest.modules[entry.html] = scripts;
 		delete manifest.entries[entry.html];
 		if (!entry.supported || scripts.length !== 1) continue;
-		const key = scripts[0];
+		const root = scripts[0];
+		const key = `html:${entry.html}`;
+		// A logical entry shares executable bytes/locales, but owns its HTML CSS.
+		// No JS facade is emitted, and the shared chunk remains unmodified.
+		manifest.chunks[key] = { ...manifest.chunks[root], css: [...new Set(entry.css)] };
 		manifest.entries[entry.html] = key;
-		manifest.chunks[key].css = [...new Set([...manifest.chunks[key].css, ...entry.css])];
+		manifest.modules[entry.html] = [key];
 	}
 }

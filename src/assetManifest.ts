@@ -52,6 +52,9 @@ export function augmentSsrManifest(source: string, manifest: LocaleAssetManifest
 			for (const css of chunk.css) files.add(css);
 		}
 
+		if (/\.html?$/iu.test(module)) {
+			for (const key of chunks) for (const css of manifest.chunks[key].css) files.add(css);
+		}
 		for (const key of chunks) visit(key);
 		ssr[module] = [...files].map(file => manifest.base === '' || manifest.base === './' ? file : `${manifest.base}${file}`);
 	}

@@ -85,16 +85,22 @@ export function resolveLocaleAssets(manifest: LocaleAssetManifest, options: Reso
 		return { chunk, asset: asset(localized.file, localized.integrity) };
 	}
 
-	const entry = selected(entryKey).asset;
+	const entryResult = selected(entryKey);
+	const entry = entryResult.asset;
 	const preloads = new Map<string, LocaleAsset>();
 	const styles = new Map<string, LocaleAsset>();
 	const visited = new Set<string>();
+	// The emitted HTML head is authoritative for initial stylesheet order.
+	// Used SSR modules can append their additional CSS afterwards.
+	if (/\.html?$/iu.test(options.entry)) {
+		for (const css of entryResult.chunk.css) styles.set(css, asset(css));
+	}
 
 	function visit(key: string) {
 		if (visited.has(key)) return;
 		visited.add(key);
 		const result = selected(key);
-		if (key !== entryKey && !result.chunk.cssOnly) preloads.set(result.asset.file, result.asset);
+		if (result.asset.file !== entry.file && !result.chunk.cssOnly) preloads.set(result.asset.file, result.asset);
 		for (const dependency of result.chunk.imports) visit(dependency);
 		for (const css of result.chunk.css) styles.set(css, asset(css));
 	}
