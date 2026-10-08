@@ -14,3 +14,5 @@ docs 以下にこのパッケージのドキュメントがあります。日本
 - examples 以下に動作確認用の Vue / ICU サンプルがあります。
 - scripts 以下に API ドキュメント生成や Volar CJS ビルドなどの補助スクリプトがあります。
 - dist はビルド成果物です。通常は src を編集し、dist を直接編集しません。
+
+リリースは既存の Release Manager action を必ず使用し、タグや GitHub Release を手動作成しない。

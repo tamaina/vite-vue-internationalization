@@ -60,6 +60,8 @@ For component-local messages, prefer a `<locale>` block or top-level `defineInte
 - Choose between Vue I18n-compatible syntax (`vue`) and ICU message syntax (`icu`).
 - Choose either the default `virtual` build strategy or `inline-chunks` for locale-specific output chunks.
 - Share the same configuration between the Vite plugin and Vue Language Tools / Volar.
+- Resolve locale-specific SSR JavaScript and CSS through the dependency-free `vite-vue-internationalization/ssr` entry ([backend rendering](./docs/en/backend-rendering.md)).
+- Use the optional [VS Code extension](./extensions/vscode/README.md) for external dictionary diagnostics and locale message highlighting.
 
 ## Minimal Setup
 
