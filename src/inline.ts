@@ -13,6 +13,7 @@ import type { SourceSlice } from './sourceEdits.js';
 import type { SourceMapPayload } from 'node:module';
 import type { LocaleMessageSyntax, LocaleMessageToken } from './message.js';
 import type { LocaleDictionary } from './types.js';
+import type { LocaleAssetManifest } from './ssr.js';
 
 export type InlineLocalePayload = {
 	locale: string;
@@ -880,11 +881,12 @@ export function inlineLocaleChunks(
 			if (edits && originalMap) {
 				const mapFileName = `${localizedChunk.fileName}.map`;
 				// Only rewrite the emitted trailing comment, never matching text inside a string.
-				const comment = /^\/\/# sourceMappingURL=\S+(?=\s*$)/m.exec(localizedChunk.code);
-				const inlineMap = comment?.[0].includes('sourceMappingURL=data:') === true;
-				if (comment) localizedChunk.code = editSource(localizedChunk.code, comment.index, comment.index + comment[0].length, '', edits);
+				const comment = parseSync(localizedChunk.fileName, localizedChunk.code).comments.find(comment =>
+					comment.type === 'Line' && /^# sourceMappingURL=\S+$/u.test(comment.value) && localizedChunk.code.slice(comment.end).trim() === '');
+				const inlineMap = comment?.value.includes('sourceMappingURL=data:') === true;
+				if (comment) localizedChunk.code = editSource(localizedChunk.code, comment.start, comment.end, '', edits);
 				const map = edits.generateMap(originalMap, baseName(localizedChunk.fileName));
-				if (comment) localizedChunk.code = editSource(localizedChunk.code, comment.index, comment.index, `//# sourceMappingURL=${inlineMap ? map.toUrl() : baseName(mapFileName)}`, edits);
+				if (comment) localizedChunk.code = editSource(localizedChunk.code, comment.start, comment.start, `//# sourceMappingURL=${inlineMap ? map.toUrl() : baseName(mapFileName)}`, edits);
 				localizedChunk.map = JSON.parse(map.toString()) as SourceMapPayload;
 				const asset: MutableOutputAsset = { type: 'asset', fileName: mapFileName, source: map.toString() };
 				if (!inlineMap) {
@@ -1075,8 +1077,30 @@ export function getInlineLocaleHtmlLoaders(
 ): InlineLocaleLoaderAsset[] {
 	return findHtmlLocaleEntries(html, manifest, htmlFileName, base).map((entry) => ({
 		fileName: createLocaleLoaderFileName(entry.originalFileName),
-		source: createLocaleLoaderSource(entry.locales, manifest.primaryLocale, base, entry.integrity),
+		source: createLocaleLoaderSource(entry.locales, manifest.primaryLocale, base, entry.integrity, localePreloads(entry, manifest)),
 	}));
+}
+
+function localePreloads(entry: InlineChunkManifest['entries'][number], manifest: InlineChunkManifest): Record<string, Array<{ file: string; integrity?: string }>> {
+	const dependencies: InlineChunkManifest['entries'] = [];
+	const visited = new Set([entry.originalFileName]);
+
+	function visit(file: string) {
+		if (visited.has(file)) return;
+		visited.add(file);
+		const dependency = manifest.entries.find(candidate => candidate.originalFileName === file);
+		if (!dependency) return;
+		dependencies.push(dependency);
+		for (const imported of dependency.imports ?? []) visit(imported);
+	}
+
+	for (const file of entry.imports ?? []) visit(file);
+	return Object.fromEntries(Object.keys(entry.locales).map(locale => [locale, dependencies.map(dependency => ({ file: dependency.locales[locale], integrity: dependency.integrity?.[locale] }))]));
+}
+
+function htmlAttribute(tag: string, name: string): string | undefined {
+	const match = new RegExp(`\\b${name}\\s*=\\s*(?:"([^"]*)"|'([^']*)'|([^\\s>]+))`, 'iu').exec(tag);
+	return match?.at(1) ?? match?.at(2) ?? match?.at(3);
 }
 
 export function replaceInlineLocaleHtml(
@@ -1085,11 +1109,18 @@ export function replaceInlineLocaleHtml(
 	htmlFileName?: string,
 	base = '/',
 ): string {
-	let next = html;
+	let next = html.replace(/<link\b(?:[^>"']|"[^"]*"|'[^']*')*>/giu, tag => {
+		const rel = htmlAttribute(tag, 'rel')?.toLowerCase();
+		if (rel !== 'modulepreload' && !(rel === 'preload' && htmlAttribute(tag, 'as')?.toLowerCase() === 'script')) return tag;
+		const href = htmlAttribute(tag, 'href');
+		if (!href) return tag;
+		const replaced = manifest.entries.some(entry => createPublicPathCandidates(entry.originalFileName, base, htmlFileName).includes(href));
+		return replaced ? '' : tag;
+	});
 	const fallbackEntries = findFallbackHtmlLocaleEntries(html, manifest, htmlFileName, base);
 
 	for (const entry of manifest.entries) {
-		const replaced = replaceEntryScript(next, entry, manifest.primaryLocale, base, htmlFileName);
+		const replaced = replaceEntryScript(next, entry, manifest.primaryLocale, base, htmlFileName, localePreloads(entry, manifest));
 		next = replaced === next && fallbackEntries.includes(entry)
 			? injectLocaleLoaderScript(next, entry, manifest.primaryLocale, base, htmlFileName)
 			: replaced;
@@ -1098,34 +1129,47 @@ export function replaceInlineLocaleHtml(
 	return next;
 }
 
-export function augmentViteManifestJson(source: string, inlineManifest: InlineChunkManifest): string {
+export function augmentViteManifestJson(source: string, inlineManifest: InlineChunkManifest, root?: string, clientManifest?: LocaleAssetManifest): string {
 	const manifest = JSON.parse(source) as Record<string, Record<string, unknown>>;
 	const fileToManifestKey = new Map(Object.entries(manifest)
 		.flatMap(([key, value]) => typeof value.file === 'string' ? [[value.file, key] as const] : []));
 
+	const entries = new Map<string, [string, Record<string, unknown>]>();
+	// Register every surviving logical entry before mapping dependencies; Vite
+	// can replace a JS entry with an aggregate CSS entry in its native manifest.
 	for (const entry of inlineManifest.entries) {
-		const manifestEntry = findManifestEntry(manifest, entry);
-
-		if (!manifestEntry) {
-			continue;
+		let found = findManifestEntry(manifest, entry);
+		if (root && entry.isEntry && entry.facadeModuleId) {
+			const key = relative(root, entry.facadeModuleId).replaceAll('\\', '/');
+			const value = found?.[1] ?? { file: entry.locales[inlineManifest.primaryLocale] };
+			value.src = key;
+			manifest[key] = value;
+			found = [key, value];
 		}
-
-		const [key, value] = manifestEntry;
+		if (found) {
+			entries.set(entry.originalFileName, found);
+			fileToManifestKey.set(entry.originalFileName, found[0]);
+		}
+	}
+	const localizedKeys = new Set([...entries.values()].map(([key]) => key));
+	for (const entry of inlineManifest.entries) {
+		const found = entries.get(entry.originalFileName);
+		if (!found) continue;
+		const [key, value] = found;
 		const originalFile = typeof value.file === 'string' ? value.file : undefined;
 
 		value.file = entry.locales[inlineManifest.primaryLocale];
+		const css = clientManifest?.chunks[entry.originalFileName]?.css ?? entry.css;
+		if (css?.length) value.css = [...css];
 		value.locale = inlineManifest.primaryLocale;
 		value.isEntry ??= true;
 		const imports = mapManifestImports(entry.imports, fileToManifestKey);
 		const dynamicImports = mapManifestImports(entry.dynamicImports, fileToManifestKey);
 
-		if (imports.length > 0) {
-			value.imports = imports;
-		}
-
-		if (dynamicImports.length > 0) {
-			value.dynamicImports = dynamicImports;
-		}
+		if (imports.length) value.imports = imports;
+		else delete value.imports;
+		if (dynamicImports.length) value.dynamicImports = dynamicImports;
+		else delete value.dynamicImports;
 
 		if (originalFile?.endsWith('.css')) {
 			const css = Array.isArray(value.css) ? value.css : [];
@@ -1143,6 +1187,8 @@ export function augmentViteManifestJson(source: string, inlineManifest: InlineCh
 				file: fileName,
 				locale,
 				isInternationalizationLocale: true,
+				...(imports.length ? { imports: mapManifestImports(entry.imports, fileToManifestKey, locale, localizedKeys) } : {}),
+				...(dynamicImports.length ? { dynamicImports: mapManifestImports(entry.dynamicImports, fileToManifestKey, locale, localizedKeys) } : {}),
 			};
 		}
 	}
@@ -1153,18 +1199,29 @@ export function augmentViteManifestJson(source: string, inlineManifest: InlineCh
 function mapManifestImports(
 	fileNames: string[] | undefined,
 	fileToManifestKey: Map<string, string>,
+	locale?: string,
+	localizedKeys = new Set<string>(),
 ): string[] {
 	return fileNames
 		?.map((fileName) => fileToManifestKey.get(fileName))
-		.filter((key): key is string => typeof key === 'string') ?? [];
+		.filter((key): key is string => typeof key === 'string')
+		.map(key => locale && localizedKeys.has(key) ? `${key}?locale=${locale}` : key) ?? [];
 }
 
 export function addLocaleToFileName(fileName: string, locale: string): string {
 	return fileName.replace(/(\.m?js)$/u, `.${sanitizeLocale(locale)}$1`);
 }
 
+function unwrapParentheses(value: unknown): AstNode | undefined {
+	let node = toAstNode(value);
+	while (node?.type === 'ParenthesizedExpression') node = toAstNode(node.expression);
+	return node;
+}
+
 function getChunkImportSources(code: string): Array<{ node: AstNode; preload: boolean }> {
 	const sources: Array<{ node: AstNode; preload: boolean }> = [];
+	const mappedDependencies: AstNode[] = [];
+	const dependencyMaps = new Set<string>();
 	const parsed = parseRequiredInlineJavaScript(code);
 	walk(parsed.ast as OxcWalkInput, {
 		enter(node) {
@@ -1174,6 +1231,31 @@ function getChunkImportSources(code: string): Array<{ node: AstNode; preload: bo
 				if (source && getStringNodeValue(source) !== undefined) sources.push({ node: source, preload: false });
 			}
 			const current = toAstNode(node);
+			// Vite's final import-analysis hook moves dependency filenames into this
+			// generated helper. Match its AST, rather than strings elsewhere in code.
+			if (current?.type === 'VariableDeclarator' && toAstNode(current.id)?.name === '__vite__mapDeps') {
+				const init = toAstNode(current.init);
+				const params = init?.params as AstNode[] | undefined;
+				if (init?.type === 'ArrowFunctionExpression' && params?.length === 3
+					&& toAstNode(params[1].right)?.name === '__vite__mapDeps') {
+					const cache = unwrapParentheses(params[2].right);
+					const assignment = cache?.type === 'LogicalExpression' && cache.operator === '||' ? unwrapParentheses(cache.right) : undefined;
+					const target = toAstNode(assignment?.left);
+					const array = toAstNode(assignment?.right);
+					if (assignment?.type === 'AssignmentExpression' && target?.type === 'MemberExpression'
+						&& toAstNode(target.object)?.name === toAstNode(params[1].left)?.name
+						&& toAstNode(target.property)?.name === 'f' && array?.type === 'ArrayExpression') {
+						for (const element of array.elements as Array<AstNode | null>) {
+							if (element && getStringNodeValue(element) !== undefined) mappedDependencies.push(element);
+						}
+					}
+				}
+			}
+			if (current && isCallExpression(current)) {
+				const dependencies = current.arguments.at(1);
+				if (current.arguments[0]?.type === 'ArrowFunctionExpression' && dependencies && isCallExpression(dependencies)
+					&& getCalleeName(dependencies.callee) === '__vite__mapDeps') dependencyMaps.add('__vite__mapDeps');
+			}
 			if (current && isCallExpression(current) && ['preload', '__vitePreload'].includes(getCalleeName(current.callee) ?? '')) {
 				const dependencies = current.arguments.at(1);
 				if (dependencies?.type === 'ArrayExpression') {
@@ -1184,6 +1266,7 @@ function getChunkImportSources(code: string): Array<{ node: AstNode; preload: bo
 			}
 		},
 	});
+	if (dependencyMaps.size) sources.push(...mappedDependencies.map(node => ({ node, preload: true })));
 	return sources;
 }
 
@@ -1242,7 +1325,7 @@ function createInlineChunkReferenceMap(
 		for (const { node: source, preload } of getChunkImportSources(code)) {
 			const specifier = getStringNodeValue(source);
 			if (!specifier || (!preload && !specifier.startsWith('.'))) continue;
-			const target = resolve(dirname(importer), specifier);
+			const target = preload && localizableFiles.has(specifier) ? resolve(specifier) : resolve(dirname(importer), specifier);
 			const original = [...localizableFiles].find(file => resolve(file) === target);
 			if (original) changes.push({ start: source.start, end: source.end, replacement: JSON.stringify(addLocaleToFileName(specifier, locale)) });
 		}
@@ -2299,6 +2382,7 @@ function isInlineLocaleMarker(value: string): boolean {
 }
 
 function toAstNode(node: unknown): AstNode | undefined {
+	if (!node || typeof node !== 'object') return undefined;
 	const maybeNode = node as Partial<AstNode>;
 
 	return typeof maybeNode.start === 'number' && typeof maybeNode.end === 'number'
@@ -2646,11 +2730,12 @@ function replaceEntryScript(
 	primaryLocale: string,
 	base: string,
 	htmlFileName?: string,
+	preloads: Record<string, Array<{ file: string; integrity?: string }>> = {},
 ): string {
 	return html.replace(createEntryScriptRegExp(entry.locales, primaryLocale, base, htmlFileName), (_match, beforeSrc: string, afterSrc: string) => {
 		const primaryFile = entry.locales[primaryLocale];
 		const loaderFileName = createLocaleLoaderFileName(originalFileNameFromLocaleFile(primaryFile, primaryLocale));
-		const loaderSource = createLocaleLoaderSource(entry.locales, primaryLocale, base, entry.integrity);
+		const loaderSource = createLocaleLoaderSource(entry.locales, primaryLocale, base, entry.integrity, preloads);
 		const loaderIntegrity = createSubresourceIntegrity(loaderSource);
 
 		return `<script${createLoaderScriptAttributes(beforeSrc, afterSrc, loaderFileName, base, loaderIntegrity, htmlFileName)}></script>`;
@@ -2698,13 +2783,14 @@ function createEntryScriptRegExp(localeFiles: Record<string, string>, primaryLoc
 	const candidates = new Set(
 		[
 			originalFileNameFromLocaleFile(primaryFile, primaryLocale),
+			createLocaleLoaderFileName(originalFileNameFromLocaleFile(primaryFile, primaryLocale)),
 			...Object.values(localeFiles),
 		].flatMap((fileName) => createPublicPathCandidates(fileName, base, htmlFileName)),
 	);
 
 	return new RegExp(
 		`<script\\b([^>]*?)\\bsrc=["'](?:${[...candidates].map(escapeRegExp).join('|')})["']([^>]*)></script>`,
-		'u',
+		'gu',
 	);
 }
 
@@ -2717,6 +2803,7 @@ function createLocaleLoaderSource(
 	primaryLocale: string,
 	base: string,
 	integrity?: Record<string, string>,
+	preloads: Record<string, Array<{ file: string; integrity?: string }>> = {},
 ): string {
 	const loaderDirectory = dirname(localeFiles[primaryLocale]);
 	const files = base === '' || base === './'
@@ -2725,6 +2812,10 @@ function createLocaleLoaderSource(
 			return [locale, specifier.startsWith('.') ? specifier : `./${specifier}`];
 		}))
 		: toPublicLocaleFiles(localeFiles, base);
+	const preloadFiles = Object.fromEntries(Object.entries(preloads).map(([locale, assets]) => [locale, assets.map(asset => ({
+		...asset,
+		file: base === '' || base === './' ? './' + relative(loaderDirectory, asset.file).replaceAll('\\', '/') : toPublicPath(asset.file, base),
+	}))]));
 	return [
 		'const __vueInternationalizationHandoff = typeof document !== "undefined" ? document.documentElement.getAttribute("data-vvi-locale") : null;',
 		`const __vueInternationalizationLocale = __vueInternationalizationHandoff ?? (new URL(window.location.href).searchParams.get("locale") || ${JSON.stringify(primaryLocale)});`,
@@ -2733,6 +2824,16 @@ function createLocaleLoaderSource(
 		`const __vueInternationalizationIntegrity = ${JSON.stringify(integrity ?? {})};`,
 		`const __vueInternationalizationFile = new URL(__vueInternationalizationEntries[__vueInternationalizationLocale] || __vueInternationalizationEntries[${JSON.stringify(primaryLocale)}], import.meta.url).href;`,
 		`const __vueInternationalizationExpectedIntegrity = __vueInternationalizationIntegrity[__vueInternationalizationLocale] || __vueInternationalizationIntegrity[${JSON.stringify(primaryLocale)}];`,
+		`const __vueInternationalizationPreloads = ${JSON.stringify(preloadFiles)};`,
+		'if (typeof document !== "undefined") {',
+		`  for (const asset of __vueInternationalizationPreloads[__vueInternationalizationLocale] || __vueInternationalizationPreloads[${JSON.stringify(primaryLocale)}] || []) {`,
+		'    const link = document.createElement("link");',
+		'    link.rel = "modulepreload";',
+		'    link.href = new URL(asset.file, import.meta.url).href;',
+		'    if (asset.integrity) { link.integrity = asset.integrity; link.crossOrigin = "anonymous"; }',
+		'    document.head.append(link);',
+		'  }',
+		'}',
 		'const __vueInternationalizationImport = () => import(__vueInternationalizationFile);',
 		'if (__vueInternationalizationExpectedIntegrity && typeof document !== "undefined") {',
 		'  new Promise((resolve, reject) => {',

@@ -519,7 +519,7 @@ function resolveInternationalizationLinkedMessage(
 	return formatLocaleMessage(value, {
 		values,
 		plural,
-		resolveLinked: (linkedKey) => resolveInternationalizationLinkedMessage(locale, linkedKey, path[0] as InternationalizationScopeName, values, plural, seen) ?? `@:${linkedKey}`,
+		resolveLinked: (linkedKey) => resolveInternationalizationLinkedMessage(locale, linkedKey, path[0] as InternationalizationScopeName, values, plural, nextSeen) ?? `@:${linkedKey}`,
 	});
 }
 

@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest';
-import { createInlineLocaleMarker, inlineLocaleChunks } from '../src/inline.js';
+import { augmentViteManifestJson, createInlineLocaleMarker, inlineLocaleChunks } from '../src/inline.js';
 
 it('rewrites import/export references without rewriting filenames in user strings', () => {
 	const marker = createInlineLocaleMarker('/Child.vue');
@@ -17,4 +17,19 @@ it('rewrites import/export references without rewriting filenames in user string
 	expect(code).toContain('names = ["Child.js", "assets/Child.js"]');
 	expect(bundle['assets/Unrelated.js'].code).toBe('export const label = "Child.js";');
 	expect(bundle['assets/Unrelated.ja.js']).toBeUndefined();
+});
+
+it('registers final native manifest keys before resolving locale-specific dependencies', () => {
+	const manifest = JSON.parse(augmentViteManifestJson(JSON.stringify({
+		'_app.js': { file: 'assets/app.js' },
+		'_shared.js': { file: 'assets/shared.js' },
+	}), {
+		primaryLocale: 'en', entries: [
+			{ fileName: 'assets/app.js', originalFileName: 'assets/app.js', imports: ['assets/shared.js', 'assets/client.js'], locales: { en: 'assets/app.en.js', ja: 'assets/app.ja.js' } },
+			{ fileName: 'assets/shared.js', originalFileName: 'assets/shared.js', locales: { en: 'assets/shared.en.js', ja: 'assets/shared.ja.js' } },
+			{ fileName: 'assets/client.js', originalFileName: 'assets/client.js', facadeModuleId: '/project/client.ts', isEntry: true, locales: { en: 'assets/client.en.js', ja: 'assets/client.ja.js' } },
+		],
+	}, '/project'));
+	expect(manifest['_app.js'].imports).toEqual(['_shared.js', 'client.ts']);
+	expect(manifest['_app.js?locale=ja'].imports).toEqual(['_shared.js?locale=ja', 'client.ts?locale=ja']);
 });

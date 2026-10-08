@@ -25,8 +25,14 @@ describe('SSR client asset resolution', () => {
 		const assets = resolveLocaleAssets(fixture(), { locale: 'en', entry: '/src/client.ts', modules: new Set(['src/App.vue', 'src/Lazy.vue']) });
 		expect(assets.entry).toEqual({ file: 'assets/entry.en.js', href: '/app/assets/entry.en.js', integrity: 'sha384-en' });
 		expect(assets.modulepreload.map(asset => asset.file)).toEqual(['assets/shared.js', 'assets/lazy.en.js']);
-		expect(assets.stylesheets.map(asset => asset.href)).toEqual(['/app/assets/app.css', '/app/assets/shared.css', '/app/assets/lazy.css']);
+		expect(assets.stylesheets.map(asset => asset.href)).toEqual(['/app/assets/shared.css', '/app/assets/app.css', '/app/assets/lazy.css']);
 		expect(JSON.stringify(assets)).not.toContain('unused');
+	});
+	it('rejects ambiguous HTML entries while retaining explicit JS entries', () => {
+		const manifest = fixture();
+		manifest.modules['index.html'] = ['entry', 'shared'];
+		expect(() => resolveLocaleAssets(manifest, { locale: 'en', entry: 'index.html' })).toThrow('multiple independent');
+		expect(resolveLocaleAssets(manifest, { locale: 'en', entry: 'src/client.ts' }).entry.file).toBe('assets/entry.en.js');
 	});
 	it('uses an explicit deployment URL for relative bases on nested routes', () => {
 		const assets = resolveLocaleAssets(fixture(), { locale: 'ja', entry: 'src/client.ts', base: './', assetBaseUrl: 'https://example.com/application/' });
@@ -50,7 +56,9 @@ describe('SSR client asset resolution', () => {
 		expect(() => resolveLocaleAssets(manifest, { locale: 'en', entry: 'theme.css' })).toThrow('CSS-only');
 	});
 	it('rejects missing final JS and CSS outputs instead of silently leaving stale mappings', () => {
-		expect(() => finalizeAssetIntegrity(fixture(), '/unwritten-output', {})).toThrow('Missing client JS output');
+		const missingJs = fixture();
+		missingJs.chunks.entry.css = [];
+		expect(() => finalizeAssetIntegrity(missingJs, '/unwritten-output', {})).toThrow('Missing client JS output');
 		const manifest = fixture();
 		manifest.chunks = { theme: { file: 'theme.js', cssOnly: true, imports: [], dynamicImports: [], css: ['theme.css'] } };
 		expect(() => finalizeAssetIntegrity(manifest, '/unwritten-output', {})).toThrow('Missing CSS output');

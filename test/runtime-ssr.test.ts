@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createSSRApp, h } from 'vue';
 import { renderToString } from 'vue/server-renderer';
-import { createComponentLocale, createComponentLocalizer, createInternationalization, useDateTimeFormat, useInternationalization, useLocale, useLocalizer, useNumberFormat } from '../src/runtime.js';
+import { Internationalization, createComponentLocale, createComponentLocalizer, createInternationalization, useDateTimeFormat, useInternationalization, useLocale, useLocalizer, useNumberFormat } from '../src/runtime.js';
 
 function barrier() {
 	let release!: () => void;
@@ -75,5 +75,23 @@ describe('locale loading failures and sharing', () => {
 		await a.loadLocale('en');
 		await createInternationalization(options).ready;
 		expect(loader).toHaveBeenCalledTimes(3);
+	});
+});
+
+describe('Internationalization linked message rendering', () => {
+	it.each([
+		{ name: 'self cycle', messages: { a: '@:a' }, expected: '@:a' },
+		{ name: 'two-node cycle', messages: { a: '@:b', b: '@:a' }, expected: '@:b' },
+		{ name: 'three-node cycle', messages: { a: '@:b', b: '@:c', c: '@:a' }, expected: '@:b' },
+		{ name: 'noncyclic chain', messages: { a: 'Hello @:b', b: '@:c', c: 'World' }, expected: 'Hello World' },
+		{ name: 'repeated sibling links', messages: { a: '@:b / @:b', b: 'World' }, expected: 'World / World' },
+	])('renders $name without unbounded recursion', async ({ messages, expected }) => {
+		const app = createSSRApp({
+			render: () => h(Internationalization, {
+				locale: { env: {}, sfc: messages },
+				path: 'a',
+			}),
+		});
+		expect(await renderToString(app)).toBe(`<!--[-->${expected}<!--]-->`);
 	});
 });
