@@ -2,16 +2,18 @@ import { existsSync, readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { dirname, isAbsolute, relative, resolve } from 'node:path';
 import { parse as parseSfc } from '@vue/compiler-sfc';
-import { parse as parseIcuMessage, TYPE } from '@formatjs/icu-messageformat-parser';
-import MagicString from 'magic-string';
+import ts from 'typescript';
 import { parseSync } from 'rolldown/utils';
 import { ScopeTracker, walk } from 'oxc-walker';
+import { editSource, editSourceRange, SourceEdits } from './sourceEdits.js';
 import { compileLocaleMessage } from './message.js';
 import { hasLocaleBinding } from './parse.js';
 import { injectScriptSetup } from './scriptSetup.js';
-import type { MessageFormatElement } from '@formatjs/icu-messageformat-parser';
+import type { SourceSlice } from './sourceEdits.js';
+import type { SourceMapPayload } from 'node:module';
 import type { LocaleMessageSyntax, LocaleMessageToken } from './message.js';
 import type { LocaleDictionary } from './types.js';
+import type { LocaleAssetManifest } from './ssr.js';
 
 export type InlineLocalePayload = {
 	locale: string;
@@ -49,6 +51,7 @@ type ModuleMessages = Partial<Record<string, Partial<Record<string, LocaleDictio
 type LocaleMessages = Partial<Record<string, LocaleDictionary>>;
 type PublicLocaleScope = 'env' | 'sfc';
 type InlinePayloadResolver = (moduleId: string) => InlineLocalePayload;
+type InlineBindings = { get(name: string): string | undefined };
 type InlinePayloadResolverCache = {
 	resolve(locale: string): InlinePayloadResolver;
 };
@@ -57,13 +60,15 @@ type AstReplaceOptions = {
 	localizerCalls?: boolean;
 	textCalls?: boolean;
 	objectCalls?: boolean | 'empty';
+	pruneUnusedObjects?: boolean;
 	allowMarkerFallback?: boolean;
 };
 type InlineReplacementPlan = {
 	code: string;
 	operations: InlineReplacementOperation[];
 };
-type InlineReplacementOperation =
+type RetainedExpression = 'valuesExpression' | 'pluralExpression' | 'keyExpression';
+type InlineReplacementOperation = { sourceExpressions?: Partial<Record<RetainedExpression, SourceSlice>> } & (
 	| {
 		type: 'text-call';
 		start: number;
@@ -129,7 +134,7 @@ type InlineReplacementOperation =
 		end: number;
 		marker: string;
 		properties: string[];
-	};
+	});
 type ParsedLocaleAccess = {
 	end: number;
 	segments: LocaleAccessSegment[];
@@ -143,6 +148,8 @@ type LocaleAccessSegment =
 	| {
 		type: 'dynamic';
 		expression: string;
+		start: number;
+		end: number;
 	};
 type ParsedInlineJavaScript = {
 	ast: AstNode;
@@ -209,6 +216,7 @@ type MutableOutputChunk = {
 	type: 'chunk';
 	fileName: string;
 	code: string;
+	map?: SourceMapPayload | null;
 	imports: string[];
 	dynamicImports: string[];
 	viteMetadata?: {
@@ -237,8 +245,8 @@ type InlineChunkSnapshot = {
 };
 type InlineChunkReferenceMap = {
 	localizeFileName(fileName: string, locale: string): string;
-	localizeCodeReferences(code: string, locale: string): string;
-	replacePreloadMarkers(code: string, locale: string): string;
+	localizeCodeReferences(code: string, locale: string, importer: string, edits?: SourceEdits): string;
+	replacePreloadMarkers(code: string, locale: string, importer: string, relativeBase: boolean, edits?: SourceEdits): string;
 };
 
 const INLINE_MARKER_PREFIX = '__VUE_INTERNATIONALIZATION_INLINE__:';
@@ -254,13 +262,12 @@ const INLINE_LOCALIZER_RE =
 const LOCALIZER_ACCESS_PREFIX_RE = /\$l(?:\.value)?\.(env|sfc)((?:\.[A-Za-z_$][\w$]*)+)\(/g;
 const VVI_RUNTIME_MODULES = new Set(['virtual:vite-vue-internationalization', 'vite-vue-internationalization']);
 const SCRIPT_LOCALE_ACCESS_RE = /\$(?:locale|l)(?:\.value)?\.(?:env|sfc)\b/;
-const VUE_DEFAULT_IMPORT_RE = /\bimport\s+([A-Za-z_$][\w$]*)\s+from\s+(["'])([^"']+\.vue(?:\?[^"']*)?)\2/g;
 
 export function createInlineLocaleMarker(moduleId: string): string {
 	return `${INLINE_MARKER_PREFIX}${Buffer.from(moduleId, 'utf8').toString('base64')}`;
 }
 
-export function injectInlineLocaleBinding(code: string, moduleId: string): string {
+export function injectInlineLocaleBinding(code: string, moduleId: string, edits?: SourceEdits): string {
 	const needsLocaleBinding = !hasLocaleBinding(code, '$locale');
 	const needsLocalizerBinding = !hasLocaleBinding(code, '$l');
 
@@ -275,18 +282,19 @@ export function injectInlineLocaleBinding(code: string, moduleId: string): strin
 		'',
 	].filter((line, index, lines) => line.length > 0 || index === 0 || index === lines.length - 1).join('\n');
 
-	return injectScriptSetup(code, injection);
+	return injectScriptSetup(code, injection, edits);
 }
 
-export function rewriteInlineLocaleTemplateAccess(code: string, moduleId: string): string {
+export function rewriteInlineLocaleTemplateAccess(code: string, moduleId: string, edits?: SourceEdits): string {
 	const marker = createInlineLocaleMarker(moduleId);
+	const bindings = new Set(['$locale', '$l'].filter(name => hasLocaleBinding(code, name as '$locale' | '$l')));
 
-	return replaceVueTemplateContent(code, (template) =>
-		rewriteTemplateLocaleAccess(rewriteTemplateLocalizerAccess(template, marker), marker),
-	);
+	return replaceVueTemplateContent(code, (template, child) =>
+		rewriteTemplateLocaleAccess(rewriteTemplateLocalizerAccess(template, marker, bindings, child), marker, bindings, child),
+	edits);
 }
 
-export function rewriteInlineRuntimeLocaleAccess(code: string, moduleId: string, parserFilename = 'inline.ts'): string {
+export function rewriteInlineRuntimeLocaleAccess(code: string, moduleId: string, parserFilename = 'inline.ts', edits?: SourceEdits): string {
 	let parsed: ParsedInlineJavaScript;
 
 	try {
@@ -308,16 +316,16 @@ export function rewriteInlineRuntimeLocaleAccess(code: string, moduleId: string,
 	}
 
 	const marker = JSON.stringify(createInlineLocaleMarker(moduleId));
-	const magic = new MagicString(code);
+	let next = code;
 
-	for (const replacement of replacements) {
+	for (const replacement of [...replacements].sort((a, b) => b.start - a.start)) {
 		const callee = replacement.kind === 'locale'
 			? INLINE_LOCALE_CALL
 			: INLINE_LOCALIZERS_CALL;
-		magic.overwrite(replacement.start, replacement.end, `${callee}(${marker})`);
+		next = editSource(next, replacement.start, replacement.end, `${callee}(${marker})`, edits);
 	}
 
-	return magic.toString();
+	return next;
 }
 
 function collectRuntimeLocaleHelperReplacements(ast: AstNode): RuntimeLocaleHelperReplacement[] {
@@ -351,21 +359,105 @@ function collectRuntimeLocaleHelperReplacements(ast: AstNode): RuntimeLocaleHelp
 	return replacements;
 }
 
-export function rewriteInlineComponentLocaleAccess(code: string, filename: string, root: string): string {
-	const imports = collectVueDefaultImports(code, filename, root);
+export function rewriteInlineComponentLocaleAccess(code: string, filename: string, root: string, edits?: SourceEdits, resolvedImports?: Map<string, string>): string {
+	const imports = resolvedImports ?? collectVueDefaultImports(code, filename, root);
 
 	if (imports.size === 0) {
 		return code;
 	}
 
+	if (!filename.endsWith('.vue')) return rewriteComponentLocaleAccess(code, imports, false, edits, filename);
+
 	return rewriteScriptComponentLocaleAccess(
-		rewriteTemplateComponentLocaleAccess(code, imports),
+		rewriteTemplateComponentLocaleAccess(code, imports, edits),
 		imports,
+		edits,
 	);
 }
 
-function rewriteTemplateLocalizerAccess(template: string, marker: string): string {
-	let next = '';
+/** Only expression identifiers can be translation references, never template text. */
+function templateLocaleReferences(template: string, bindings: Set<string>, names = new Set(['$locale', '$l']), onMember?: (member: AstMemberExpression, offset: number) => void): Set<number> {
+	const prefix = '<template>';
+	const ast = parseSfc(`${prefix}${template}</template>`).descriptor.template?.ast;
+	const references = new Set<number>();
+	if (!ast) return references;
+	type Node = typeof ast.children[number];
+	const expression = (content: string, offset: number, locals: Set<string>) => {
+		try {
+			const parsed = parseRequiredInlineJavaScript(`(${content})`);
+			const scopeTracker = new ScopeTracker();
+			walk(parsed.ast as OxcWalkInput, {
+				scopeTracker,
+				enter(node, parent) {
+					const current = toAstNode(node);
+					const member = parent ? toAstNode(parent) : undefined;
+					if (!current || !isIdentifier(current) || !names.has(current.name)
+						|| !member || !isMemberExpression(member) || member.object !== current
+						|| locals.has(current.name) || scopeTracker.getDeclaration(current.name)) return;
+					references.add(offset - prefix.length + current.start - 1);
+					onMember?.(member, offset - prefix.length - 1);
+				},
+			});
+		} catch {
+			// Unsupported expressions retain the normal injected binding path.
+		}
+	};
+	const visit = (node: Node, inherited: Set<string>) => {
+		if (node.type === 5 && node.content.type === 4) {
+			expression(node.content.loc.source, node.content.loc.start.offset, inherited);
+		}
+		if (node.type !== 1) return;
+		const locals = new Set(inherited);
+		for (const prop of node.props) {
+			if (prop.type !== 7) continue;
+			if (prop.name === 'for' && prop.forParseResult) {
+				const { source, value, key, index } = prop.forParseResult;
+				expression(source.loc.source, source.loc.start.offset, inherited);
+				for (const binding of [value, key, index]) {
+					for (const name of templateBindingNames(binding?.loc.source)) locals.add(name);
+				}
+			}
+			if (prop.name === 'slot') {
+				for (const name of templateBindingNames(prop.exp?.loc.source)) locals.add(name);
+			}
+		}
+		for (const prop of node.props) {
+			if (prop.type !== 7 || prop.name === 'for' || prop.name === 'slot') continue;
+			const scope = prop.name === 'if' || prop.name === 'else-if' ? inherited : locals;
+			if (prop.exp) expression(prop.exp.loc.source, prop.exp.loc.start.offset, scope);
+			if (prop.arg?.type === 4 && !prop.arg.isStatic) expression(prop.arg.loc.source, prop.arg.loc.start.offset, scope);
+		}
+		for (const child of node.children) visit(child, locals);
+	};
+	for (const node of ast.children) visit(node, bindings);
+	return references;
+}
+
+function templateBindingNames(content: string | undefined): Set<string> {
+	const names = new Set<string>();
+	if (!content) return names;
+	const source = ts.createSourceFile('binding.ts', `(${content}) => {}`, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+	const statement = source.statements[0];
+	if (!ts.isExpressionStatement(statement) || !ts.isArrowFunction(statement.expression)) return names;
+	const collect = (binding: ts.BindingName) => {
+		if (ts.isIdentifier(binding)) names.add(binding.text);
+		else for (const element of binding.elements) if (ts.isBindingElement(element)) collect(element.name);
+	};
+	for (const parameter of statement.expression.parameters) collect(parameter.name);
+	return names;
+}
+
+type SourceEdit = { start: number; end: number; replacement: Parameters<typeof editSource>[3] };
+
+function applySourceEdits(code: string, changes: SourceEdit[], edits?: SourceEdits): string {
+	let next = code;
+	for (const change of changes.sort((a, b) => b.start - a.start)) next = editSource(next, change.start, change.end, change.replacement, edits);
+	return next;
+}
+
+function rewriteTemplateLocalizerAccess(template: string, marker: string, bindings: Set<string>, edits?: SourceEdits): string {
+	const references = templateLocaleReferences(template, bindings);
+	const changes: SourceEdit[] = [];
 	let cursor = 0;
 
 	for (const match of template.matchAll(LOCALIZER_ACCESS_PREFIX_RE)) {
@@ -373,7 +465,7 @@ function rewriteTemplateLocalizerAccess(template: string, marker: string): strin
 		const scope = match[1] as PublicLocaleScope | undefined;
 		const pathExpression = match[2];
 
-		if (start < cursor || !scope || !pathExpression) {
+		if (start < cursor || !scope || !pathExpression || !references.has(start)) {
 			continue;
 		}
 
@@ -384,23 +476,26 @@ function rewriteTemplateLocalizerAccess(template: string, marker: string): strin
 			continue;
 		}
 
-		next += template.slice(cursor, start);
-		next += `__VUE_INTERNATIONALIZATION_INLINE_LOCALIZER__(${createTemplateStringArgument(marker)},${createTemplateStringArgument(`${scope}${pathExpression}`)},${template.slice(valuesStart, callEnd)})`;
+		changes.push({ start, end: callEnd + 1, replacement: [
+			`__VUE_INTERNATIONALIZATION_INLINE_LOCALIZER__(${createTemplateStringArgument(marker)},${createTemplateStringArgument(`${scope}${pathExpression}`)},`,
+			{ start: valuesStart, end: callEnd }, ')',
+		] });
 		cursor = callEnd + 1;
 	}
 
-	return cursor === 0 ? template : next + template.slice(cursor);
+	return applySourceEdits(template, changes, edits);
 }
 
-function rewriteTemplateLocaleAccess(template: string, marker: string): string {
-	let next = '';
+function rewriteTemplateLocaleAccess(template: string, marker: string, bindings: Set<string>, edits?: SourceEdits): string {
+	const references = templateLocaleReferences(template, bindings);
+	const changes: SourceEdit[] = [];
 	let cursor = 0;
 
 	for (const match of template.matchAll(/\$locale(?:\.value)?\.(env|sfc)/g)) {
 		const start = match.index;
 		const scope = match[1] as PublicLocaleScope | undefined;
 
-		if (start < cursor || !scope) {
+		if (start < cursor || !scope || !references.has(start)) {
 			continue;
 		}
 
@@ -416,19 +511,18 @@ function rewriteTemplateLocaleAccess(template: string, marker: string): string {
 			continue;
 		}
 
-		next += template.slice(cursor, start);
-		next += replacement;
+		changes.push({ start, end: access.end, replacement });
 		cursor = access.end;
 	}
 
-	return cursor === 0 ? template : next + template.slice(cursor);
+	return applySourceEdits(template, changes, edits);
 }
 
 function createInlineTemplateAccessReplacement(
 	marker: string,
 	scope: PublicLocaleScope,
 	access: ParsedLocaleAccess,
-): string | undefined {
+): Parameters<typeof editSource>[3] | undefined {
 	const dynamicIndex = access.segments.findIndex((segment) => segment.type === 'dynamic');
 
 	if (dynamicIndex === -1) {
@@ -450,33 +544,28 @@ function createInlineTemplateAccessReplacement(
 
 	const baseKeys = base.map((segment) => segment.type === 'static' ? segment.value : '');
 	const suffixKeys = suffix.map((segment) => segment.type === 'static' ? segment.value : '');
-	return `__VUE_INTERNATIONALIZATION_INLINE_LOOKUP__(${createTemplateStringArgument(marker)},${createTemplateStringArgument(`${scope}.${baseKeys.join('.')}`)},${dynamic.expression},${createTemplateStringArgument(suffixKeys.join('.'))})`;
-}
-
-function rewriteScriptComponentLocaleAccess(code: string, imports: Map<string, string>): string {
-	const template = parseSfc(code).descriptor.template;
-
-	if (!template) {
-		return rewriteComponentLocaleAccess(code, imports, false);
-	}
-
-	const start = template.loc.start.offset;
-	const end = template.loc.end.offset;
 	return [
-		rewriteComponentLocaleAccess(code.slice(0, start), imports, false),
-		code.slice(start, end),
-		rewriteComponentLocaleAccess(code.slice(end), imports, false),
-	].join('');
+		`__VUE_INTERNATIONALIZATION_INLINE_LOOKUP__(${createTemplateStringArgument(marker)},${createTemplateStringArgument(`${scope}.${baseKeys.join('.')}`)},`,
+		{ start: dynamic.start, end: dynamic.end },
+		`,${createTemplateStringArgument(suffixKeys.join('.'))})`,
+	];
 }
 
-function rewriteTemplateComponentLocaleAccess(code: string, imports: Map<string, string>): string {
-	return replaceVueTemplateContent(code, (template) =>
-		rewriteComponentLocaleAccess(template, imports, true),
-	);
+function rewriteScriptComponentLocaleAccess(code: string, imports: Map<string, string>, edits?: SourceEdits): string {
+	const { descriptor } = parseSfc(code);
+	if (!descriptor.script && !descriptor.scriptSetup && !descriptor.template && descriptor.styles.length === 0 && descriptor.customBlocks.length === 0) {
+		return rewriteComponentLocaleAccess(code, imports, false, edits);
+	}
+	return replaceVueScriptContent(code, (script, _filename, child) => rewriteComponentLocaleAccess(script, imports, false, child, _filename), edits);
 }
 
-export function rewriteVueScriptRuntimeLocaleAccess(code: string, moduleId: string): string {
-	return replaceVueScriptContent(code, (script, parserFilename) => rewriteInlineRuntimeLocaleAccess(script, moduleId, parserFilename));
+function rewriteTemplateComponentLocaleAccess(code: string, imports: Map<string, string>, edits?: SourceEdits): string {
+	return replaceVueTemplateContent(code, (template, child) =>
+		rewriteComponentLocaleAccess(template, imports, true, child), edits);
+}
+
+export function rewriteVueScriptRuntimeLocaleAccess(code: string, moduleId: string, edits?: SourceEdits): string {
+	return replaceVueScriptContent(code, (script, parserFilename, child) => rewriteInlineRuntimeLocaleAccess(script, moduleId, parserFilename, child), edits);
 }
 
 export function hasVueScriptLocaleAccess(code: string): boolean {
@@ -486,7 +575,7 @@ export function hasVueScriptLocaleAccess(code: string): boolean {
 		.some(script => script && SCRIPT_LOCALE_ACCESS_RE.test(script.content));
 }
 
-function replaceVueScriptContent(code: string, replacer: (script: string, parserFilename: string) => string): string {
+function replaceVueScriptContent(code: string, replacer: (script: string, parserFilename: string, edits?: SourceEdits) => string, edits?: SourceEdits): string {
 	const descriptor = parseSfc(code).descriptor;
 	const scripts = [descriptor.script, descriptor.scriptSetup]
 		.filter(script => script != null)
@@ -499,13 +588,13 @@ function replaceVueScriptContent(code: string, replacer: (script: string, parser
 		const parserFilename = script.lang === 'tsx' || script.lang === 'jsx'
 			? 'inline.tsx'
 			: 'inline.ts';
-		next = next.slice(0, start) + replacer(next.slice(start, end), parserFilename) + next.slice(end);
+		next = editSourceRange(next, start, end, (source, child) => replacer(source, parserFilename, child), edits);
 	}
 
 	return next;
 }
 
-function replaceVueTemplateContent(code: string, replacer: (template: string) => string): string {
+function replaceVueTemplateContent(code: string, replacer: (template: string, edits?: SourceEdits) => string, edits?: SourceEdits): string {
 	const template = parseSfc(code).descriptor.template;
 
 	if (!template) {
@@ -514,7 +603,7 @@ function replaceVueTemplateContent(code: string, replacer: (template: string) =>
 
 	const start = template.loc.start.offset;
 	const end = template.loc.end.offset;
-	return code.slice(0, start) + replacer(code.slice(start, end)) + code.slice(end);
+	return editSourceRange(code, start, end, replacer, edits);
 }
 
 function parseLocaleAccessSegments(source: string, start: number): ParsedLocaleAccess | undefined {
@@ -548,7 +637,7 @@ function parseLocaleAccessSegments(source: string, start: number): ParsedLocaleA
 			const expression = source.slice(cursor + 1, end);
 			const staticKey = parseStaticPropertyKey(expression);
 			segments.push(staticKey === undefined
-				? { type: 'dynamic', expression }
+				? { type: 'dynamic', expression, start: cursor + 1, end }
 				: { type: 'static', value: staticKey });
 			cursor = end + 1;
 			continue;
@@ -596,80 +685,73 @@ function parseStaticPropertyKey(expression: string): string | undefined {
 	}
 }
 
-function rewriteComponentLocaleAccess(code: string, imports: Map<string, string>, htmlEscaped: boolean): string {
-	let next = code;
-
-	for (const [name, moduleId] of imports) {
+function rewriteComponentLocaleAccess(code: string, imports: Map<string, string>, htmlEscaped: boolean, edits?: SourceEdits, parserFilename = 'inline.ts'): string {
+	const changes: SourceEdit[] = [];
+	const replaceMember = (member: AstMemberExpression, offset: number) => {
+		if (!isIdentifier(member.object)) return;
+		const moduleId = imports.get(member.object.name);
+		const property = member.computed ? getStringNodeValue(member.property) : isIdentifier(member.property) ? member.property.name : undefined;
+		if (!moduleId || property !== '$locale' && property !== '$l') return;
 		const marker = createInlineLocaleMarker(moduleId);
-		next = rewriteComponentLocalizerAccess(next, name, marker, htmlEscaped);
-		next = rewriteComponentLocaleMemberAccess(next, name, marker, htmlEscaped);
+		const helper = property === '$locale' ? INLINE_LOCALE_CALL : INLINE_LOCALIZERS_CALL;
+		const argument = htmlEscaped ? createTemplateStringArgument(marker) : JSON.stringify(marker);
+		changes.push({ start: offset + member.start, end: offset + member.end, replacement: `${helper}(${argument}).sfc` });
+	};
+	if (htmlEscaped) {
+		templateLocaleReferences(code, new Set(), new Set(imports.keys()), replaceMember);
+	} else {
+		const parsed = parseRequiredInlineJavaScript(code, parserFilename);
+		const scopeTracker = new ScopeTracker();
+		walk(parsed.ast as OxcWalkInput, {
+			scopeTracker,
+			enter(node) {
+				const member = toAstNode(node);
+				if (member && isMemberExpression(member) && isIdentifier(member.object)
+					&& scopeTracker.getDeclaration(member.object.name)?.type === 'Import') replaceMember(member, 0);
+			},
+		});
 	}
-
-	return next;
+	return applySourceEdits(code, changes, edits);
 }
 
-function rewriteComponentLocaleMemberAccess(code: string, name: string, marker: string, htmlEscaped: boolean): string {
-	const stringArgument = htmlEscaped ? createTemplateStringArgument : JSON.stringify;
-	const regexp = new RegExp(`\\b${escapeRegExp(name)}\\.\\$locale((?:\\.[A-Za-z_$][\\w$]*)+)`, 'g');
-
-	return code.replace(regexp, (_match, pathExpression: string) =>
-		`__VUE_INTERNATIONALIZATION_INLINE_TEXT__(${stringArgument(marker)},${stringArgument(`sfc${pathExpression}`)})`,
-	);
-}
-
-function rewriteComponentLocalizerAccess(code: string, name: string, marker: string, htmlEscaped: boolean): string {
-	const stringArgument = htmlEscaped ? createTemplateStringArgument : JSON.stringify;
-	const regexp = new RegExp(`\\b${escapeRegExp(name)}\\.\\$l((?:\\.[A-Za-z_$][\\w$]*)+)\\(`, 'g');
-	let next = '';
-	let cursor = 0;
-
-	for (const match of code.matchAll(regexp)) {
-		const start = match.index;
-		const pathExpression = match[1];
-
-		if (start < cursor || !pathExpression) {
-			continue;
+/** Default imports to resolve through Vite before deciding whether they own a dictionary. */
+export function collectInlineComponentImports(code: string, filename: string): Map<string, string> {
+	const imports = new Map<string, string>();
+	const descriptor = filename.endsWith('.vue') ? parseSfc(code).descriptor : undefined;
+	const scripts = descriptor
+		? [descriptor.script, descriptor.scriptSetup].filter(script => script != null).map(script => script.content)
+		: [code];
+	if (scripts.length === 0 && descriptor && !descriptor.template && descriptor.styles.length === 0 && descriptor.customBlocks.length === 0) scripts.push(code);
+	for (const script of scripts) {
+		const ast = ts.createSourceFile(filename, script, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+		for (const statement of ast.statements) {
+			if (!ts.isImportDeclaration(statement) || !ts.isStringLiteral(statement.moduleSpecifier)) continue;
+			const clause = statement.importClause;
+			if (!clause || clause.isTypeOnly) continue;
+			const source = statement.moduleSpecifier.text;
+			if (clause.name) imports.set(clause.name.text, source);
+			if (clause.namedBindings && ts.isNamedImports(clause.namedBindings)) {
+				for (const binding of clause.namedBindings.elements) {
+					if (!binding.isTypeOnly && binding.propertyName?.text === 'default') imports.set(binding.name.text, source);
+				}
+			}
 		}
-
-		const valuesStart = start + match[0].length;
-		const callEnd = findBalancedExpressionEnd(code, valuesStart, '(', ')');
-
-		if (callEnd === undefined) {
-			continue;
-		}
-
-		next += code.slice(cursor, start);
-		next += `__VUE_INTERNATIONALIZATION_INLINE_LOCALIZER__(${stringArgument(marker)},${stringArgument(`sfc${pathExpression}`)},${code.slice(valuesStart, callEnd)})`;
-		cursor = callEnd + 1;
 	}
-
-	return cursor === 0 ? code : next + code.slice(cursor);
+	return imports;
 }
 
 function collectVueDefaultImports(code: string, filename: string, root: string): Map<string, string> {
 	const imports = new Map<string, string>();
-
-	for (const match of code.matchAll(VUE_DEFAULT_IMPORT_RE)) {
-		const name = match[1];
-		const source = match[3];
-
-		if (!name || !source) {
-			continue;
-		}
-
+	for (const [name, source] of collectInlineComponentImports(code, filename)) {
+		if (!source.endsWith('.vue')) continue;
 		const resolved = resolveVueImport(filename, source);
-
-		if (!resolved || !isLocaleOnlyVueFile(resolved)) {
-			continue;
-		}
-
-		const moduleId = toRuntimeModuleId(resolved, root);
-
-		if (moduleId) {
-			imports.set(name, moduleId);
+		if (resolved && existsSync(resolved)) {
+			const content = readFileSync(resolved, 'utf8');
+			if (parseSfc(content).descriptor.customBlocks.some(block => block.type === 'locale') || content.includes('defineInternationalization')) {
+				imports.set(name, toRuntimeModuleId(resolved, root));
+			}
 		}
 	}
-
 	return imports;
 }
 
@@ -693,67 +775,27 @@ function toRuntimeModuleId(filename: string, root: string): string {
 	return `/${normalizePath(relativePath)}`;
 }
 
-function isLocaleOnlyVueFile(filename: string): boolean {
-	if (!existsSync(filename)) {
-		return false;
-	}
-
-	const descriptor = parseSfc(readFileSync(filename, 'utf8'), { filename }).descriptor;
-
-	return !descriptor.template &&
-		!descriptor.script &&
-		!descriptor.scriptSetup &&
-		descriptor.customBlocks.some((block) => block.type === 'locale');
-}
-
 function createTemplateStringArgument(value: string): string {
 	return JSON.stringify(value).replaceAll('"', '&quot;');
 }
 
 function findBalancedExpressionEnd(source: string, start: number, open: string, close: string): number | undefined {
-	let depth = 1;
-	let quote: '"' | '\'' | '`' | undefined;
-	let escaped = false;
-
-	for (let index = start; index < source.length; index++) {
-		const char = source[index];
-
-		if (quote) {
-			if (escaped) {
-				escaped = false;
-				continue;
-			}
-
-			if (char === '\\') {
-				escaped = true;
-				continue;
-			}
-
-			if (char === quote) {
-				quote = undefined;
-			}
-
-			continue;
+	if (source[start - 1] !== open) return undefined;
+	const prefix = '__vvi';
+	const parsed = ts.createSourceFile('expression.ts', prefix + source.slice(start - 1), ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+	let result: number | undefined;
+	const visit = (node: ts.Node) => {
+		if (result !== undefined) return;
+		if ((open === '(' && ts.isCallExpression(node) || open === '[' && ts.isElementAccessExpression(node))
+			&& ts.isIdentifier(node.expression) && node.expression.text === prefix && node.getStart(parsed) === 0) {
+			const token = node.getLastToken(parsed);
+			if (token?.getText(parsed) === close) result = token.getStart(parsed) + start - 1 - prefix.length;
+			return;
 		}
-
-		if (char === '"' || char === '\'' || char === '`') {
-			quote = char;
-			continue;
-		}
-
-		if (char === open) {
-			depth++;
-			continue;
-		}
-
-		if (char === close) {
-			depth--;
-
-			if (depth === 0) {
-				return index;
-			}
-		}
-	}
+		ts.forEachChild(node, visit);
+	};
+	visit(parsed);
+	return result;
 }
 
 export function inlineLocaleChunks(
@@ -765,6 +807,9 @@ export function inlineLocaleChunks(
 	messageSyntax: LocaleMessageSyntax = 'vue',
 	options: {
 		emitChunk?: InlineLocaleChunkEmitter;
+		emitAsset?: InlineLocaleAssetEmitter;
+		icuFormatterFile?: string;
+		base?: string;
 	} = {},
 ): InlineChunkManifest {
 	const manifest: InlineChunkManifest = {
@@ -791,13 +836,16 @@ export function inlineLocaleChunks(
 	const payloadCache = createInlinePayloadResolverCache(primaryLocale, messageSyntax, modules, globalMessages);
 
 	for (const { chunk, originalCode, plan, originalFileName, originalImports, originalDynamicImports } of localizableChunks) {
+		const originalMap = chunk.map;
 		const primaryFileName = addLocaleToFileName(originalFileName, primaryLocale);
 		const localeFiles: Record<string, string> = {
 			[primaryLocale]: primaryFileName,
 		};
 		const integrity: Record<string, string> = {};
+		const manifestImports = new Set(originalImports);
 
 		for (const locale of locales) {
+			const edits = originalMap ? new SourceEdits(originalCode, originalFileName) : undefined;
 			const localizedChunk: MutableOutputChunk = locale === primaryLocale ? chunk : {
 				...chunk,
 				fileName: addLocaleToFileName(originalFileName, locale),
@@ -810,11 +858,42 @@ export function inlineLocaleChunks(
 			);
 			localizedChunk.code = referenceMap.replacePreloadMarkers(
 				referenceMap.localizeCodeReferences(
-					applyInlineReplacementPlan(originalCode, plan, payloadCache.resolve(locale)),
+					applyInlineReplacementPlan(originalCode, plan, payloadCache.resolve(locale), edits),
 					locale,
+					originalFileName,
+					edits,
 				),
 				locale,
+				originalFileName,
+				options.base === '' || options.base === './',
+				edits,
 			);
+
+			localizedChunk.code = editSource(localizedChunk.code, 0, 0, `if (typeof document !== "undefined") { const locale = document.documentElement.getAttribute("data-vvi-locale"); if (locale !== null && locale !== ${JSON.stringify(locale)}) throw new Error("SSR locale does not match the selected inline chunk."); }\n`, edits);
+
+			if (localizedChunk.code.includes('__VVI_FORMAT_ICU__') && options.icuFormatterFile) {
+				let specifier = relative(dirname(localizedChunk.fileName), options.icuFormatterFile).replaceAll('\\', '/');
+				if (!specifier.startsWith('.')) specifier = `./${specifier}`;
+				localizedChunk.code = editSource(localizedChunk.code, 0, 0, `import { format as __VVI_FORMAT_ICU__ } from ${JSON.stringify(specifier)};\n`, edits);
+				localizedChunk.imports.push(options.icuFormatterFile);
+				manifestImports.add(options.icuFormatterFile);
+			}
+			if (edits && originalMap) {
+				const mapFileName = `${localizedChunk.fileName}.map`;
+				// Only rewrite the emitted trailing comment, never matching text inside a string.
+				const comment = parseSync(localizedChunk.fileName, localizedChunk.code).comments.find(comment =>
+					comment.type === 'Line' && /^# sourceMappingURL=\S+$/u.test(comment.value) && localizedChunk.code.slice(comment.end).trim() === '');
+				const inlineMap = comment?.value.includes('sourceMappingURL=data:') === true;
+				if (comment) localizedChunk.code = editSource(localizedChunk.code, comment.start, comment.end, '', edits);
+				const map = edits.generateMap(originalMap, baseName(localizedChunk.fileName));
+				if (comment) localizedChunk.code = editSource(localizedChunk.code, comment.start, comment.start, `//# sourceMappingURL=${inlineMap ? map.toUrl() : baseName(mapFileName)}`, edits);
+				localizedChunk.map = JSON.parse(map.toString()) as SourceMapPayload;
+				const asset: MutableOutputAsset = { type: 'asset', fileName: mapFileName, source: map.toString() };
+				if (!inlineMap) {
+					if (options.emitAsset) options.emitAsset(asset);
+					else bundle[mapFileName] = asset;
+				}
+			}
 
 			if (options.emitChunk) {
 				options.emitChunk(localizedChunk);
@@ -826,13 +905,14 @@ export function inlineLocaleChunks(
 		}
 
 		delete bundle[originalFileName];
+		if (originalMap) delete bundle[`${originalFileName}.map`];
 		manifest.entries.push({
 			fileName: primaryFileName,
 			originalFileName,
 			facadeModuleId: typeof chunk.facadeModuleId === 'string' ? chunk.facadeModuleId : undefined,
 			isEntry: typeof chunk.isEntry === 'boolean' ? chunk.isEntry : undefined,
 			isDynamicEntry: typeof chunk.isDynamicEntry === 'boolean' ? chunk.isDynamicEntry : undefined,
-			imports: originalImports.length > 0 ? originalImports : undefined,
+			imports: manifestImports.size > 0 ? [...manifestImports] : undefined,
 			dynamicImports: originalDynamicImports.length > 0 ? originalDynamicImports : undefined,
 			css: [...(chunk.viteMetadata?.importedCss ?? [])],
 			locales: localeFiles,
@@ -997,8 +1077,30 @@ export function getInlineLocaleHtmlLoaders(
 ): InlineLocaleLoaderAsset[] {
 	return findHtmlLocaleEntries(html, manifest, htmlFileName, base).map((entry) => ({
 		fileName: createLocaleLoaderFileName(entry.originalFileName),
-		source: createLocaleLoaderSource(entry.locales, manifest.primaryLocale, base, entry.integrity),
+		source: createLocaleLoaderSource(entry.locales, manifest.primaryLocale, base, entry.integrity, localePreloads(entry, manifest)),
 	}));
+}
+
+function localePreloads(entry: InlineChunkManifest['entries'][number], manifest: InlineChunkManifest): Record<string, Array<{ file: string; integrity?: string }>> {
+	const dependencies: InlineChunkManifest['entries'] = [];
+	const visited = new Set([entry.originalFileName]);
+
+	function visit(file: string) {
+		if (visited.has(file)) return;
+		visited.add(file);
+		const dependency = manifest.entries.find(candidate => candidate.originalFileName === file);
+		if (!dependency) return;
+		dependencies.push(dependency);
+		for (const imported of dependency.imports ?? []) visit(imported);
+	}
+
+	for (const file of entry.imports ?? []) visit(file);
+	return Object.fromEntries(Object.keys(entry.locales).map(locale => [locale, dependencies.map(dependency => ({ file: dependency.locales[locale], integrity: dependency.integrity?.[locale] }))]));
+}
+
+function htmlAttribute(tag: string, name: string): string | undefined {
+	const match = new RegExp(`\\b${name}\\s*=\\s*(?:"([^"]*)"|'([^']*)'|([^\\s>]+))`, 'iu').exec(tag);
+	return match?.at(1) ?? match?.at(2) ?? match?.at(3);
 }
 
 export function replaceInlineLocaleHtml(
@@ -1007,47 +1109,67 @@ export function replaceInlineLocaleHtml(
 	htmlFileName?: string,
 	base = '/',
 ): string {
-	let next = html;
+	let next = html.replace(/<link\b(?:[^>"']|"[^"]*"|'[^']*')*>/giu, tag => {
+		const rel = htmlAttribute(tag, 'rel')?.toLowerCase();
+		if (rel !== 'modulepreload' && !(rel === 'preload' && htmlAttribute(tag, 'as')?.toLowerCase() === 'script')) return tag;
+		const href = htmlAttribute(tag, 'href');
+		if (!href) return tag;
+		const replaced = manifest.entries.some(entry => createPublicPathCandidates(entry.originalFileName, base, htmlFileName).includes(href));
+		return replaced ? '' : tag;
+	});
 	const fallbackEntries = findFallbackHtmlLocaleEntries(html, manifest, htmlFileName, base);
 
 	for (const entry of manifest.entries) {
-		const replaced = replaceEntryScript(next, entry, manifest.primaryLocale, base);
+		const replaced = replaceEntryScript(next, entry, manifest.primaryLocale, base, htmlFileName, localePreloads(entry, manifest));
 		next = replaced === next && fallbackEntries.includes(entry)
-			? injectLocaleLoaderScript(next, entry, manifest.primaryLocale, base)
+			? injectLocaleLoaderScript(next, entry, manifest.primaryLocale, base, htmlFileName)
 			: replaced;
 	}
 
 	return next;
 }
 
-export function augmentViteManifestJson(source: string, inlineManifest: InlineChunkManifest): string {
+export function augmentViteManifestJson(source: string, inlineManifest: InlineChunkManifest, root?: string, clientManifest?: LocaleAssetManifest): string {
 	const manifest = JSON.parse(source) as Record<string, Record<string, unknown>>;
 	const fileToManifestKey = new Map(Object.entries(manifest)
 		.flatMap(([key, value]) => typeof value.file === 'string' ? [[value.file, key] as const] : []));
 
+	const entries = new Map<string, [string, Record<string, unknown>]>();
+	// Register every surviving logical entry before mapping dependencies; Vite
+	// can replace a JS entry with an aggregate CSS entry in its native manifest.
 	for (const entry of inlineManifest.entries) {
-		const manifestEntry = findManifestEntry(manifest, entry);
-
-		if (!manifestEntry) {
-			continue;
+		let found = findManifestEntry(manifest, entry);
+		if (root && entry.isEntry && entry.facadeModuleId) {
+			const key = relative(root, entry.facadeModuleId).replaceAll('\\', '/');
+			const value = found?.[1] ?? { file: entry.locales[inlineManifest.primaryLocale] };
+			value.src = key;
+			manifest[key] = value;
+			found = [key, value];
 		}
-
-		const [key, value] = manifestEntry;
+		if (found) {
+			entries.set(entry.originalFileName, found);
+			fileToManifestKey.set(entry.originalFileName, found[0]);
+		}
+	}
+	const localizedKeys = new Set([...entries.values()].map(([key]) => key));
+	for (const entry of inlineManifest.entries) {
+		const found = entries.get(entry.originalFileName);
+		if (!found) continue;
+		const [key, value] = found;
 		const originalFile = typeof value.file === 'string' ? value.file : undefined;
 
 		value.file = entry.locales[inlineManifest.primaryLocale];
+		const css = clientManifest?.chunks[entry.originalFileName]?.css ?? entry.css;
+		if (css?.length) value.css = [...css];
 		value.locale = inlineManifest.primaryLocale;
 		value.isEntry ??= true;
 		const imports = mapManifestImports(entry.imports, fileToManifestKey);
 		const dynamicImports = mapManifestImports(entry.dynamicImports, fileToManifestKey);
 
-		if (imports.length > 0) {
-			value.imports = imports;
-		}
-
-		if (dynamicImports.length > 0) {
-			value.dynamicImports = dynamicImports;
-		}
+		if (imports.length) value.imports = imports;
+		else delete value.imports;
+		if (dynamicImports.length) value.dynamicImports = dynamicImports;
+		else delete value.dynamicImports;
 
 		if (originalFile?.endsWith('.css')) {
 			const css = Array.isArray(value.css) ? value.css : [];
@@ -1065,6 +1187,8 @@ export function augmentViteManifestJson(source: string, inlineManifest: InlineCh
 				file: fileName,
 				locale,
 				isInternationalizationLocale: true,
+				...(imports.length ? { imports: mapManifestImports(entry.imports, fileToManifestKey, locale, localizedKeys) } : {}),
+				...(dynamicImports.length ? { dynamicImports: mapManifestImports(entry.dynamicImports, fileToManifestKey, locale, localizedKeys) } : {}),
 			};
 		}
 	}
@@ -1075,14 +1199,75 @@ export function augmentViteManifestJson(source: string, inlineManifest: InlineCh
 function mapManifestImports(
 	fileNames: string[] | undefined,
 	fileToManifestKey: Map<string, string>,
+	locale?: string,
+	localizedKeys = new Set<string>(),
 ): string[] {
 	return fileNames
 		?.map((fileName) => fileToManifestKey.get(fileName))
-		.filter((key): key is string => typeof key === 'string') ?? [];
+		.filter((key): key is string => typeof key === 'string')
+		.map(key => locale && localizedKeys.has(key) ? `${key}?locale=${locale}` : key) ?? [];
 }
 
 export function addLocaleToFileName(fileName: string, locale: string): string {
 	return fileName.replace(/(\.m?js)$/u, `.${sanitizeLocale(locale)}$1`);
+}
+
+function unwrapParentheses(value: unknown): AstNode | undefined {
+	let node = toAstNode(value);
+	while (node?.type === 'ParenthesizedExpression') node = toAstNode(node.expression);
+	return node;
+}
+
+function getChunkImportSources(code: string): Array<{ node: AstNode; preload: boolean }> {
+	const sources: Array<{ node: AstNode; preload: boolean }> = [];
+	const mappedDependencies: AstNode[] = [];
+	const dependencyMaps = new Set<string>();
+	const parsed = parseRequiredInlineJavaScript(code);
+	walk(parsed.ast as OxcWalkInput, {
+		enter(node) {
+			if (['ImportDeclaration', 'ExportNamedDeclaration', 'ExportAllDeclaration', 'ImportExpression'].includes(node.type)) {
+				const rawSource = (node as unknown as { source?: unknown }).source;
+				const source = rawSource ? toAstNode(rawSource) : undefined;
+				if (source && getStringNodeValue(source) !== undefined) sources.push({ node: source, preload: false });
+			}
+			const current = toAstNode(node);
+			// Vite's final import-analysis hook moves dependency filenames into this
+			// generated helper. Match its AST, rather than strings elsewhere in code.
+			if (current?.type === 'VariableDeclarator' && toAstNode(current.id)?.name === '__vite__mapDeps') {
+				const init = toAstNode(current.init);
+				const params = init?.params as AstNode[] | undefined;
+				if (init?.type === 'ArrowFunctionExpression' && params?.length === 3
+					&& toAstNode(params[1].right)?.name === '__vite__mapDeps') {
+					const cache = unwrapParentheses(params[2].right);
+					const assignment = cache?.type === 'LogicalExpression' && cache.operator === '||' ? unwrapParentheses(cache.right) : undefined;
+					const target = toAstNode(assignment?.left);
+					const array = toAstNode(assignment?.right);
+					if (assignment?.type === 'AssignmentExpression' && target?.type === 'MemberExpression'
+						&& toAstNode(target.object)?.name === toAstNode(params[1].left)?.name
+						&& toAstNode(target.property)?.name === 'f' && array?.type === 'ArrayExpression') {
+						for (const element of array.elements as Array<AstNode | null>) {
+							if (element && getStringNodeValue(element) !== undefined) mappedDependencies.push(element);
+						}
+					}
+				}
+			}
+			if (current && isCallExpression(current)) {
+				const dependencies = current.arguments.at(1);
+				if (current.arguments[0]?.type === 'ArrowFunctionExpression' && dependencies && isCallExpression(dependencies)
+					&& getCalleeName(dependencies.callee) === '__vite__mapDeps') dependencyMaps.add('__vite__mapDeps');
+			}
+			if (current && isCallExpression(current) && ['preload', '__vitePreload'].includes(getCalleeName(current.callee) ?? '')) {
+				const dependencies = current.arguments.at(1);
+				if (dependencies?.type === 'ArrayExpression') {
+					for (const element of (dependencies as AstNode & { elements: Array<AstNode | null> }).elements) {
+						if (element && getStringNodeValue(element) !== undefined) sources.push({ node: element, preload: true });
+					}
+				}
+			}
+		},
+	});
+	if (dependencyMaps.size) sources.push(...mappedDependencies.map(node => ({ node, preload: true })));
+	return sources;
 }
 
 function getLocalizableChunkReferences(
@@ -1097,12 +1282,10 @@ function getLocalizableChunkReferences(
 	);
 	const localizableFilesByBaseName = new Map([...localizableFiles].map((fileName) => [baseName(fileName), fileName]));
 
-	for (const match of code.matchAll(/[A-Za-z0-9._-]+\.m?js/gu)) {
-		const fileName = localizableFilesByBaseName.get(match[0]);
-
-		if (fileName) {
-			references.add(fileName);
-		}
+	for (const { node: source } of getChunkImportSources(code)) {
+		const specifier = getStringNodeValue(source);
+		const fileName = specifier && localizableFilesByBaseName.get(baseName(specifier));
+		if (fileName) references.add(fileName);
 	}
 
 	return references;
@@ -1137,17 +1320,16 @@ function createInlineChunkReferenceMap(
 		return undefined;
 	}
 
-	function localizeCodeReferences(code: string, locale: string): string {
-		let next = code;
-
-		for (const fileName of localizableFiles) {
-			const localizedFileName = addLocaleToFileName(fileName, locale);
-
-			next = next.replaceAll(fileName, localizedFileName);
-			next = next.replaceAll(baseName(fileName), baseName(localizedFileName));
+	function localizeCodeReferences(code: string, locale: string, importer: string, edits?: SourceEdits): string {
+		const changes: SourceEdit[] = [];
+		for (const { node: source, preload } of getChunkImportSources(code)) {
+			const specifier = getStringNodeValue(source);
+			if (!specifier || (!preload && !specifier.startsWith('.'))) continue;
+			const target = preload && localizableFiles.has(specifier) ? resolve(specifier) : resolve(dirname(importer), specifier);
+			const original = [...localizableFiles].find(file => resolve(file) === target);
+			if (original) changes.push({ start: source.start, end: source.end, replacement: JSON.stringify(addLocaleToFileName(specifier, locale)) });
 		}
-
-		return next;
+		return applySourceEdits(code, changes, edits);
 	}
 
 	function collectPreloadDependencies(fileName: string, locale: string, seen = new Set<string>()): string[] {
@@ -1172,9 +1354,8 @@ function createInlineChunkReferenceMap(
 			dependencies.add(css);
 		}
 
-		for (const asset of chunk.chunk.viteMetadata?.importedAssets ?? []) {
-			dependencies.add(asset);
-		}
+		// Vite's async preload helper treats every non-CSS dependency as a
+		// JavaScript module. Images and fonts must be loaded by their consumers.
 
 		for (const importedFileName of chunk.originalImports) {
 			dependencies.add(localizeFileName(importedFileName, locale));
@@ -1187,14 +1368,16 @@ function createInlineChunkReferenceMap(
 		return [...dependencies];
 	}
 
-	function replacePreloadMarkers(code: string, locale: string): string {
-		return code
+	function replacePreloadMarkers(code: string, locale: string, importer: string, relativeBase: boolean, edits?: SourceEdits): string {
+		const changes: SourceEdit[] = [];
+		code
 			.replace(/(import\(\s*(["'`])\.\/([^"'`]+)\2\s*\)(?:(?!,\s*__VITE_PRELOAD__)[\s\S])*?)(\s*,\s*)__VITE_PRELOAD__/gu, (
 				_match,
 				importExpression: string,
 				_quote: string,
 				specifier: string,
 				separator: string,
+				offset: number,
 			) => {
 				const fileName = findOriginalFileName(specifier, locale);
 				const dependencies = fileName ? collectPreloadDependencies(fileName, locale) : [specifier];
@@ -1202,9 +1385,15 @@ function createInlineChunkReferenceMap(
 					? 'Promise.resolve({})'
 					: importExpression;
 
-				return `${preloadTarget}${separator}${JSON.stringify(dependencies)}`;
-			})
-			.replaceAll('__VITE_PRELOAD__', '[]');
+				const paths = relativeBase ? dependencies.map(file => relative(dirname(importer), file).replaceAll('\\', '/')) : dependencies;
+				changes.push({ start: offset, end: offset + _match.length, replacement: [
+					preloadTarget === importExpression ? { start: offset, end: offset + importExpression.length } : preloadTarget,
+					`${separator}${JSON.stringify(paths)}`,
+				] });
+				return _match;
+			});
+		const next = applySourceEdits(code, changes, edits);
+		return applySourceEdits(next, [...next.matchAll(/__VITE_PRELOAD__/g)].map(match => ({ start: match.index, end: match.index + match[0].length, replacement: '[]' })), edits);
 	}
 
 	return {
@@ -1309,7 +1498,8 @@ function createRequiredInlineReplacementPlan(code: string): InlineReplacementPla
 		localeMembers: true,
 		localizerCalls: true,
 		textCalls: true,
-		objectCalls: 'empty',
+		objectCalls: true,
+		pruneUnusedObjects: true,
 	}, parseRequiredInlineJavaScript(code));
 }
 
@@ -1324,30 +1514,48 @@ function createInlineReplacementPlan(
 		throw new Error('Expected inline JavaScript parser to return an AST.');
 	}
 
-	const localeBindings = new Map<string, string>();
-	const localizerBindings = new Map<string, string>();
+	const localeDeclarations = new Map<AstNode, string>();
+	const localizerDeclarations = new Map<AstNode, string>();
+	const scopeTracker = new ScopeTracker({ preserveExitedScopes: true });
+	walk(parsedCode.ast as OxcWalkInput, { scopeTracker, enter(node) {
+		const current = toAstNode(node);
+		if (current && isVariableDeclarator(current)) collectInlineBindingMarker(current, localeDeclarations, localizerDeclarations);
+	} });
+	scopeTracker.freeze();
+	const bindings = (declarations: Map<AstNode, string>): InlineBindings => ({ get(name) {
+		const node = scopeTracker.getDeclaration(name)?.node;
+		return node ? declarations.get(node as AstNode) : undefined;
+	} });
+	const localeBindings = bindings(localeDeclarations);
+	const localizerBindings = bindings(localizerDeclarations);
 	const operations: InlineReplacementOperation[] = [];
+	const objectBindings = new Map<number, string>();
+	const remainingNames = new Set<string>();
+	let replacedUntil = -1;
 
 	walk(parsedCode.ast as OxcWalkInput, {
+		scopeTracker,
 		enter(node, parent) {
 			const current = toAstNode(node);
 			const currentParent = parent ? toAstNode(parent) : undefined;
 
-			if (!current) {
+			if (!current || current.start < replacedUntil) {
 				return;
 			}
 
 			if (isVariableDeclarator(current)) {
-				collectInlineBindingMarker(current, localeBindings, localizerBindings);
+				if (isIdentifier(current.id) && current.init) objectBindings.set(current.init.start, current.id.name);
 				return;
 			}
+
+			if (isIdentifier(current) && !(currentParent && isVariableDeclarator(currentParent) && currentParent.id === current)) remainingNames.add(current.name);
 
 			if (isCallExpression(current)) {
 				const operation = getCallReplacementOperation(code, current, localizerBindings, options);
 
 				if (operation) {
 					operations.push(operation);
-					this.skip();
+					replacedUntil = operation.end;
 				}
 
 				return;
@@ -1362,11 +1570,35 @@ function createInlineReplacementPlan(
 
 				if (operation) {
 					operations.push(operation);
-					this.skip();
+					replacedUntil = operation.end;
 				}
 			}
 		},
 	});
+
+	if (options.pruneUnusedObjects) {
+		// Call/lookup replacements retain their argument expressions. The main walk
+		// skips those subtrees, so account for their identifier references separately.
+		for (const operation of operations) for (const key of ['valuesExpression', 'pluralExpression', 'keyExpression']) {
+			const expression = (operation as unknown as Record<string, unknown>)[key];
+			if (typeof expression !== 'string') continue;
+			try {
+				const argument = parseRequiredInlineJavaScript(`(${expression})`);
+				walk(argument.ast as OxcWalkInput, { enter(node) {
+					const current = toAstNode(node);
+					if (current && isIdentifier(current)) remainingNames.add(current.name);
+				} });
+			} catch {
+				// Unknown expression forms must retain data rather than erase it.
+				for (const name of objectBindings.values()) remainingNames.add(name);
+			}
+		}
+		for (const operation of operations) {
+			if (operation.type !== 'locale-object-call' && operation.type !== 'localizer-object-call') continue;
+			const name = objectBindings.get(operation.start);
+			if (name && !remainingNames.has(name)) operation.mode = 'empty';
+		}
+	}
 
 	return {
 		code,
@@ -1378,6 +1610,7 @@ function applyInlineReplacementPlan(
 	code: string,
 	plan: InlineReplacementPlan,
 	resolvePayload: InlinePayloadResolver,
+	edits?: SourceEdits,
 ): string {
 	if (plan.code !== code) {
 		return replaceInlineLocaleAccessAst(code, resolvePayload, {
@@ -1388,17 +1621,48 @@ function applyInlineReplacementPlan(
 		});
 	}
 
-	const magic = new MagicString(code);
+	const changes: SourceEdit[] = [];
 
 	for (const operation of plan.operations) {
-		const replacement = getPlannedReplacement(operation, resolvePayload);
+		const replacement = edits
+			? getMappedPlannedReplacement(operation, resolvePayload, edits)
+			: getPlannedReplacement(operation, resolvePayload);
 
 		if (replacement !== undefined) {
-			magic.overwrite(operation.start, operation.end, replacement);
+			changes.push({ start: operation.start, end: operation.end, replacement });
 		}
 	}
 
-	return magic.toString();
+	return applySourceEdits(code, changes, edits);
+}
+
+/** Carry known argument ranges through generated formatting code, never text diffs. */
+function getMappedPlannedReplacement(operation: InlineReplacementOperation, resolvePayload: InlinePayloadResolver, edits: SourceEdits): Parameters<typeof editSource>[3] | undefined {
+	const ordinary = getPlannedReplacement(operation, resolvePayload);
+	if (ordinary === undefined || !operation.sourceExpressions) return ordinary;
+	const ranges: Array<[RetainedExpression, SourceSlice]> = [];
+	for (const key of ['valuesExpression', 'pluralExpression', 'keyExpression'] as const) {
+		const range = operation.sourceExpressions[key];
+		if (range) ranges.push([key, range]);
+	}
+	if (!ranges.length) return ordinary;
+	// Choose tokens absent from the complete expansion (including dictionary values).
+	let prefix = '__VVI_RETAINED_SOURCE_';
+	while (ordinary.includes(prefix)) prefix += '_';
+	const expressions = new Map<string, SourceEdits>();
+	const replacements: Partial<Record<RetainedExpression, string>> = {};
+	for (const [key, range] of ranges) {
+		const child = edits.fork(range.start, range.end);
+		child.replace(child.code, 0, 0, '(');
+		child.replace(child.code, child.code.length, child.code.length, ')');
+		applyInlineReplacementPlan(child.code, createRequiredInlineReplacementPlan(child.code), resolvePayload, child);
+		const token = `${prefix}${expressions.size}__`;
+		expressions.set(token, child.fork(1, child.code.length - 1));
+		replacements[key] = token;
+	}
+	const generated = getPlannedReplacement({ ...operation, ...replacements }, resolvePayload);
+	if (generated === undefined) return ordinary;
+	return generated.split(new RegExp(`(${prefix}\\d+__)`, 'gu')).map(part => expressions.get(part) ?? part);
 }
 
 function parseInlineJavaScript(
@@ -1429,8 +1693,8 @@ function parseInlineJavaScript(
 	}
 }
 
-function parseRequiredInlineJavaScript(code: string): ParsedInlineJavaScript {
-	const parsed = parseInlineJavaScript(code, undefined, {});
+function parseRequiredInlineJavaScript(code: string, parserFilename?: string): ParsedInlineJavaScript {
+	const parsed = parseInlineJavaScript(code, undefined, {}, parserFilename);
 
 	if (typeof parsed === 'string') {
 		throw new Error('Expected inline JavaScript parser to return an AST.');
@@ -1462,7 +1726,7 @@ function parseLegacyInlineMarkerFallback(
 			}
 
 			if (typeof resolved.value === 'function') {
-				return `((${resolved.value.toString()})(${valuesExpression}))`;
+				return `(${createInlineMessageFunction(resolved.value)})(${valuesExpression})`;
 			}
 
 			const template = typeof resolved.value === 'string' ? resolved.value : `$locale.${path}`;
@@ -1475,8 +1739,8 @@ function parseLegacyInlineMarkerFallback(
 
 function collectInlineBindingMarker(
 	node: AstVariableDeclarator,
-	localeBindings: Map<string, string>,
-	localizerBindings: Map<string, string>,
+	localeBindings: Map<AstNode, string>,
+	localizerBindings: Map<AstNode, string>,
 ): void {
 	if (!isIdentifier(node.id) || !node.init || !isCallExpression(node.init)) {
 		return;
@@ -1491,19 +1755,19 @@ function collectInlineBindingMarker(
 	const calleeName = getCalleeName(node.init.callee);
 
 	if (calleeName === INLINE_LOCALE_CALL) {
-		localeBindings.set(node.id.name, marker);
+		localeBindings.set(node.id, marker);
 		return;
 	}
 
 	if (calleeName === INLINE_LOCALIZERS_CALL) {
-		localizerBindings.set(node.id.name, marker);
+		localizerBindings.set(node.id, marker);
 	}
 }
 
 function getCallReplacementOperation(
 	code: string,
 	node: AstCallExpression,
-	localizerBindings: Map<string, string>,
+	localizerBindings: InlineBindings,
 	options: AstReplaceOptions,
 ): InlineReplacementOperation | undefined {
 	const calleeName = getCalleeName(node.callee);
@@ -1572,6 +1836,7 @@ function getInlineLocalizerCallReplacementOperation(
 		path,
 		valuesExpression: values ? code.slice(values.start, values.end) : '{}',
 		pluralExpression: plural ? code.slice(plural.start, plural.end) : undefined,
+		sourceExpressions: { valuesExpression: values, pluralExpression: plural },
 	};
 }
 
@@ -1595,6 +1860,7 @@ function getInlineLookupCallReplacementOperation(
 		marker,
 		path,
 		keyExpression: code.slice(key.start, key.end),
+		sourceExpressions: { keyExpression: key },
 		suffixKeys: suffix === '' ? [] : suffix.split('.'),
 	};
 }
@@ -1603,25 +1869,9 @@ function createInlineLookupExpression(
 	dictionary: LocaleDictionary,
 	keyExpression: string,
 	suffixKeys: string[],
-	payload: InlineLocalePayload,
-	scope: PublicLocaleScope,
+	path: string,
 ): string {
-	const entries = Object.entries(dictionary)
-		.map(([key, value]) => {
-			const selected = suffixKeys.length > 0 && isDictionary(value)
-				? getValueByPath(value, suffixKeys)
-				: value;
-
-			if (selected === undefined) {
-				return undefined;
-			}
-
-			return `${JSON.stringify(key)}:${serializeInlineLookupValue(selected, payload, scope)}`;
-		})
-		.filter((entry): entry is string => entry !== undefined)
-		.join(',');
-
-	return `(({${entries}})[String(${keyExpression})])`;
+	return `(${createRawLocaleObjectExpression(dictionary, path)})[String(${keyExpression})]${suffixKeys.map(key => `[${JSON.stringify(key)}]`).join('')}`;
 }
 
 function createInlineLocalizerLookupCallExpression(
@@ -1632,54 +1882,14 @@ function createInlineLocalizerLookupCallExpression(
 	pluralExpression: string | undefined,
 	payload: InlineLocalePayload,
 	scope: PublicLocaleScope,
+	path: string[],
 ): string {
-	const entries = Object.entries(dictionary)
-		.map(([key, value]) => {
-			const selected = suffixKeys.length > 0 && isDictionary(value)
-				? getValueByPath(value, suffixKeys)
-				: value;
-
-			if (selected === undefined) {
-				return undefined;
-			}
-
-			return `${JSON.stringify(key)}:${serializeInlineLocalizerLookupValue(selected, payload, scope)}`;
-		})
-		.filter((entry): entry is string => entry !== undefined)
-		.join(',');
-	const pluralArgument = pluralExpression ? `, ${pluralExpression}` : '';
-
-	return `(({${entries}})[String(${keyExpression})])(${valuesExpression}${pluralArgument})`;
+	const lookup = `(${createLocalizerObjectExpression(dictionary, payload, scope, path)})[String(${keyExpression})]${suffixKeys.map(key => `[${JSON.stringify(key)}]`).join('')}`;
+	return `${lookup}(${valuesExpression}${pluralExpression ? `, ${pluralExpression}` : ''})`;
 }
 
-function serializeInlineLookupValue(value: unknown, payload: InlineLocalePayload, scope: PublicLocaleScope): string {
-	if (isDictionary(value)) {
-		return `{${Object.entries(value)
-			.map(([key, child]) => `${toObjectPropertyName(key)}:${serializeInlineLookupValue(child, payload, scope)}`)
-			.join(',')}}`;
-	}
-
-	if (typeof value === 'function') {
-		return `(${value.toString()})`;
-	}
-
-	if (typeof value === 'string') {
-		return createInlineTemplateExpression(value, '{}', payload, scope);
-	}
-
-	return JSON.stringify(value);
-}
-
-function serializeInlineLocalizerLookupValue(value: unknown, payload: InlineLocalePayload, scope: PublicLocaleScope): string {
-	if (isDictionary(value)) {
-		return createLocalizerObjectExpression(value, payload, scope);
-	}
-
-	if (typeof value === 'function') {
-		return `(${value.toString()})`;
-	}
-
-	return `(values = {}) => ${createInlineTemplateExpression(typeof value === 'string' ? value : String(value), 'values', payload, scope)}`;
+function createInlineMessageFunction(value: { toString(): string }): string {
+	return `(__values, __plural) => (${value.toString()})(typeof __values === "number" ? {count:__values,n:__values} : __values, typeof __values === "number" ? __values : __plural)`;
 }
 
 function replaceNestedInlineMarkerExpression(expression: string, resolvePayload: InlinePayloadResolver): string {
@@ -1737,8 +1947,11 @@ function getInlineLocalizerObjectReplacementOperation(node: AstCallExpression, o
 function getLocalizerBindingCallReplacementOperation(
 	code: string,
 	node: AstCallExpression,
-	localizerBindings: Map<string, string>,
+	localizerBindings: InlineBindings,
 ): InlineReplacementOperation | undefined {
+	// Retain the callable object path when argument shape/evaluation cannot be
+	// represented by the optimized values/plural pair.
+	if (node.arguments.length > 2 || node.arguments.some(argument => argument.type === 'SpreadElement')) return undefined;
 	const lookup = getLocalizerLookupCallReplacementOperation(code, node, localizerBindings);
 
 	if (lookup) {
@@ -1746,19 +1959,21 @@ function getLocalizerBindingCallReplacementOperation(
 	}
 
 	const access = readMemberAccess(node.callee);
+	const inlineCallAccess = access ? undefined : readInlineLocaleCallMemberAccess(node.callee, INLINE_LOCALIZERS_CALL);
+	const properties = access?.properties ?? inlineCallAccess?.properties;
 	const values = node.arguments.at(0);
 
-	if (!access) {
+	if (!properties) {
 		return undefined;
 	}
 
-	const marker = localizerBindings.get(access.root);
+	const marker = access ? localizerBindings.get(access.root) : inlineCallAccess?.marker;
 
 	if (!marker) {
 		return undefined;
 	}
 
-	const normalized = normalizeInlineAccessPath(access.properties);
+	const normalized = normalizeInlineAccessPath(properties);
 
 	if (!normalized) {
 		return undefined;
@@ -1771,16 +1986,17 @@ function getLocalizerBindingCallReplacementOperation(
 		start: node.start,
 		end: node.end,
 		marker,
-		properties: access.properties,
+		properties,
 		valuesExpression: values ? code.slice(values.start, values.end) : '{}',
 		pluralExpression: plural ? code.slice(plural.start, plural.end) : undefined,
+		sourceExpressions: { valuesExpression: values, pluralExpression: plural },
 	};
 }
 
 function getLocalizerLookupCallReplacementOperation(
 	code: string,
 	node: AstCallExpression,
-	localizerBindings: Map<string, string>,
+	localizerBindings: InlineBindings,
 ): InlineReplacementOperation | undefined {
 	const access = readDynamicMemberAccess(code, node.callee);
 	const values = node.arguments.at(0);
@@ -1829,12 +2045,13 @@ function getLocalizerLookupCallReplacementOperation(
 		suffixKeys,
 		valuesExpression: values ? code.slice(values.start, values.end) : '{}',
 		pluralExpression: plural ? code.slice(plural.start, plural.end) : undefined,
+		sourceExpressions: { keyExpression: dynamic, valuesExpression: values, pluralExpression: plural },
 	};
 }
 
 function getLocaleMemberReplacementOperation(
 	node: AstMemberExpression,
-	localeBindings: Map<string, string>,
+	localeBindings: InlineBindings,
 ): InlineReplacementOperation | undefined {
 	const access = readMemberAccess(node);
 	const inlineCallAccess = access ? undefined : readInlineLocaleCallMemberAccess(node);
@@ -1868,7 +2085,7 @@ function getPlannedReplacement(
 	switch (operation.type) {
 		case 'text-call': {
 			const resolved = resolveInlinePath(operation.marker, operation.path, resolvePayload);
-			return resolved ? JSON.stringify(resolved.value ?? `$locale.${operation.path}`) : undefined;
+			return resolved ? serializeRawLocaleValue(resolved.value, operation.path) : undefined;
 		}
 
 		case 'localizer-call': {
@@ -1882,12 +2099,13 @@ function getPlannedReplacement(
 			const valuesExpression = replaceNestedInlineMarkerExpression(operation.valuesExpression, resolvePayload);
 
 			if (typeof resolved.value === 'function') {
-				const pluralExpression = operation.pluralExpression ? `, ${operation.pluralExpression}` : '';
-				return `((${resolved.value.toString()})(${valuesExpression}${pluralExpression}))`;
+				const pluralExpression = operation.pluralExpression ? `, ${replaceNestedInlineMarkerExpression(operation.pluralExpression, resolvePayload)}` : '';
+				return `(${createInlineMessageFunction(resolved.value)})(${valuesExpression}${pluralExpression})`;
 			}
 
-			const template = typeof resolved.value === 'string' ? resolved.value : `$locale.${operation.path}`;
-			return createInlineTemplateExpression(template, valuesExpression, payload, resolved.scope);
+			if (typeof resolved.value !== 'string') return createInlineFallbackCall(operation.path, valuesExpression, operation.pluralExpression ? replaceNestedInlineMarkerExpression(operation.pluralExpression, resolvePayload) : 'undefined');
+			const template = resolved.value;
+			return createInlineTemplateExpression(template, valuesExpression, payload, resolved.scope, undefined, operation.pluralExpression ? replaceNestedInlineMarkerExpression(operation.pluralExpression, resolvePayload) : undefined);
 		}
 
 		case 'lookup-call': {
@@ -1899,10 +2117,9 @@ function getPlannedReplacement(
 
 			return createInlineLookupExpression(
 				resolved.value,
-				operation.keyExpression,
+				replaceNestedInlineMarkerExpression(operation.keyExpression, resolvePayload),
 				operation.suffixKeys,
-				resolvePayload(decodeInlineLocaleMarker(operation.marker)),
-				resolved.scope,
+				operation.path,
 			);
 		}
 
@@ -1912,12 +2129,7 @@ function getPlannedReplacement(
 			}
 
 			const payload = resolvePayload(decodeInlineLocaleMarker(operation.marker));
-			const fallbackPayload = {
-				env: createFallbackObject(payload.global, 'env'),
-				sfc: createFallbackObject(payload.module, 'sfc'),
-			};
-
-			return createInlineRefAliasExpression(JSON.stringify(fallbackPayload));
+			return createInlineRefAliasExpression(`{env:${createRawLocaleObjectExpression(payload.global, 'env')},sfc:${createRawLocaleObjectExpression(payload.module, 'sfc')}}`);
 		}
 
 		case 'localizer-object-call': {
@@ -1941,12 +2153,13 @@ function getPlannedReplacement(
 			const valuesExpression = replaceNestedInlineMarkerExpression(operation.valuesExpression, resolvePayload);
 
 			if (typeof value === 'function') {
-				const pluralExpression = operation.pluralExpression ? `, ${operation.pluralExpression}` : '';
-				return `((${value.toString()})(${valuesExpression}${pluralExpression}))`;
+				const pluralExpression = operation.pluralExpression ? `, ${replaceNestedInlineMarkerExpression(operation.pluralExpression, resolvePayload)}` : '';
+				return `(${createInlineMessageFunction(value)})(${valuesExpression}${pluralExpression})`;
 			}
 
-			const template = typeof value === 'string' ? value : `$locale.${[normalized.scope, ...normalized.keys].join('.')}`;
-			return createInlineTemplateExpression(template, valuesExpression, payload, normalized.scope);
+			if (typeof value !== 'string') return createInlineFallbackCall([normalized.scope, ...normalized.keys].join('.'), valuesExpression, operation.pluralExpression ? replaceNestedInlineMarkerExpression(operation.pluralExpression, resolvePayload) : 'undefined');
+			const template = value;
+			return createInlineTemplateExpression(template, valuesExpression, payload, normalized.scope, undefined, operation.pluralExpression ? replaceNestedInlineMarkerExpression(operation.pluralExpression, resolvePayload) : undefined);
 		}
 
 		case 'localizer-lookup-call': {
@@ -1965,12 +2178,13 @@ function getPlannedReplacement(
 
 			return createInlineLocalizerLookupCallExpression(
 				value,
-				operation.keyExpression,
+				replaceNestedInlineMarkerExpression(operation.keyExpression, resolvePayload),
 				operation.suffixKeys,
 				replaceNestedInlineMarkerExpression(operation.valuesExpression, resolvePayload),
-				operation.pluralExpression,
+				operation.pluralExpression ? replaceNestedInlineMarkerExpression(operation.pluralExpression, resolvePayload) : undefined,
 				payload,
 				normalized.scope,
+				normalized.keys,
 			);
 		}
 
@@ -1984,7 +2198,7 @@ function getPlannedReplacement(
 
 			const scope = getPayloadScope(payload, normalized.scope);
 			const value = normalized.keys.length === 0 ? scope : getValueByPath(scope, normalized.keys);
-			return JSON.stringify(value ?? `$locale.${[normalized.scope, ...normalized.keys].join('.')}`);
+			return serializeRawLocaleValue(value, [normalized.scope, ...normalized.keys].join('.'));
 		}
 	}
 }
@@ -2000,7 +2214,7 @@ function resolveInlinePath(
 
 	const [scope, ...keys] = path.split('.') as [PublicLocaleScope, ...string[]];
 
-	if (!isPublicLocaleScope(scope) || keys.length === 0) {
+	if (!isPublicLocaleScope(scope)) {
 		return undefined;
 	}
 
@@ -2063,6 +2277,8 @@ function readDynamicMemberAccess(code: string, node: AstNode): { root: string; s
 				{
 					type: 'dynamic',
 					expression: code.slice(node.property.start, node.property.end),
+					start: node.property.start,
+					end: node.property.end,
 				},
 			],
 		};
@@ -2084,12 +2300,12 @@ function readDynamicMemberAccess(code: string, node: AstNode): { root: string; s
 	};
 }
 
-function readInlineLocaleCallMemberAccess(node: AstNode): { marker: string; properties: string[] } | undefined {
+function readInlineLocaleCallMemberAccess(node: AstNode, helper = INLINE_LOCALE_CALL): { marker: string; properties: string[] } | undefined {
 	if (!isMemberExpression(node) || node.computed || !isIdentifier(node.property)) {
 		return undefined;
 	}
 
-	if (isCallExpression(node.object) && getCalleeName(node.object.callee) === INLINE_LOCALE_CALL) {
+	if (isCallExpression(node.object) && getCalleeName(node.object.callee) === helper) {
 		const marker = getStringArgument(node.object, 0);
 
 		return marker && isInlineLocaleMarker(marker)
@@ -2097,7 +2313,7 @@ function readInlineLocaleCallMemberAccess(node: AstNode): { marker: string; prop
 			: undefined;
 	}
 
-	const parent = readInlineLocaleCallMemberAccess(node.object);
+	const parent = readInlineLocaleCallMemberAccess(node.object, helper);
 
 	if (!parent) {
 		return undefined;
@@ -2130,6 +2346,10 @@ function getStringArgument(node: AstCallExpression, index: number): string | und
 		return undefined;
 	}
 
+	return getStringNodeValue(argument);
+}
+
+function getStringNodeValue(argument: AstNode): string | undefined {
 	if (isLiteral(argument) && typeof argument.value === 'string') {
 		return argument.value;
 	}
@@ -2162,6 +2382,7 @@ function isInlineLocaleMarker(value: string): boolean {
 }
 
 function toAstNode(node: unknown): AstNode | undefined {
+	if (!node || typeof node !== 'object') return undefined;
 	const maybeNode = node as Partial<AstNode>;
 
 	return typeof maybeNode.start === 'number' && typeof maybeNode.end === 'number'
@@ -2259,23 +2480,25 @@ function createInlineTemplateExpression(
 	payload?: InlineLocalePayload,
 	scope?: PublicLocaleScope,
 	seen: Set<string> = new Set(),
+	pluralExpression = 'undefined',
 ): string {
 	if (payload?.messageSyntax === 'icu') {
-		return createInlineIcuMessageExpression(template, valuesExpression, payload.locale);
+		return `((__input, __plural) => ${createInlineIcuMessageExpression(template, '__input', payload.locale)})(${valuesExpression}, ${pluralExpression})`;
 	}
 
 	const cases = compileLocaleMessage(template).cases;
 	const caseExpressions = cases.map((tokens) => createInlineTokenExpression(tokens, payload, scope, seen));
 
 	if (cases.length > 1) {
-		return `((__values) => { const __plural = typeof __values === "number" ? __values : Number(__values?.count ?? __values?.n ?? 1); const __index = ${createInlinePluralIndexExpression('Math.abs(Math.trunc(__plural))', cases.length)}; return [${caseExpressions.join(',')}][__index]; })(${valuesExpression})`;
+		return `((__values, __explicitPlural) => { const __plural = typeof __values === "number" ? __values : (__explicitPlural ?? 1); const __index = ${createInlinePluralIndexExpression('Math.abs(Math.trunc(__plural))', cases.length)}; return [${caseExpressions.map(expression => `()=>${expression}`).join(',')}][__index](); })(${valuesExpression}, ${pluralExpression})`;
 	}
 
 	if (caseExpressions.length === 1 && cases[0]?.length === 1 && cases[0][0]?.type === 'text') {
-		return JSON.stringify(template);
+		if (valuesExpression === '{}' && pluralExpression === 'undefined') return JSON.stringify(template);
+		return `((__values, __explicitPlural) => ${JSON.stringify(template)})(${valuesExpression}, ${pluralExpression})`;
 	}
 
-	return `((__values) => ${caseExpressions[0] ?? '""'})(${valuesExpression})`;
+	return `((__values, __explicitPlural) => ${caseExpressions[0] ?? '""'})(${valuesExpression}, ${pluralExpression})`;
 }
 
 function createInlineIcuMessageExpression(
@@ -2283,75 +2506,7 @@ function createInlineIcuMessageExpression(
 	valuesExpression: string,
 	locale: string | undefined,
 ): string {
-	const body = createInlineIcuElementsExpression(parseIcuMessage(template), '__values', JSON.stringify(locale));
-	return `((__values) => ${body})(${valuesExpression})`;
-}
-
-function createInlineIcuElementsExpression(
-	elements: MessageFormatElement[],
-	valuesExpression: string,
-	localeExpression: string,
-	pluralValueExpression?: string,
-): string {
-	const parts = elements.map((element) => createInlineIcuElementExpression(element, valuesExpression, localeExpression, pluralValueExpression));
-	return parts.length === 0 ? '""' : parts.join(' + ');
-}
-
-function createInlineIcuElementExpression(
-	element: MessageFormatElement,
-	valuesExpression: string,
-	localeExpression: string,
-	pluralValueExpression: string | undefined,
-): string {
-	switch (element.type) {
-		case TYPE.literal:
-			return JSON.stringify(element.value);
-		case TYPE.argument:
-		case TYPE.number:
-		case TYPE.date:
-		case TYPE.time:
-			return `(${valuesExpression}?.[${JSON.stringify(element.value)}] ?? ${JSON.stringify(`{${element.value}}`)})`;
-		case TYPE.pound:
-			return `((${pluralValueExpression ?? 'undefined'}) ?? "#")`;
-		case TYPE.select:
-			return createInlineIcuSelectExpression(element, valuesExpression, localeExpression, pluralValueExpression);
-		case TYPE.plural:
-			return createInlineIcuPluralExpression(element, valuesExpression, localeExpression);
-		case TYPE.tag:
-			return createInlineIcuElementsExpression(element.children, valuesExpression, localeExpression, pluralValueExpression);
-	}
-}
-
-function createInlineIcuSelectExpression(
-	element: Extract<MessageFormatElement, { type: TYPE.select }>,
-	valuesExpression: string,
-	localeExpression: string,
-	pluralValueExpression: string | undefined,
-): string {
-	const entries = Object.entries(element.options)
-		.map(([key, option]) =>
-			`${JSON.stringify(key)}:()=>${createInlineIcuElementsExpression(option.value, valuesExpression, localeExpression, pluralValueExpression)}`)
-		.join(',');
-
-	return `((__value)=>((({${entries}})[String(__value)] ?? ({${entries}}).other ?? (()=>${JSON.stringify(`{${element.value}}`)}))()))(${valuesExpression}?.[${JSON.stringify(element.value)}])`;
-}
-
-function createInlineIcuPluralExpression(
-	element: Extract<MessageFormatElement, { type: TYPE.plural }>,
-	valuesExpression: string,
-	localeExpression: string,
-): string {
-	const choiceExpression = `Number(__value) - ${element.offset}`;
-	const entries = Object.entries(element.options)
-		.map(([key, option]) =>
-			`${JSON.stringify(key)}:()=>${createInlineIcuElementsExpression(option.value, valuesExpression, localeExpression, choiceExpression)}`)
-		.join(',');
-	const exactEntries = Object.keys(element.options)
-		.filter((key) => key.startsWith('='))
-		.map((key) => `${JSON.stringify(key.slice(1))}:${JSON.stringify(key)}`)
-		.join(',');
-
-	return `((__value)=>{const __options={${entries}};const __exact=({${exactEntries}})[String(__value)];const __rule=__exact ?? new Intl.PluralRules(${localeExpression},{type:${JSON.stringify(element.pluralType)}}).select(${choiceExpression});return (__options[__rule] ?? __options.other ?? (()=>${JSON.stringify(`{${element.value}}`)}))();})(${valuesExpression}?.[${JSON.stringify(element.value)}])`;
+	return `__VVI_FORMAT_ICU__(${JSON.stringify(template)}, {syntax:"icu",locale:${JSON.stringify(locale)},values:((values)=>typeof values === "number" ? {count:values,n:values} : values)(${valuesExpression})})`;
 }
 
 function createInlineTokenExpression(
@@ -2366,7 +2521,7 @@ function createInlineTokenExpression(
 			case 'literal':
 				return JSON.stringify(token.value);
 			case 'named':
-				return `((typeof __values === "number" ? (${token.key === 'count' || token.key === 'n' ? '__values' : 'undefined'}) : __values?.[${JSON.stringify(token.key)}]) ?? ${JSON.stringify(`{${token.key}}`)})`;
+				return `((typeof __values === "number" ? (${token.key === 'count' || token.key === 'n' ? '__values' : 'undefined'}) : (Array.isArray(__values) ? undefined : __values?.[${JSON.stringify(token.key)}])) ?? ${JSON.stringify(`{${token.key}}`)})`;
 			case 'list':
 				return `(Array.isArray(__values) && __values[${token.index}] != null ? __values[${token.index}] : ${JSON.stringify(`{${token.index}}`)})`;
 			case 'linked':
@@ -2374,7 +2529,7 @@ function createInlineTokenExpression(
 		}
 	});
 
-	return parts.length === 0 ? '""' : parts.join(' + ');
+	return parts.length === 0 ? '""' : parts.map(part => `String(${part})`).join(' + ');
 }
 
 function createInlinePluralIndexExpression(choiceExpression: string, choicesLength: number): string {
@@ -2397,7 +2552,7 @@ function createInlineLinkedExpression(
 		return JSON.stringify(`@:${token.key}`);
 	}
 
-	const expression = createInlineTemplateExpression(resolved.value, '__values', payload, resolved.scope, resolved.seen);
+	const expression = createInlineTemplateExpression(resolved.value, '__values', payload, resolved.scope, resolved.seen, '__explicitPlural');
 
 	if (!token.modifier) {
 		return expression;
@@ -2405,11 +2560,11 @@ function createInlineLinkedExpression(
 
 	switch (token.modifier) {
 		case 'upper':
-			return `((${expression}).toLocaleUpperCase())`;
+			return `((${expression}).toLocaleUpperCase(${JSON.stringify(payload?.locale)}))`;
 		case 'lower':
-			return `((${expression}).toLocaleLowerCase())`;
+			return `((${expression}).toLocaleLowerCase(${JSON.stringify(payload?.locale)}))`;
 		case 'capitalize':
-			return `((__linked) => __linked.charAt(0).toLocaleUpperCase() + __linked.slice(1))(${expression})`;
+			return `((__linked) => __linked.charAt(0).toLocaleUpperCase(${JSON.stringify(payload?.locale)}) + __linked.slice(1))(${expression})`;
 		default:
 			return expression;
 	}
@@ -2456,27 +2611,25 @@ function createLocalizerObjectExpression(
 	dictionary: LocaleDictionary,
 	payload?: InlineLocalePayload,
 	scope?: PublicLocaleScope,
+	path: string[] = [],
 ): string {
 	const entries = Object.entries(dictionary).map(([key, value]) => {
 		const property = /^[$A-Z_a-z][$\w]*$/.test(key) ? key : JSON.stringify(key);
+		const nextPath = [...path, key];
 		const expression = isDictionary(value)
-			? createLocalizerObjectExpression(value, payload, scope)
+			? createLocalizerObjectExpression(value, payload, scope, nextPath)
 			: typeof value === 'function'
-				? `(${value.toString()})`
-				: `(values = {}) => ${createInlineTemplateExpression(typeof value === 'string' ? value : String(value), 'values', payload, scope)}`;
-
+				? createInlineMessageFunction(value)
+				: typeof value === 'string'
+					? `(values, plural) => ${createInlineTemplateExpression(value, 'values', payload, scope, undefined, 'plural')}`
+					: `() => ${JSON.stringify(`$locale.${[scope, ...nextPath].join('.')}`)}`;
 		return `${property}:${expression}`;
 	});
-
-	return `{${entries.join(',')}}`;
+	return `new Proxy({${entries.join(',')}},{get(target,key){if(typeof key!=="string")return undefined;return Object.hasOwn(target,key)?target[key]:()=>${JSON.stringify(`$locale.${[scope, ...path].join('.')}.`)}+key;}})`;
 }
 
 function createInlineRefAliasExpression(expression: string): string {
 	return `(() => { const __locale = ${expression}; __locale.value = __locale; return __locale; })()`;
-}
-
-function toObjectPropertyName(key: string): string {
-	return /^[$A-Z_a-z][$\w]*$/.test(key) ? key : JSON.stringify(key);
 }
 
 function getPayloadScope(payload: InlineLocalePayload, scope: PublicLocaleScope): LocaleDictionary {
@@ -2502,26 +2655,25 @@ function deepMerge(fallback: LocaleDictionary, current: LocaleDictionary): Local
 	return merged;
 }
 
-function createFallbackObject(dictionary: LocaleDictionary, path: string): LocaleDictionary {
-	const result = createLocaleDictionary();
+function createInlineFallbackCall(path: string, values: string, plural: string): string {
+	return `((__values,__plural)=>${JSON.stringify(`$locale.${path}`)})(${values},${plural})`;
+}
 
-	for (const [key, value] of Object.entries(dictionary)) {
-		result[key] = isDictionary(value) ? createFallbackObject(value, `${path}.${key}`) : value;
-	}
+function serializeRawLiteral(value: unknown): string {
+	if (typeof value === 'function') return `(${value.toString()})`;
+	if (Array.isArray(value)) return `[${value.map(serializeRawLiteral).join(',')}]`;
+	if (isDictionary(value)) return `{${Object.entries(value).map(([key, child]) => `${JSON.stringify(key)}:${serializeRawLiteral(child)}`).join(',')}}`;
+	return JSON.stringify(value);
+}
 
-	return new Proxy(result, {
-		get(target, property) {
-			if (typeof property !== 'string') {
-				return Reflect.get(target, property);
-			}
+function serializeRawLocaleValue(value: unknown, path: string): string {
+	if (value === undefined) return JSON.stringify(`$locale.${path}`);
+	return isDictionary(value) ? createRawLocaleObjectExpression(value, path) : serializeRawLiteral(value);
+}
 
-			if (Object.prototype.hasOwnProperty.call(target, property)) {
-				return target[property];
-			}
-
-			return `$locale.${path}.${property}`;
-		},
-	});
+function createRawLocaleObjectExpression(dictionary: LocaleDictionary, path: string): string {
+	const entries = Object.entries(dictionary).map(([key, value]) => `${JSON.stringify(key)}:${serializeRawLocaleValue(value, `${path}.${key}`)}`);
+	return `new Proxy({${entries.join(',')}},{get(target,key){return typeof key!=="string"||Object.hasOwn(target,key)?Reflect.get(target,key):${JSON.stringify(`$locale.${path}.`)}+key;}})`;
 }
 
 function createLocaleDictionary(): LocaleDictionary {
@@ -2577,14 +2729,16 @@ function replaceEntryScript(
 	entry: InlineChunkManifest['entries'][number],
 	primaryLocale: string,
 	base: string,
+	htmlFileName?: string,
+	preloads: Record<string, Array<{ file: string; integrity?: string }>> = {},
 ): string {
-	return html.replace(createEntryScriptRegExp(entry.locales, primaryLocale, base), (_match, beforeSrc: string, afterSrc: string) => {
+	return html.replace(createEntryScriptRegExp(entry.locales, primaryLocale, base, htmlFileName), (_match, beforeSrc: string, afterSrc: string) => {
 		const primaryFile = entry.locales[primaryLocale];
 		const loaderFileName = createLocaleLoaderFileName(originalFileNameFromLocaleFile(primaryFile, primaryLocale));
-		const loaderSource = createLocaleLoaderSource(entry.locales, primaryLocale, base, entry.integrity);
+		const loaderSource = createLocaleLoaderSource(entry.locales, primaryLocale, base, entry.integrity, preloads);
 		const loaderIntegrity = createSubresourceIntegrity(loaderSource);
 
-		return `<script${createLoaderScriptAttributes(beforeSrc, afterSrc, loaderFileName, base, loaderIntegrity)}></script>`;
+		return `<script${createLoaderScriptAttributes(beforeSrc, afterSrc, loaderFileName, base, loaderIntegrity, htmlFileName)}></script>`;
 	});
 }
 
@@ -2594,7 +2748,7 @@ function findHtmlLocaleEntries(
 	htmlFileName?: string,
 	base = '/',
 ): InlineChunkManifest['entries'] {
-	const scriptEntries = manifest.entries.filter((entry) => createEntryScriptRegExp(entry.locales, manifest.primaryLocale, base).test(html));
+	const scriptEntries = manifest.entries.filter((entry) => createEntryScriptRegExp(entry.locales, manifest.primaryLocale, base, htmlFileName).test(html));
 
 	return scriptEntries.length > 0 ? scriptEntries : findFallbackHtmlLocaleEntries(html, manifest, htmlFileName, base);
 }
@@ -2605,7 +2759,7 @@ function findFallbackHtmlLocaleEntries(
 	htmlFileName?: string,
 	base = '/',
 ): InlineChunkManifest['entries'] {
-	if (manifest.entries.some((entry) => createEntryScriptRegExp(entry.locales, manifest.primaryLocale, base).test(html))) {
+	if (manifest.entries.some((entry) => createEntryScriptRegExp(entry.locales, manifest.primaryLocale, base, htmlFileName).test(html))) {
 		return [];
 	}
 
@@ -2624,18 +2778,19 @@ function findFallbackHtmlLocaleEntries(
 	return htmlEntries.length === 1 ? htmlEntries : [];
 }
 
-function createEntryScriptRegExp(localeFiles: Record<string, string>, primaryLocale: string, base: string): RegExp {
+function createEntryScriptRegExp(localeFiles: Record<string, string>, primaryLocale: string, base: string, htmlFileName?: string): RegExp {
 	const primaryFile = localeFiles[primaryLocale];
 	const candidates = new Set(
 		[
 			originalFileNameFromLocaleFile(primaryFile, primaryLocale),
+			createLocaleLoaderFileName(originalFileNameFromLocaleFile(primaryFile, primaryLocale)),
 			...Object.values(localeFiles),
-		].flatMap((fileName) => createPublicPathCandidates(fileName, base)),
+		].flatMap((fileName) => createPublicPathCandidates(fileName, base, htmlFileName)),
 	);
 
 	return new RegExp(
 		`<script\\b([^>]*?)\\bsrc=["'](?:${[...candidates].map(escapeRegExp).join('|')})["']([^>]*)></script>`,
-		'u',
+		'gu',
 	);
 }
 
@@ -2648,13 +2803,37 @@ function createLocaleLoaderSource(
 	primaryLocale: string,
 	base: string,
 	integrity?: Record<string, string>,
+	preloads: Record<string, Array<{ file: string; integrity?: string }>> = {},
 ): string {
+	const loaderDirectory = dirname(localeFiles[primaryLocale]);
+	const files = base === '' || base === './'
+		? Object.fromEntries(Object.entries(localeFiles).map(([locale, file]) => {
+			const specifier = relative(loaderDirectory, file).replaceAll('\\', '/');
+			return [locale, specifier.startsWith('.') ? specifier : `./${specifier}`];
+		}))
+		: toPublicLocaleFiles(localeFiles, base);
+	const preloadFiles = Object.fromEntries(Object.entries(preloads).map(([locale, assets]) => [locale, assets.map(asset => ({
+		...asset,
+		file: base === '' || base === './' ? './' + relative(loaderDirectory, asset.file).replaceAll('\\', '/') : toPublicPath(asset.file, base),
+	}))]));
 	return [
-		`const __vueInternationalizationLocale = new URL(window.location.href).searchParams.get("locale") || ${JSON.stringify(primaryLocale)};`,
-		`const __vueInternationalizationEntries = ${JSON.stringify(toPublicLocaleFiles(localeFiles, base))};`,
+		'const __vueInternationalizationHandoff = typeof document !== "undefined" ? document.documentElement.getAttribute("data-vvi-locale") : null;',
+		`const __vueInternationalizationLocale = __vueInternationalizationHandoff ?? (new URL(window.location.href).searchParams.get("locale") || ${JSON.stringify(primaryLocale)});`,
+		`const __vueInternationalizationEntries = ${JSON.stringify(files)};`,
+		'if (__vueInternationalizationHandoff !== null && !Object.hasOwn(__vueInternationalizationEntries, __vueInternationalizationHandoff)) throw new Error("Unsupported SSR locale.");',
 		`const __vueInternationalizationIntegrity = ${JSON.stringify(integrity ?? {})};`,
-		`const __vueInternationalizationFile = __vueInternationalizationEntries[__vueInternationalizationLocale] || __vueInternationalizationEntries[${JSON.stringify(primaryLocale)}];`,
+		`const __vueInternationalizationFile = new URL(__vueInternationalizationEntries[__vueInternationalizationLocale] || __vueInternationalizationEntries[${JSON.stringify(primaryLocale)}], import.meta.url).href;`,
 		`const __vueInternationalizationExpectedIntegrity = __vueInternationalizationIntegrity[__vueInternationalizationLocale] || __vueInternationalizationIntegrity[${JSON.stringify(primaryLocale)}];`,
+		`const __vueInternationalizationPreloads = ${JSON.stringify(preloadFiles)};`,
+		'if (typeof document !== "undefined") {',
+		`  for (const asset of __vueInternationalizationPreloads[__vueInternationalizationLocale] || __vueInternationalizationPreloads[${JSON.stringify(primaryLocale)}] || []) {`,
+		'    const link = document.createElement("link");',
+		'    link.rel = "modulepreload";',
+		'    link.href = new URL(asset.file, import.meta.url).href;',
+		'    if (asset.integrity) { link.integrity = asset.integrity; link.crossOrigin = "anonymous"; }',
+		'    document.head.append(link);',
+		'  }',
+		'}',
 		'const __vueInternationalizationImport = () => import(__vueInternationalizationFile);',
 		'if (__vueInternationalizationExpectedIntegrity && typeof document !== "undefined") {',
 		'  new Promise((resolve, reject) => {',
@@ -2679,6 +2858,7 @@ function createLoaderScriptAttributes(
 	loaderFileName: string,
 	base: string,
 	loaderIntegrity?: string,
+	htmlFileName?: string,
 ): string {
 	const attributes = removeScriptAttribute(`${beforeSrc}${afterSrc}`, 'src');
 	const hadIntegrity = hasScriptAttribute(attributes, 'integrity');
@@ -2690,7 +2870,7 @@ function createLoaderScriptAttributes(
 		console.warn('[vite-vue-internationalization] Removed integrity from an inline-chunks HTML entry script because the script is replaced by a locale loader and per-locale chunks need their own SRI metadata.');
 	}
 
-	return `${withoutIntegrity}${typeAttribute}${integrityAttribute} src="${toPublicPath(loaderFileName, base)}"`;
+	return `${withoutIntegrity}${typeAttribute}${integrityAttribute} src="${toPublicPath(loaderFileName, base, htmlFileName)}"`;
 }
 
 function injectLocaleLoaderScript(
@@ -2698,13 +2878,14 @@ function injectLocaleLoaderScript(
 	entry: InlineChunkManifest['entries'][number],
 	primaryLocale: string,
 	base: string,
+	htmlFileName?: string,
 ): string {
 	const primaryFile = entry.locales[primaryLocale];
 	const loaderFileName = createLocaleLoaderFileName(originalFileNameFromLocaleFile(primaryFile, primaryLocale));
 	const cssLinks = (entry.css ?? [])
-		.map((fileName) => `<link rel="stylesheet" href="${toPublicPath(fileName, base)}">`)
+		.map((fileName) => `<link rel="stylesheet" href="${toPublicPath(fileName, base, htmlFileName)}">`)
 		.join('');
-	const loaderPath = toPublicPath(loaderFileName, base);
+	const loaderPath = toPublicPath(loaderFileName, base, htmlFileName);
 	const script = `<script type="module" src="${loaderPath}"></script>`;
 	const injection = `${cssLinks}${script}`;
 
@@ -2744,25 +2925,27 @@ function toPublicLocaleFiles(localeFiles: Record<string, string>, base: string):
 	return Object.fromEntries(Object.entries(localeFiles).map(([locale, fileName]) => [locale, toPublicPath(fileName, base)]));
 }
 
-function toPublicPath(fileName: string, base: string): string {
+function toPublicPath(fileName: string, base: string, htmlFileName?: string): string {
 	if (/^[a-z][a-z\d+\-.]*:/iu.test(base) || base.startsWith('//')) {
 		return new URL(fileName, base).toString();
 	}
 
 	if (base === '' || base === './') {
-		return `${base}${fileName}`;
+		const path = htmlFileName ? relative(dirname(htmlFileName), fileName).replaceAll('\\', '/') : fileName;
+		return path.startsWith('.') ? path : `${base}${path}`;
 	}
 
 	return `${base.endsWith('/') ? base : `${base}/`}${fileName}`;
 }
 
-function createPublicPathCandidates(fileName: string, base: string): string[] {
-	const publicPath = toPublicPath(fileName, base);
+function createPublicPathCandidates(fileName: string, base: string, htmlFileName?: string): string[] {
+	const publicPath = toPublicPath(fileName, base, htmlFileName);
 	const candidates = new Set([publicPath]);
 
 	if (base === '' || base === './') {
-		candidates.add(fileName);
-		candidates.add(`./${fileName}`);
+		const path = htmlFileName ? relative(dirname(htmlFileName), fileName).replaceAll('\\', '/') : fileName;
+		candidates.add(path);
+		candidates.add(`./${path}`);
 	}
 
 	return [...candidates];

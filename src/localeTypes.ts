@@ -45,8 +45,8 @@ export function createLocalizerRefType(types: LocaleBindingTypes, options: Local
 	return `Readonly<import("vue").ComputedRef<${createLocalizerScopeType(types, options)}>>`;
 }
 
-export function createComponentLocaleType(types: LocaleBindingTypes): string {
-	return toTypeLiteral(types.module ?? {});
+export function createComponentLocaleType(types: LocaleBindingTypes, documentation = false): string {
+	return documentation ? toLocaleDocumentationTypeLiteral(types.module ?? {}) : toTypeLiteral(types.module ?? {});
 }
 
 export function createComponentLocalizerType(types: LocaleBindingTypes): string {
@@ -67,6 +67,19 @@ export function createLocalizerDocumentationRefType(types: LocaleBindingTypes, o
 export function toTypeLiteral(dictionary: LocaleDictionary): string {
 	const entries = Object.entries(dictionary).map(([key, value]) => `${toPropertyName(key)}: ${toType(value)};`);
 	return entries.length === 0 ? '{}' : `{ ${entries.join(' ')} }`;
+}
+
+function toLocaleDocumentationTypeLiteral(dictionary: LocaleDictionary): string {
+	const entries = Object.entries(dictionary).map(([key, value]) => {
+		const documentation = typeof value === 'string'
+			? `/**\n${['Primary locale text:', ...value.replaceAll('*/', '*\\/').split(/\r\n|\r|\n/u)].map((line) => ` * ${line}`).join('\n')}\n */\n`
+			: '';
+		const type = value != null && typeof value === 'object' && !Array.isArray(value)
+			? toLocaleDocumentationTypeLiteral(value)
+			: toType(value);
+		return `${documentation}${toPropertyName(key)}: ${type};`;
+	});
+	return entries.length === 0 ? '{}' : `{\n${entries.join('\n')}\n}`;
 }
 
 function toGlobalLocaleType(types: LocaleBindingTypes, options: LocaleBindingTypeOptions): string {

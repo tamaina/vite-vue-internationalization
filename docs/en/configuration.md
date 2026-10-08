@@ -33,6 +33,8 @@ To get types in VS Code and `vue-tsc`, configuring it in the Vite root `tsconfig
 
 Vite transform output uses broad runtime types for `$locale.env` and `$l.env` so large global dictionary types are not duplicated into every transformed SFC. Vue Language Tools / Volar uses detailed global dictionary types by default for editor completion and `vue-tsc`; set `globalType: "runtime"` when the global dictionary is too large for type checking.
 
+The type-injection regression fixtures are verified with Vue Language Tools / `vue-tsc` 3.3.1. If the generated-code insertion points cannot be found, the language server logs `Incomplete type injection` with the affected file. Type injection is incomplete in that case; check the installed version and the log. Repeated reports for the same file are suppressed.
+
 See the generated [API Reference](../api.md#vueinternationalizationoptions) for the full `VueInternationalizationOptions` type.
 
 Related API:

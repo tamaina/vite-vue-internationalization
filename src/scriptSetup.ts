@@ -1,14 +1,16 @@
-export function injectScriptSetup(code: string, injection: string): string {
+import { editSource, type SourceEdits } from './sourceEdits.js';
+
+export function injectScriptSetup(code: string, injection: string, edits?: SourceEdits): string {
 	const setupOpen = findScriptOpenTag(code, tag => /\bsetup(?:\s|=|>|$)/.test(tag));
 
 	if (setupOpen) {
 		const insertAt = setupOpen.index + setupOpen.tag.length;
-		return `${code.slice(0, insertAt)}${injection}${code.slice(insertAt)}`;
+		return editSource(code, insertAt, insertAt, injection, edits);
 	}
 
 	const scriptOpen = getScriptOpenTag(code);
 	const langAttribute = !scriptOpen || isTypeScriptScript(scriptOpen) ? ' lang="ts"' : '';
-	return `${code}\n<script setup${langAttribute}>${injection}</script>\n`;
+	return editSource(code, code.length, code.length, `\n<script setup${langAttribute}>${injection}</script>\n`, edits);
 }
 
 export function getScriptSetupOpenTag(code: string): string | undefined {

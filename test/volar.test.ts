@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import ts from 'typescript';
@@ -84,11 +84,48 @@ describe('volar plugin', () => {
 		});
 		expect(scriptCode).toContain('ComponentPublicInstance & { $locale: import("vite-vue-internationalization/runtime").LocaleScope<');
 		expect(scriptCode).toContain('$l: { env:');
-		expect(scriptCode).toContain('export default {} as typeof __VLS_export & { $locale: { hoge: string; count: string; }; $l: { hoge: () => string; count: (values: { n: import("vite-vue-internationalization/runtime").LocaleTemplateValue; }) => string; }; };');
+		expect(scriptCode).toContain('export default {} as typeof __VLS_export & { $locale: {\n');
 		expect(scriptCode).toContain('__VLS_ctx.$locale.sfc.hoge');
 		expect(scriptCode).toContain('__VLS_ctx.$l.sfc.count');
 		expect(scriptCode).toContain('// @ts-expect-error: ts-plugin(2339)\n( __VLS_ctx.$locale.sfc.noTranslation );');
 		expect(scriptSetupRaw?.trim()).toBe('const title = $locale.value.sfc.hoge;\nconst count = $l.value.sfc.count({ n: 1 });');
+	});
+
+	it.each(['', '<script setup lang="ts"></script>'])('preserves imported locale documentation with script %s', (scriptBlock) => {
+		const vueOptions = getDefaultCompilerOptions();
+		vueOptions.plugins = [withConfig(vueInternationalizationVolar, {
+			__moduleConfig: { primaryLocale: 'ja' },
+		})];
+		const plugin = createVueLanguagePlugin(ts, {}, vueOptions, String);
+		const source = `${scriptBlock}
+<locale locale="ja" lang="json">${JSON.stringify({ title: 'タイトル', nested: { text: '複数行\n閉じる */ 記号' }, count: 3 })}</locale>
+<locale locale="en" lang="json">{"title":"Title"}</locale>`;
+		const root = plugin.createVirtualCode?.(resolve('Messages.vue'), 'vue', ts.ScriptSnapshot.fromString(source), {} as never);
+		if (!root) throw new Error('Expected Vue virtual code.');
+		const script = [...forEachEmbeddedCode(root)]
+			.find((code) => code.id === 'script_ts')?.snapshot.getText(0, Number.MAX_SAFE_INTEGER);
+		if (!script) throw new Error('Expected generated TypeScript.');
+		const dir = mkdtempSync(resolve('node_modules/.vvi-hover-'));
+		try {
+			const file = resolve(dir, 'Messages.vue.ts');
+			writeFileSync(file, script);
+			const consumer = `import Messages from ${JSON.stringify(file)};
+Messages.$locale.title;
+Messages.$locale.nested.text;
+Messages.$locale.count;`;
+			expect(getQuickInfo(consumer, 'Messages.$locale.title')).toEqual({
+				documentation: 'Primary locale text:\nタイトル',
+				display: '(property) title: string',
+				tags: [],
+			});
+			expect(getQuickInfo(consumer, 'Messages.$locale.nested.text')).toMatchObject({
+				documentation: 'Primary locale text:\n複数行\n閉じる *\\/ 記号',
+				display: '(property) text: string',
+			});
+			expect(getQuickInfo(consumer, 'Messages.$locale.count')).toMatchObject({ display: '(property) count: number' });
+		} finally {
+			rmSync(dir, { recursive: true, force: true });
+		}
 	});
 
 	it('injects global setup bindings into SFCs without locale sources when enabled', () => {
@@ -179,6 +216,26 @@ describe('volar plugin', () => {
 		expect(getCorruptedMappedSegments(source, scriptCode, scriptEmbeddedCode?.mappings ?? [])).toEqual([]);
 	});
 
+	it.each([true, false])('uses ICU argument types in script and template (documentation=%s)', (localizerDocumentation) => {
+		const vueCompilerOptions = getDefaultCompilerOptions();
+		const messages = { count: '{n, number}', choice: '{kind, select, yes {Yes} other {No}}', plural: '{n, plural, one {One} other {#}}' };
+		vueCompilerOptions.plugins = [withConfig(vueInternationalizationVolar, {
+			__moduleConfig: { primaryLocale: 'en', messageSyntax: 'icu', localizerDocumentation, global: { en: messages } },
+		})];
+		const plugin = createVueLanguagePlugin(ts, {}, vueCompilerOptions, String);
+		const source = `<template>{{ $l.sfc.count({ n: 1 }) }} {{ $l.env.choice({ kind: 'yes' }) }}</template>
+<script setup lang="ts">const count = $l.value.sfc.count({ n: 1 });</script>
+<locale locale="en" lang="json">${JSON.stringify(messages)}</locale>`;
+		const root = plugin.createVirtualCode?.(resolve('examples/vue/src/IcuTypes.vue'), 'vue', ts.ScriptSnapshot.fromString(source), {} as never);
+		if (!root) throw new Error('Expected Vue virtual code.');
+		const code = [...forEachEmbeddedCode(root)].find((item) => item.id === 'script_ts')?.snapshot.getText(0, Number.MAX_SAFE_INTEGER);
+		expect(getSemanticDiagnosticMessages(code)).toEqual([]);
+		const scriptInfo = getQuickInfo(code, '$l.value.sfc.count');
+		const templateInfo = getQuickInfo(code, '__VLS_ctx.$l.sfc.count');
+		expect(templateInfo?.display).toBe(scriptInfo?.display);
+		expect(templateInfo?.display).toContain('n:');
+	});
+
 	it('can skip verbose localizer documentation in generated editor types', () => {
 		const vueCompilerOptions = getDefaultCompilerOptions();
 		vueCompilerOptions.plugins = [
@@ -212,7 +269,7 @@ describe('volar plugin', () => {
 			?.snapshot.getText(0, Number.MAX_SAFE_INTEGER);
 
 		expect(scriptCode).toContain('$l: { env: import("vite-vue-internationalization/runtime").LocaleLocalizerDictionary; sfc: { count:');
-		expect(scriptCode).not.toContain('Primary locale text:');
+		expect(scriptCode?.split('export default')[0]).not.toContain('Primary locale text:');
 		expect(scriptCode).not.toContain('@example');
 	});
 
@@ -258,6 +315,32 @@ describe('volar plugin', () => {
 		expect(scriptCode).toContain('env: import("vite-vue-internationalization/runtime").RuntimeLocaleLocalizerDictionary');
 		expect(scriptCode).not.toContain('{ title: "アプリ"; count: "{n} 個"; }');
 		expect(diagnostics).toEqual([]);
+	});
+
+	it('keeps SFC types usable with malformed external dictionaries and uses the consuming config root', () => {
+		const directory = mkdtempSync(resolve(tmpdir(), 'vvi-volar-external-'));
+		try {
+			mkdirSync(resolve(directory, 'nested'));
+			writeFileSync(resolve(directory, 'nested/tsconfig.json'), '{}');
+			const dictionary = resolve(directory, 'global.yaml');
+			const options = getDefaultCompilerOptions();
+			options.plugins = [withConfig(vueInternationalizationVolar, { __moduleConfig: {
+				name: 'vite-vue-internationalization/volar', primaryLocale: 'en', global: { en: 'global.yaml' },
+			} })];
+			const language = createVueLanguagePlugin(ts, { configFilePath: resolve(directory, 'tsconfig.app.json') }, options, String);
+			for (const contents of ['title: [', 'constructor: unsafe', 'title: ExternalRoot']) {
+				writeFileSync(dictionary, contents);
+				const file = resolve(directory, 'nested/App.vue');
+				const code = language.createVirtualCode?.(file, 'vue', ts.ScriptSnapshot.fromString('<script setup lang="ts">const title = $locale.value.sfc.title;</script><template>{{ $locale.sfc.title }}</template><locale locale="en">title: LocalStillValid</locale>'), {} as never);
+				expect(code).toBeDefined();
+				if (!code) throw new Error('Expected Vue virtual code.');
+				const script = [...forEachEmbeddedCode(code)].find(code => code.id === 'script_ts')?.snapshot.getText(0, Number.MAX_SAFE_INTEGER);
+				expect(script).toContain('LocalStillValid');
+				expect(getSemanticDiagnosticMessages(script)).toEqual([]);
+				if (contents.includes('ExternalRoot')) expect(script).toContain('ExternalRoot');
+				language.disposeVirtualCode?.(file, code);
+			}
+		} finally { rmSync(directory, { recursive: true, force: true }); }
 	});
 
 	it('merges multiple locale blocks for editor types with later blocks taking precedence', () => {
@@ -576,8 +659,8 @@ function getCorruptedMappedSegments(
 
 	return mappings.flatMap((mapping) =>
 		mapping.generatedOffsets.flatMap((generatedOffset, index) => {
-			const sourceOffset = mapping.sourceOffsets[index];
-			const length = mapping.lengths[index];
+			const sourceOffset = mapping.sourceOffsets.at(index);
+			const length = mapping.lengths.at(index);
 
 			if (sourceOffset === undefined || length === undefined || length <= 0) {
 				return [];

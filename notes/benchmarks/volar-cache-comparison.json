@@ -1,0 +1,114 @@
+{
+  "baselineRef": "404beff",
+  "currentRef": "3ac3c1fd59aee98ad3ce64e57ea9315f073326ef",
+  "results": [
+    {
+      "variant": "baseline",
+      "sample": 0,
+      "node": "v24.18.0",
+      "iterations": 1000,
+      "forcedGc": true,
+      "elapsedMs": 296.93505600000003,
+      "heapDelta": 6888352,
+      "stats": {
+        "scriptParses": 2000
+      },
+      "entries": {
+        "globalDictionaries": 0,
+        "moduleDictionaries": 1000,
+        "moduleDiagnostics": 1000,
+        "generatedTypes": 1000
+      }
+    },
+    {
+      "variant": "current",
+      "sample": 0,
+      "node": "v24.18.0",
+      "iterations": 1000,
+      "forcedGc": true,
+      "elapsedMs": 290.054675,
+      "heapDelta": 4747416,
+      "stats": {
+        "scriptParses": 1000
+      },
+      "entries": {
+        "globalDictionaries": 0,
+        "moduleDictionaries": 1,
+        "moduleDiagnostics": 1,
+        "generatedTypes": 256
+      }
+    },
+    {
+      "variant": "baseline",
+      "sample": 1,
+      "node": "v24.18.0",
+      "iterations": 1000,
+      "forcedGc": true,
+      "elapsedMs": 321.2782260000001,
+      "heapDelta": 6888032,
+      "stats": {
+        "scriptParses": 2000
+      },
+      "entries": {
+        "globalDictionaries": 0,
+        "moduleDictionaries": 1000,
+        "moduleDiagnostics": 1000,
+        "generatedTypes": 1000
+      }
+    },
+    {
+      "variant": "current",
+      "sample": 1,
+      "node": "v24.18.0",
+      "iterations": 1000,
+      "forcedGc": true,
+      "elapsedMs": 268.99951300000004,
+      "heapDelta": 4747600,
+      "stats": {
+        "scriptParses": 1000
+      },
+      "entries": {
+        "globalDictionaries": 0,
+        "moduleDictionaries": 1,
+        "moduleDiagnostics": 1,
+        "generatedTypes": 256
+      }
+    },
+    {
+      "variant": "baseline",
+      "sample": 2,
+      "node": "v24.18.0",
+      "iterations": 1000,
+      "forcedGc": true,
+      "elapsedMs": 320.05656700000003,
+      "heapDelta": 6887488,
+      "stats": {
+        "scriptParses": 2000
+      },
+      "entries": {
+        "globalDictionaries": 0,
+        "moduleDictionaries": 1000,
+        "moduleDiagnostics": 1000,
+        "generatedTypes": 1000
+      }
+    },
+    {
+      "variant": "current",
+      "sample": 2,
+      "node": "v24.18.0",
+      "iterations": 1000,
+      "forcedGc": true,
+      "elapsedMs": 287.78233900000004,
+      "heapDelta": 4740752,
+      "stats": {
+        "scriptParses": 1000
+      },
+      "entries": {
+        "globalDictionaries": 0,
+        "moduleDictionaries": 1,
+        "moduleDiagnostics": 1,
+        "generatedTypes": 256
+      }
+    }
+  ]
+}

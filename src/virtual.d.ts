@@ -7,13 +7,13 @@ declare module 'virtual:vite-vue-internationalization' {
 	export const primaryLocale: string;
 	/** Locale codes available in the generated runtime module. */
 	export const locales: string[];
-	/** Locale resolved from the current URL query or the primary locale. */
+	/** Browser default resolved from SSR data-vvi-locale, URL query, or primary locale. */
 	export const currentLocale: string;
 	/** Component used for slot-based interpolation of locale messages. */
 	export const Internationalization: typeof import('vite-vue-internationalization/runtime').Internationalization;
 	/** Defines programmatic locale dictionaries while preserving literal types. */
 	export const defineInternationalization: typeof import('vite-vue-internationalization/runtime').defineInternationalization;
-	/** Resolves the initial locale from the current URL query. */
+	/** Resolves the initial locale from SSR data-vvi-locale, URL query, or primary locale. */
 	export function resolveInitialLocale(): string;
 	/** Creates an internationalization instance with generated locale loaders. */
 	export function createInternationalization(options?: {
@@ -26,23 +26,23 @@ declare module 'virtual:vite-vue-internationalization' {
 	/** Sets the active instance used outside Vue injection context. */
 	export function setActiveInternationalization(instance: InternationalizationInstance): void;
 	/** Returns the installed internationalization instance. */
-	export function useInternationalization(): InternationalizationInstance;
+	export function useInternationalization(instance?: InternationalizationInstance): InternationalizationInstance;
 	/** Returns reactive global and SFC dictionaries for the given module URL. */
 	export function useLocale<
 		TGlobal extends RuntimeLocaleDictionary = RuntimeLocaleDictionary,
 		TModule extends RuntimeLocaleDictionary = RuntimeLocaleDictionary,
-	>(moduleUrl: string): Readonly<ComputedRef<LocaleScope<TGlobal, TModule>>>;
+	>(moduleUrl: string, instance?: InternationalizationInstance): Readonly<ComputedRef<LocaleScope<TGlobal, TModule>>>;
 	/** Returns reactive localizer functions for global and SFC dictionaries. */
 	export function useLocalizer<
 		TGlobal extends RuntimeLocaleDictionary = RuntimeLocaleDictionary,
 		TModule extends RuntimeLocaleDictionary = RuntimeLocaleDictionary,
-	>(moduleUrl: string): Readonly<ComputedRef<LocaleLocalizerScope<TGlobal, TModule>>>;
+	>(moduleUrl: string, instance?: InternationalizationInstance): Readonly<ComputedRef<LocaleLocalizerScope<TGlobal, TModule>>>;
 	/** Creates a lazy SFC dictionary proxy for component static `$locale` access. */
-	export function createComponentLocale<TModule extends RuntimeLocaleDictionary = RuntimeLocaleDictionary>(moduleUrl: string): TModule;
+	export function createComponentLocale<TModule extends RuntimeLocaleDictionary = RuntimeLocaleDictionary>(moduleUrl: string, instance?: InternationalizationInstance): TModule;
 	/** Creates a lazy SFC localizer proxy for component static `$l` access. */
-	export function createComponentLocalizer(moduleUrl: string): LocaleLocalizerDictionary;
+	export function createComponentLocalizer(moduleUrl: string, instance?: InternationalizationInstance): LocaleLocalizerDictionary;
 	/** Returns a formatter for the current locale's date-time presets. */
-	export function useDateTimeFormat(): Readonly<ComputedRef<LocaleDateTimeFormatter>>;
+	export function useDateTimeFormat(instance?: InternationalizationInstance): Readonly<ComputedRef<LocaleDateTimeFormatter>>;
 	/** Returns a formatter for the current locale's number presets. */
-	export function useNumberFormat(): Readonly<ComputedRef<LocaleNumberFormatter>>;
+	export function useNumberFormat(instance?: InternationalizationInstance): Readonly<ComputedRef<LocaleNumberFormatter>>;
 }

@@ -11,3 +11,5 @@ docs/api.md
 .vite/
 test-results/
 playwright-report/
+.vscode-test/
+extensions/vscode/LICENSE

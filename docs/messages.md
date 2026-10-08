@@ -106,6 +106,8 @@ Messages.$locale.title;
 Messages.$l.body({ source: 'messages.vue' });
 ```
 
+Volar プラグインを設定すると、import した SFC の `Messages.$locale.title` などの文字列メンバーを VSCode でホバーした際に、メイン言語の翻訳本文が JSDoc として表示されます。ネストしたキーにも対応し、値の型は `string` のままです。
+
 ## スクリプト定義メッセージ
 
 通常の `<script lang="ts">` または `<script setup lang="ts">` のトップレベルで `defineInternationalization()` を使うと、TypeScript で辞書を定義できます。メッセージ関数を末端値として置きたい場合に便利です。
@@ -134,3 +136,12 @@ defineInternationalization({
 - [`defineInternationalization()`](./api.md#defineinternationalization)
 - [`LocaleDictionary`](./api.md#localedictionary)
 - [`LocaleMessages`](./api.md#localemessages)
+
+## 開発中の翻訳編集
+
+両ビルド戦略とも、翻訳変更時はページをfull reloadします。
+各Vite環境のlocale payloadとloader一覧を無効化し、SFC・global辞書（root外の指定も含む）・
+配列・globの一致ファイル・ファイル追加削除・新localeの追加に追随します。
+CSSだけの変更はVueのCSS HMRを使い、ページを再読込しません。
+不正な辞書の編集中はerror overlayを表示し、修正後はViteの再起動なしで復旧します。
+翻訳のfull reloadではcomponentの状態は維持しません。

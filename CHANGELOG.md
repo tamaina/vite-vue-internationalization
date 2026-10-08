@@ -1,3 +1,28 @@
+## 1.1.5
+
+### Changes
+
+- fix: Keep per-page HTML CSS separate from shared executable chunks and leave public/external stylesheet links in the original head.
+
+- fix: Preserve linked-message cycle handling, final Vite client/CSS/preload mappings, SSR stylesheet cascade, and source-map comments inside multiline strings. Reject multi-script HTML entries in the single-entry SSR resolver while preserving ordinary client execution.
+
+- feat: Add dependency-free SSR locale asset resolution and per-environment locale refresh, with Vue SSR and Nuxt integration examples.
+- feat: Add VS Code diagnostics and message highlighting for locale values, and bound Volar caches to file revisions.
+- feat: Show primary-locale translation text as hover documentation for imported Vue SFC dictionaries, and unify their inline-chunks dictionary expansion.
+- fix: Align virtual and inline message formatting, linked messages, fallback behavior, and retained helper dictionaries.
+- fix: Preserve lexical binding scopes, source positions, composed source maps, translation hashes, and CSS-only or nested SSR asset paths.
+- fix: Retain external Vue script transforms while excluding Vue block, raw, and URL subrequests from SFC dictionary replacement.
+- chore: Expand type, editor, SSR/hydration, HMR, source-map, example, inline-import, and asset-preload regression coverage.
+
+
+## 1.1.4
+
+### Changes
+
+- fix: Exclude images and fonts from inline chunk JavaScript preloads while preserving CSS and JavaScript dependencies.
+- fix: Preserve SFC dictionaries when processing Vue block, raw, and URL subrequests, while retaining inline locale transforms for external scripts.
+
+
 ## 1.1.3
 
 ### Changes

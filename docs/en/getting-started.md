@@ -96,3 +96,17 @@ Next:
 - Organize `<locale>` blocks and locale-only SFCs in [Messages](./messages.md)
 - Choose a message format in [Message Syntax](./message-syntax.md)
 - Review runtime helpers in [API Reference](../api.md)
+
+## Editor diagnostics for external dictionaries
+
+The separate **Vite Vue Internationalization Tools** VS Code extension reports
+syntax errors, invalid dictionary shapes and unsafe keys on YAML / JSON files
+configured in the VVI `global` option under `vueCompilerOptions.plugins`.
+Unsaved edits, glob additions/deletions and configuration changes update the
+diagnostics without editing an SFC or restarting the language server. Keep
+Vue - Official and the VVI Volar configuration for SFC types and completion.
+
+Run `pnpm package:editor` in the repository, then use **Extensions: Install from VSIX**
+to install `extensions/vscode/dist/vvi-tools.vsix`. This is distributed separately
+from the npm package. See the
+[extension setup and test instructions](https://github.com/tamaina/vite-vue-internationalization/tree/develop/extensions/vscode).

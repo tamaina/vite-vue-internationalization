@@ -1,0 +1,19 @@
+{
+  "compilerOptions": {
+    "target": "ESNext",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "strict": true,
+    "skipLibCheck": true,
+    "types": ["vite-vue-internationalization/virtual"]
+  },
+  "vueCompilerOptions": {
+    "plugins": [{
+      "name": "vite-vue-internationalization/volar",
+      "primaryLocale": "en",
+      "messageSyntax": "icu",
+      "global": { "en": { "count": "{n, number}", "choice": "{kind, select, yes {Yes} other {No}}" } }
+    }]
+  },
+  "include": ["App.vue"]
+}
