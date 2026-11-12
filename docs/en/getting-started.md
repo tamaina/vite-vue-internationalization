@@ -88,6 +88,12 @@ export function useAppMessages() {
 
 Call these helpers after `app.use(createInternationalization())`, such as inside Vue setup code or functions called from it. In plain `.ts` modules, `sfc` points at the module id passed to `useLocale()` / `useLocalizer()`; for app-wide dictionaries, prefer `env`.
 
+With the default `virtual` strategy, calling either helper without an explicit, injected, or active instance throws immediately. In particular, a top-level call during module import before install does not create a ref that will attach to the app later.
+
+Installation does not wait for dictionary loading. Await `internationalization.ready` before taking translated values. A retained computed ref updates after loading, but `const title = $locale.value.env.title` copies the current string: it will not update after `ready` or later dictionary changes. Dictionary subtrees and localizer functions copied out before loading also retain the old dictionary. Keep reads inside getters (as above), Vue `computed()` callbacks, or render functions when they must stay reactive. Missing messages return placeholders such as `$locale.env.title`, rather than empty strings.
+
+Inline builds can replace recognized helper calls with locale-specific values at build time. Follow the initialization rules above so the same code also works with the `virtual` strategy used in development and SSR. For SSR outside Vue injection context, pass the request's instance explicitly; see [Backend Rendering](./backend-rendering.md).
+
 Plain `.ts` files cannot declare local dictionaries for VVI to collect. When you want a local dictionary that is separate from a component, prefer a [locale-only SFC](./messages.md#locale-only-sfc) and import it from app code.
 
 Next:

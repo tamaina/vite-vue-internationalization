@@ -400,6 +400,24 @@ describe('virtual module generation', () => {
 		expect(output).not.toContain('useLocalizer(import.meta.url)');
 	});
 
+	it.each([false, true])('evaluates eager TS env snapshots in inline output (minify: %s)', (minify) => {
+		const source = [
+			'import { useLocale, useLocalizer } from "virtual:vite-vue-internationalization";',
+			'const localeRef = useLocale(import.meta.url);',
+			'const localizerRef = useLocalizer(import.meta.url);',
+			'const title = localeRef.value.env.title;',
+			'const greeting = localizerRef.value.env.greeting({ name: "Ada" });',
+			'const result = [title, greeting, localeRef.value.sfc.title];',
+		].join('\n');
+		const rewritten = internals.rewriteInlineRuntimeLocaleAccess(source, '/src/navigation.ts');
+		const replaced = internals.replaceInlineLocaleMarkers(rewritten, 'en', 'en', 'vue', {}, {
+			en: { title: 'Search', greeting: 'Hello {name}' },
+		});
+		const executable = replaced.replace(source.split('\n')[0], '');
+		const output = transformSync(`(() => { ${executable}; return result; })()`, { minify, loader: 'js' }).code;
+		expect(new Function(`return ${output}`)()).toEqual(['Search', 'Hello Ada', '$locale.sfc.title']);
+	});
+
 	it('rewrites aliased explicit runtime locale helpers in TypeScript modules for inline chunks', () => {
 		const output = internals.rewriteInlineRuntimeLocaleAccess([
 			'import { useLocale as useVviLocale, useLocalizer as useVviLocalizer } from "virtual:vite-vue-internationalization";',

@@ -23,6 +23,8 @@ VVI targets Vite 8 and newer. Assume Vite builds use the Rolldown-based pipeline
 
 For `$locale` / `$l`-style access in ordinary `.ts` modules, import `useLocale` and `useLocalizer` from `virtual:vite-vue-internationalization`. These return computed refs, so read `$locale.value.env.foo` and call `$l.value.env.foo(values)`. Use them after the app installs `createInternationalization()`, typically inside Vue setup code or functions called from setup. Prefer `env` for app-wide messages; `sfc` is keyed by the module id passed to the helper.
 
+With the `virtual` strategy, calling these helpers without an explicit, injected, or active instance throws immediately; a module-scope call before install does not create a deferred ref. Installation and loading are separate: await the instance's `ready` before taking translated values. Re-reading a retained computed ref after loading sees the messages, but a string, dictionary subtree, or localizer function copied out before loading remains a snapshot. Keep reads inside getters or Vue computed/render functions when values must stay reactive; do not eagerly build translated navigation titles during module import. Missing keys return `$locale.env.key` / `$locale.sfc.key` placeholders, not empty strings. Inline builds can compile recognized helper calls into locale-specific values; do not rely on that to make early reads portable across build strategies.
+
 ## Correct `$locale` and `$l` Access
 
 In Vue templates, use unwrapped values:

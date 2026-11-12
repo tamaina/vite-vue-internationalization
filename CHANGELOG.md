@@ -2,7 +2,7 @@
 
 ### Changes
 
--
+- docs: Clarify install and ready requirements for plain TypeScript locale helpers, reactive reads versus eager snapshots, and inline build differences.
 
 
 ## 1.1.5

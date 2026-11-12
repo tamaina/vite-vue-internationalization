@@ -88,6 +88,12 @@ export function useAppMessages() {
 
 これらの helper は `app.use(createInternationalization())` の後、たとえば Vue の setup 内や setup から呼ばれる関数内で使ってください。通常の `.ts` では、`sfc` は `useLocale()` / `useLocalizer()` に渡した module id に対応します。アプリ全体の辞書を読む場合は `env` を使うのがおすすめです。
 
+既定の `virtual` 戦略では、明示的なインスタンス・inject されたインスタンス・アクティブなインスタンスのいずれもない状態で helper を呼ぶと、その場で例外になります。特に、install 前のモジュール import 時にトップレベルで呼んでも、後からアプリに接続される ref は作られません。
+
+install は辞書の読み込み完了を待ちません。翻訳済みの値を取り出す前に `internationalization.ready` を await してください。保持した computed ref は読み込み後に更新されますが、`const title = $locale.value.env.title` は現在の文字列をコピーするため、`ready` 後や辞書の変更後も更新されません。読み込み前に取り出した辞書の部分オブジェクトや localizer 関数も、古い辞書を保持します。更新を追跡する場合は、上の例のような getter、Vue の `computed()`、または描画関数の中で毎回 ref を読んでください。存在しないメッセージは空文字ではなく、`$locale.env.title` のようなプレースホルダーになります。
+
+inline ビルドでは、認識された helper 呼び出しがビルド時にロケール別の値へ置換される場合があります。開発時や SSR の `virtual` 戦略でも動くよう、上記の初期化手順を守ってください。SSR で Vue の injection context 外から使う場合は、リクエストごとのインスタンスを明示的に渡します。[バックエンドレンダリング](./backend-rendering.md)も参照してください。
+
 通常の `.ts` ファイルでローカル辞書を宣言して VVI に収集させる機能はありません。ローカル辞書をコンポーネントから分離したい場合は、`.ts` ではなく [単体メッセージ SFC](./messages.md#単体メッセージ-sfc) を作って import する方法をおすすめします。
 
 ## SFC メッセージ
